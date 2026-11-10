@@ -20,6 +20,9 @@ public sealed class AppConfig
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "Vibershot", "Screenshots");
 
+    public bool ShowCaptureActions { get; set; } = true;
+    public bool ShowSaveDialog { get; set; } = false;
+
     public bool Autosave { get; set; } = true;
     public bool CopyToClipboard { get; set; } = true;
     public ImageFormat Format { get; set; } = ImageFormat.Png;

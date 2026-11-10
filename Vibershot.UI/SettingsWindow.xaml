@@ -10,6 +10,8 @@
    <Border Background="{StaticResource Card}" CornerRadius="12" Padding="20" Margin="0,0,0,14">
     <StackPanel>
      <TextBlock Text="AFTER CAPTURE" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,14"/>
+     <CheckBox x:Name="ActionsCheckbox" Content="Choose screenshot, video or scrolling after selection" Margin="0,0,0,14"/>
+     <CheckBox x:Name="SaveDialogCheckbox" Content="Show Save As after taking a screenshot" Margin="0,0,0,14"/>
      <CheckBox x:Name="AutosaveCheckbox" AutomationProperties.Name="Save automatically"><StackPanel><TextBlock Text="Save automatically" FontWeight="SemiBold"/><TextBlock Text="Keep a file of each screenshot" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel></CheckBox>
      <Border Height="1" Background="{StaticResource Line}" Margin="0,14"/>
      <CheckBox x:Name="ClipboardCheckbox" AutomationProperties.Name="Copy to clipboard"><StackPanel><TextBlock Text="Copy to clipboard" FontWeight="SemiBold"/><TextBlock Text="Ready to paste wherever you need it" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel></CheckBox>

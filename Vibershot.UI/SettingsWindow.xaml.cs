@@ -16,6 +16,8 @@ public partial class SettingsWindow : Window
 
         FolderTextBox.Text = config.OutputFolder;
         AutosaveCheckbox.IsChecked = config.Autosave;
+        ActionsCheckbox.IsChecked = config.ShowCaptureActions;
+        SaveDialogCheckbox.IsChecked = config.ShowSaveDialog;
         ClipboardCheckbox.IsChecked = config.CopyToClipboard;
         SelectFormat(config.Format);
     }
@@ -55,6 +57,8 @@ public partial class SettingsWindow : Window
         }
         _config.OutputFolder = FolderTextBox.Text;
         _config.Autosave = AutosaveCheckbox.IsChecked ?? true;
+        _config.ShowCaptureActions = ActionsCheckbox.IsChecked == true;
+        _config.ShowSaveDialog = SaveDialogCheckbox.IsChecked == true;
         _config.CopyToClipboard = ClipboardCheckbox.IsChecked ?? true;
         _config.Format = (FormatComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is ImageFormat fmt
             ? fmt

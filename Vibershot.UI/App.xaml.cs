@@ -53,12 +53,40 @@ public partial class App : Application
             System.Windows.Media.Imaging.BitmapSource? image = desktop;
             if (region)
             {
-                var overlay = new RegionWindow(desktop, bounds);
-                overlay.ShowDialog(); image = overlay.Result;
+                var overlay = new RegionWindow(desktop, bounds, _config.ShowCaptureActions);
+                image = overlay.ShowDialog() == true ? overlay.Result : null;
+                if (image != null && overlay.Action != CaptureAction.Screenshot)
+                {
+                    string? videoPath = null;
+                    if (overlay.Action == CaptureAction.Video)
+                    {
+                        var dialog = new Microsoft.Win32.SaveFileDialog
+                        {
+                            Filter = "Motion JPEG video|*.avi", FileName = $"recording_{DateTime.Now:yyyyMMdd_HHmmss}",
+                            AddExtension = true, DefaultExt = ".avi"
+                        };
+                        if (dialog.ShowDialog() != true) { _main.ShowStatus("Recording cancelled."); return; }
+                        videoPath = dialog.FileName;
+                    }
+                    var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, videoPath);
+                    session.ShowDialog();
+                    if (!session.Completed) { _main.ShowStatus("Capture cancelled."); return; }
+                    if (videoPath != null) { _main.ShowStatus("Video saved: " + videoPath); return; }
+                    image = session.Image;
+                }
             }
             if (image == null) { _main.ShowStatus("Capture cancelled. Ctrl+Shift+S to try again."); return; }
             string status = $"{image.PixelWidth} × {image.PixelHeight}";
-            if (_config.Autosave)
+            if (_config.ShowSaveDialog)
+            {
+                try
+                {
+                    var path = ScreenshotSaveDialog.Save(image, _config);
+                    status = path == null ? "Save cancelled • Screenshot available in preview" : "Saved: " + path;
+                }
+                catch (Exception ex) { status = "Save failed: " + ex.Message; }
+            }
+            else if (_config.Autosave || (region && _config.ShowCaptureActions))
             {
                 try { status = "Saved: " + FileSaveService.Save(image, _config.OutputFolder, _config.Format); }
                 catch (Exception ex) { status = "Autosave failed: " + ex.Message; }
