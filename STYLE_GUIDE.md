@@ -14,7 +14,7 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 ## Color tokens
 
 | Token | Hex | Use |
-|---|---|---|
+| --- | --- | --- |
 | `Paper` | `#FBFBFC` | Window and panel surface |
 | `PaperEdge` | `#C9CDD3` | 1px outer border of a window |
 | `Rule` | `#E4E7EB` | Chip borders, pressed row fill, chrome hover |
@@ -39,7 +39,7 @@ Every window uses this palette: the capture window, Settings, Preview, the recor
 Font: **Segoe UI Variable** with Segoe UI fallback. Mono: **Cascadia Mono** with Consolas fallback (`MonoFont` resource).
 
 | Role | Size | Weight | Color |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Wordmark | 13 | Bold | `Ink` |
 | Primary action label | 16 | Bold | `TangerineInk` |
 | Primary action hint | 11.5 | SemiBold, 85% opacity | `TangerineInk` |
@@ -58,7 +58,7 @@ Sizes are device-independent pixels as WPF `FontSize`.
 Base unit is 4px. Use these values and avoid inventing new ones.
 
 | Where | Value |
-|---|---|
+| --- | --- |
 | Window outer margin (shadow room) | 16 |
 | Window side padding | 20 (22 for header and footer text so it aligns optically) |
 | Header height | 56 |
@@ -70,7 +70,7 @@ Base unit is 4px. Use these values and avoid inventing new ones.
 | Footer padding | 16 top, 18 bottom |
 
 | Element | Corner radius |
-|---|---|
+| --- | --- |
 | Window | 16 |
 | Primary action | 12 |
 | Row, icon tile on primary | 10 |
