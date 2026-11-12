@@ -19,7 +19,44 @@ public partial class SettingsWindow : Window
         ActionsCheckbox.IsChecked = config.ShowCaptureActions;
         SaveDialogCheckbox.IsChecked = config.ShowSaveDialog;
         ClipboardCheckbox.IsChecked = config.CopyToClipboard;
+        WebpQualitySlider.Value = ImageEncoding.ClampWebpQuality(config.WebpQuality);
         SelectFormat(config.Format);
+        UpdateWebpQualityVisibility();
+
+        StartupCheckbox.IsChecked = StartupRegistration.IsEnabled;
+        PrintScreenCheckbox.IsChecked = config.PrintScreen != PrintScreenAction.Off;
+        PrintScreenDesktopRadio.IsChecked = config.PrintScreen == PrintScreenAction.FullDesktop;
+        PrintScreenToolRadio.IsChecked = !PrintScreenDesktopRadio.IsChecked;
+        PrintScreenCheckbox_Changed(this, new RoutedEventArgs());
+    }
+
+    private void PrintScreenCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (PrintScreenOptions is not null)
+        {
+            PrintScreenOptions.IsEnabled = PrintScreenCheckbox.IsChecked == true;
+        }
+    }
+
+    private ImageFormat SelectedFormat =>
+        (FormatComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is ImageFormat fmt ? fmt : ImageFormat.Png;
+
+    private void FormatComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateWebpQualityVisibility();
+
+    private void UpdateWebpQualityVisibility()
+    {
+        if (WebpQualityPanel is not null)
+        {
+            WebpQualityPanel.Visibility = SelectedFormat == ImageFormat.Webp ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void WebpQualitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (WebpQualityLabel is not null)
+        {
+            WebpQualityLabel.Text = $"{(int)e.NewValue}%";
+        }
     }
 
     private void SelectFormat(ImageFormat format)
@@ -60,14 +97,22 @@ public partial class SettingsWindow : Window
         _config.ShowCaptureActions = ActionsCheckbox.IsChecked == true;
         _config.ShowSaveDialog = SaveDialogCheckbox.IsChecked == true;
         _config.CopyToClipboard = ClipboardCheckbox.IsChecked ?? true;
-        _config.Format = (FormatComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is ImageFormat fmt
-            ? fmt
-            : ImageFormat.Png;
+        _config.Format = SelectedFormat;
+        _config.WebpQuality = ImageEncoding.ClampWebpQuality((int)WebpQualitySlider.Value);
+        _config.PrintScreen = PrintScreenCheckbox.IsChecked != true ? PrintScreenAction.Off
+            : PrintScreenDesktopRadio.IsChecked == true ? PrintScreenAction.FullDesktop
+            : PrintScreenAction.CaptureTool;
 
         try { _config.Save(); }
         catch (Exception ex)
         {
             System.Windows.MessageBox.Show(this, "Could not save settings: " + ex.Message, "Vibershot settings");
+            return;
+        }
+        try { StartupRegistration.SetEnabled(StartupCheckbox.IsChecked == true); }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(this, "Could not update Start with Windows: " + ex.Message, "Vibershot settings");
             return;
         }
         DialogResult = true;

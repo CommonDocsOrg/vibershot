@@ -6,11 +6,13 @@ namespace Vibershot.UI;
 public partial class PreviewWindow : Window
 {
     private readonly BitmapSource _image;
-    public PreviewWindow(BitmapSource image, string status)
+    private readonly AppConfig _config;
+    public PreviewWindow(BitmapSource image, string status, AppConfig config)
     {
         InitializeComponent();
         WindowAppearance.Apply(this);
         _image = image;
+        _config = config;
         Title = $"Vibershot — {image.PixelWidth} × {image.PixelHeight}";
         DimensionsLabel.Text = $"{image.PixelWidth:N0} × {image.PixelHeight:N0} pixels  ·  Screenshot preview";
         CaptureImage.Source = image;
@@ -25,16 +27,14 @@ public partial class PreviewWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Filter = "PNG image|*.png|JPEG image|*.jpg",
+            Filter = ScreenshotSaveDialog.Filter, FilterIndex = ScreenshotSaveDialog.FilterIndexFor(_config.Format),
             FileName = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}", AddExtension = true
         };
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            BitmapEncoder encoder = dialog.FilterIndex == 2 ? new JpegBitmapEncoder() : new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(_image));
             using var stream = File.Create(dialog.FileName);
-            encoder.Save(stream);
+            ImageEncoding.Encode(_image, ScreenshotSaveDialog.FormatFor(dialog.FilterIndex), _config.WebpQuality, stream);
             InfoLabel.Text = $"Saved: {dialog.FileName}";
         }
         catch (Exception ex) { InfoLabel.Text = $"Save failed: {ex.Message}"; }

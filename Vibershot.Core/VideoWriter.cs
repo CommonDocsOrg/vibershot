@@ -17,11 +17,11 @@ public sealed class VideoWriter : IDisposable
     public VideoWriter(string path, int width, int height, int fps = 10)
     {
         _fps = fps;
-        _writer = new BinaryWriter(File.Create(path));
+        _writer = new BinaryWriter(new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read));
         Four("RIFF"); _writer.Write(0); Four("AVI ");
         Four("LIST"); _writer.Write(192); Four("hdrl");
         Four("avih"); _writer.Write(56); _writer.Write(1_000_000 / fps);
-        _writer.Write(0); _writer.Write(0); _writer.Write(0x10);
+        _writer.Write(0); _writer.Write(0); _writer.Write(0);
         _frameCount = _writer.BaseStream.Position; _writer.Write(0);
         _writer.Write(0); _writer.Write(1); _writer.Write(0); _writer.Write(width); _writer.Write(height);
         for (int i = 0; i < 4; i++) _writer.Write(0);
@@ -48,6 +48,15 @@ public sealed class VideoWriter : IDisposable
         _index.Add((checked((uint)(_writer.BaseStream.Position - _moviStart)), size));
         Four("00dc"); _writer.Write(size); _writer.Write(data.GetBuffer(), 0, (int)size);
         if ((size & 1) != 0) _writer.Write((byte)0);
+        // Keep a playable, index-free AVI checkpoint on disk even if the process exits unexpectedly.
+        if (_index.Count == 1 || _index.Count % _fps == 0) {
+            long end = _writer.BaseStream.Position;
+            Patch(4, checked((int)(end - 8)));
+            Patch(_moviSize, checked((int)(end - _moviSize - 4)));
+            Patch(_frameCount, _index.Count); Patch(_streamCount, _index.Count);
+            _writer.BaseStream.Position = end;
+            _writer.Flush(); ((FileStream)_writer.BaseStream).Flush(true);
+        }
     }
     public void Dispose()
     {

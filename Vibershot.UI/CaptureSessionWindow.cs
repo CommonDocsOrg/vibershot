@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Windows.Media;
 using Vibershot.Core;
 
 namespace Vibershot.UI;
@@ -16,7 +17,8 @@ public sealed class CaptureSessionWindow : Window
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private VideoWriter? _writer;
     private BitmapSource _previous;
-    private bool _busy, _finished;
+    private bool _busy, _finished, _paused;
+    private readonly Button _pause = new() { Content = "Pause", Margin = new Thickness(0, 0, 8, 0) };
     private int _frames, _shots = 1;
     private string? _temporaryVideo;
     public BitmapSource? Image { get; private set; }
@@ -27,15 +29,29 @@ public sealed class CaptureSessionWindow : Window
         _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath;
         Title = video ? "Vibershot • Region video" : "Vibershot • Scrolling photo";
         Width = 440; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
-        Topmost = true; WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        var panel = new StackPanel { Margin = new Thickness(20) }; Content = panel;
+        Topmost = true; WindowStartupLocation = WindowStartupLocation.Manual;
+        WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
+        var panel = new StackPanel { Margin = new Thickness(20) };
+        Content = new Border { CornerRadius = new CornerRadius(24), BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Color.FromArgb(100, 170, 225, 218)), Background = new LinearGradientBrush(Color.FromRgb(45, 65, 75), Color.FromRgb(24, 32, 46), 60), Child = panel };
+        var header = new TextBlock { Text = "vibershot / " + (video ? "Video capture" : "Scrolling photo"), FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
+        header.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove(); };
+        panel.Children.Add(header);
         panel.Children.Add(new TextBlock { Text = video ? "Recording region • 10 fps • No audio" : "Scroll the browser, then add a shot", FontSize = 18 });
         panel.Children.Add(_status);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal }; panel.Children.Add(buttons);
         if (!video) buttons.Children.Add(_add);
+        else {
+            _finish.Content = "Stop & save…"; _finish.Style = (Style)FindResource("PrimaryButton");
+            buttons.Children.Add(_pause);
+            _pause.Click += (_, _) => { _paused = !_paused; _pause.Content = _paused ? "Resume" : "Pause"; if (_paused) _timer.Stop(); else _timer.Start(); UpdateStatus(); };
+        }
         buttons.Children.Add(_finish);
-        var cancel = new Button { Content = "Cancel" }; buttons.Children.Add(cancel);
-        cancel.Click += (_, _) => Close();
+        var cancel = new Button { Content = video ? "Open folder" : "Cancel" }; buttons.Children.Add(cancel);
+        cancel.Click += (_, _) => {
+            if (!video) { Close(); return; }
+            try { Directory.CreateDirectory(RecoveryFolder); System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", RecoveryFolder) { UseShellExecute = true }); }
+            catch (Exception ex) { System.Windows.MessageBox.Show(ex.Message + "\n" + RecoveryFolder); }
+        };
         _add.Click += async (_, _) => await AddShot();
         _finish.Click += (_, _) => { Completed = true; Close(); };
         SourceInitialized += (_, _) =>
@@ -46,8 +62,9 @@ public sealed class CaptureSessionWindow : Window
         };
         Loaded += (_, _) =>
         {
+            PlaceControls();
             if (!video) { _status.Text = "Select only page content. Scroll down by less than a page; keep overlapping content visible. Shots are added manually."; return; }
-            try { _temporaryVideo = Path.Combine(Path.GetDirectoryName(videoPath!)!, ".vibershot-" + Guid.NewGuid() + ".avi"); _writer = new VideoWriter(_temporaryVideo, region.Width, region.Height); _timer.Start(); }
+            try { Directory.CreateDirectory(RecoveryFolder); _temporaryVideo = Path.Combine(RecoveryFolder, $"recording_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.avi"); VideoPath = _temporaryVideo; _writer = new VideoWriter(_temporaryVideo, region.Width, region.Height); UpdateStatus(); _timer.Start(); }
             catch (Exception ex) { System.Windows.MessageBox.Show(this, ex.Message, "Recording failed"); Close(); }
         };
         _timer.Tick += (_, _) =>
@@ -55,29 +72,60 @@ public sealed class CaptureSessionWindow : Window
             try
             {
                 _writer!.AddFrame(CaptureService.Region(region.X, region.Y, region.Width, region.Height));
-                _frames++; _status.Text = $"Recording {_frames / 10.0:F1}s • Stop with Finish. AVI (Motion JPEG).";
+                _frames++; UpdateStatus();
             }
-            catch (Exception ex) { _timer.Stop(); _status.Text = "Recording stopped: " + ex.Message + " • Finish to keep captured frames."; }
+            catch (Exception ex) { _timer.Stop(); _pause.IsEnabled = false; _status.Text = "Recording stopped: " + ex.Message + " • Stop & save to keep captured frames."; }
         };
         Closing += (_, e) => { if (_busy) e.Cancel = true; };
         Closed += (_, _) =>
         {
             _timer.Stop();
+            bool finalized = true;
             try { _writer?.Dispose(); }
-            catch (Exception ex) { Completed = false; System.Windows.MessageBox.Show("Could not finalize recording: " + ex.Message); }
-                        if (video)
-            {
-                if (_frames == 0) Completed = false;
-                try
-                {
-                    if (Completed && _temporaryVideo != null) File.Move(_temporaryVideo, videoPath!, true);
-                    else if (_temporaryVideo != null && File.Exists(_temporaryVideo)) File.Delete(_temporaryVideo);
-                }
-                catch (Exception ex) { Completed = false; System.Windows.MessageBox.Show("Could not save video: " + ex.Message + "\nTemporary recording: " + _temporaryVideo); }
+            catch (Exception ex) { finalized = false; System.Windows.MessageBox.Show("Could not finalize recording: " + ex.Message + "\nRecovery file retained: " + _temporaryVideo); }
+            if (video) {
+                Completed = _frames > 0;
+                if (_frames > 0 && finalized) SaveRecording();
             }
             _finished = true;
         };
     }
+    private static string RecoveryFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vibershot", "Recordings");
+    private void UpdateStatus() => _status.Text = $"{(_paused ? "Paused" : "Recording")} • {_frames / 10.0:F1}s • 10 fps • No audio\nRecovery file: {_temporaryVideo}";
+    private void SaveRecording()
+    {
+        try {
+            var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Save recording (Cancel keeps recovery copy)", Filter = "Motion JPEG video|*.avi", FileName = $"recording_{DateTime.Now:yyyyMMdd_HHmmss}.avi", AddExtension = true, DefaultExt = ".avi" };
+            if (dialog.ShowDialog() == true) {
+                if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(_temporaryVideo!), StringComparison.OrdinalIgnoreCase)) File.Copy(_temporaryVideo!, dialog.FileName, true);
+                VideoPath = dialog.FileName;
+            } else System.Windows.MessageBox.Show("Recording kept at:\n" + _temporaryVideo, "Recording retained");
+        } catch (Exception ex) { System.Windows.MessageBox.Show("Save failed: " + ex.Message + "\nRecovery copy retained: " + _temporaryVideo); }
+    }
+    private void PlaceControls()
+    {
+        // Native coordinates preserve placement across monitors with different DPI.
+        var handle = new WindowInteropHelper(this).Handle;
+        GetWindowRect(handle, out var rect);
+        int w = rect.Right - rect.Left, h = rect.Bottom - rect.Top;
+        var capture = new System.Drawing.Rectangle(_region.X, _region.Y, _region.Width, _region.Height);
+        long least = long.MaxValue;
+        System.Drawing.Rectangle best = default;
+        foreach (var screen in System.Windows.Forms.Screen.AllScreens) {
+            var area = screen.WorkingArea;
+            foreach (int x in new[] { capture.Right + 12, capture.Left - w - 12, area.Left, area.Right - w })
+            foreach (int y in new[] { capture.Top, capture.Bottom + 12, capture.Top - h - 12, area.Top, area.Bottom - h }) {
+                var candidate = new System.Drawing.Rectangle(Math.Clamp(x, area.Left, Math.Max(area.Left, area.Right - w)), Math.Clamp(y, area.Top, Math.Max(area.Top, area.Bottom - h)), w, h);
+                var overlap = System.Drawing.Rectangle.Intersect(candidate, capture);
+                long size = (long)overlap.Width * overlap.Height;
+                if (size < least) { least = size; best = candidate; }
+            }
+        }
+        if (least != long.MaxValue) SetWindowPos(handle, IntPtr.Zero, best.X, best.Y, 0, 0, 0x15);
+    }
+    [StructLayout(LayoutKind.Sequential)] private struct WindowRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr handle, out WindowRect rect);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
     private async Task AddShot()
     {
         if (_busy || _finished) return;
@@ -94,4 +142,3 @@ public sealed class CaptureSessionWindow : Window
     }
     [DllImport("user32.dll")] private static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
 }
-

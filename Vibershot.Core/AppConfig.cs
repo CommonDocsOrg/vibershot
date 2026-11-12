@@ -7,7 +7,27 @@ public enum ImageFormat
 {
     Png,
     Jpeg,
+
+    /// <summary>Lossy WebP at <see cref="AppConfig.WebpQuality"/> percent.</summary>
     Webp,
+
+    /// <summary>Lossless WebP (exact pixels, smaller than PNG).</summary>
+    WebpLossless,
+}
+
+/// <summary>
+/// What the Print Screen key does when Vibershot takes it over.
+/// </summary>
+public enum PrintScreenAction
+{
+    /// <summary>Leave Print Screen to Windows (Snipping Tool or clipboard copy).</summary>
+    Off,
+
+    /// <summary>Open the capture region/window tool.</summary>
+    CaptureTool,
+
+    /// <summary>Snap the full virtual desktop immediately.</summary>
+    FullDesktop,
 }
 
 /// <summary>
@@ -27,8 +47,15 @@ public sealed class AppConfig
     public bool CopyToClipboard { get; set; } = true;
     public ImageFormat Format { get; set; } = ImageFormat.Png;
 
+    // Quality for lossy WebP, 1-100. Only used when Format is ImageFormat.Webp.
+    public int WebpQuality { get; set; } = 80;
+
     // Parsed by the UI into a global hotkey (Ctrl+Shift+S by default).
     public string HotkeyDescription { get; set; } = "Ctrl+Shift+S";
+
+    // Off by default so a fresh install does not silently steal Print Screen from Windows.
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public PrintScreenAction PrintScreen { get; set; } = PrintScreenAction.Off;
 
     private static string ConfigPath =>
         Path.Combine(

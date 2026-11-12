@@ -9,29 +9,59 @@ public partial class App : Application
     private readonly AppConfig _config = AppConfig.Load();
     private MainWindow _main = null!;
     private HotkeyService? _hotkey;
+    private HotkeyService? _printScreen;
     private Forms.NotifyIcon? _tray;
     private bool _capturing;
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _main = new MainWindow(_config); MainWindow = _main; _main.Show();
+        _main = new MainWindow(_config); MainWindow = _main;
+        // Launched at sign-in: stay in the tray until the user asks for the launcher.
+        bool startInTray = e.Args.Contains(StartupRegistration.TrayArgument, StringComparer.OrdinalIgnoreCase);
+        if (!startInTray) _main.Show();
         _main.ShowStatus("Ctrl+Shift+S • Select a region • Esc cancels");
+        StartupRegistration.RefreshIfEnabled();
         try
         {
-            _hotkey = new HotkeyService(_main, 1, NativeMethods.MOD_CTRL | NativeMethods.MOD_SHIFT | 0x4000, (uint)KeyInterop.VirtualKeyFromKey(Key.S), "Ctrl+Shift+S");
+            _hotkey = new HotkeyService(_main, 1, NativeMethods.MOD_CTRL | NativeMethods.MOD_SHIFT | NativeMethods.MOD_NOREPEAT, (uint)KeyInterop.VirtualKeyFromKey(Key.S), "Ctrl+Shift+S");
             _hotkey.Triggered += (_, _) => CaptureNow();
         }
         catch (Exception) { _main.ShowStatus("Ctrl+Shift+S is unavailable. Use Capture region."); }
+        ApplyPrintScreenSetting();
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Show capture window", null, (_, _) => { _main.Show(); _main.WindowState = WindowState.Normal; _main.Activate(); });
         menu.Items.Add("Capture region", null, (_, _) => CaptureNow());
         menu.Items.Add("Full desktop", null, (_, _) => CaptureNow(false));
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
-        _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "Vibershot", ContextMenuStrip = menu, Visible = true };
+        _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "Vibershot • running in tray", ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => { _main.Show(); _main.WindowState = WindowState.Normal; _main.Activate(); };
+    }
+    /// <summary>
+    /// Registers or releases the Print Screen key to match the saved setting.
+    /// Safe to call again after the user changes settings.
+    /// </summary>
+    public void ApplyPrintScreenSetting()
+    {
+        _printScreen?.Dispose();
+        _printScreen = null;
+        var action = _config.PrintScreen;
+        if (action == PrintScreenAction.Off) return;
+        try
+        {
+            _printScreen = new HotkeyService(_main, 2, NativeMethods.MOD_NOREPEAT, NativeMethods.VK_SNAPSHOT, "Print Screen");
+            _printScreen.Triggered += (_, _) => CaptureNow(region: _config.PrintScreen == PrintScreenAction.CaptureTool);
+            _main.ShowStatus(action == PrintScreenAction.FullDesktop
+                ? "Print Screen snaps the full desktop • Ctrl+Shift+S selects a region"
+                : "Print Screen or Ctrl+Shift+S • Select a region • Esc cancels");
+        }
+        catch (Exception)
+        {
+            _main.ShowStatus("Print Screen is in use by another app. In Windows Settings, turn off \"Use the Print screen key to open screen capture\".");
+        }
     }
     protected override void OnExit(ExitEventArgs e)
     {
+        _printScreen?.Dispose();
         _hotkey?.Dispose();
         var menu = _tray?.ContextMenuStrip; _tray?.Dispose(); menu?.Dispose();
         base.OnExit(e);
@@ -57,21 +87,10 @@ public partial class App : Application
                 image = overlay.ShowDialog() == true ? overlay.Result : null;
                 if (image != null && overlay.Action != CaptureAction.Screenshot)
                 {
-                    string? videoPath = null;
-                    if (overlay.Action == CaptureAction.Video)
-                    {
-                        var dialog = new Microsoft.Win32.SaveFileDialog
-                        {
-                            Filter = "Motion JPEG video|*.avi", FileName = $"recording_{DateTime.Now:yyyyMMdd_HHmmss}",
-                            AddExtension = true, DefaultExt = ".avi"
-                        };
-                        if (dialog.ShowDialog() != true) { _main.ShowStatus("Recording cancelled."); return; }
-                        videoPath = dialog.FileName;
-                    }
-                    var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, videoPath);
+                    var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, null);
                     session.ShowDialog();
+                    if (overlay.Action == CaptureAction.Video) { _main.ShowStatus(session.VideoPath == null ? "No video recorded." : "Video available: " + session.VideoPath); return; }
                     if (!session.Completed) { _main.ShowStatus("Capture cancelled."); return; }
-                    if (videoPath != null) { _main.ShowStatus("Video saved: " + videoPath); return; }
                     image = session.Image;
                 }
             }
@@ -88,7 +107,7 @@ public partial class App : Application
             }
             else if (_config.Autosave || (region && _config.ShowCaptureActions))
             {
-                try { status = "Saved: " + FileSaveService.Save(image, _config.OutputFolder, _config.Format); }
+                try { status = "Saved: " + FileSaveService.Save(image, _config.OutputFolder, _config.Format, _config.WebpQuality); }
                 catch (Exception ex) { status = "Autosave failed: " + ex.Message; }
             }
             if (_config.CopyToClipboard)
@@ -97,7 +116,7 @@ public partial class App : Application
                 catch (Exception) { status += " • Clipboard busy; use Copy image to retry."; }
             }
             _main.ShowStatus(status);
-            new PreviewWindow(image, status).Show();
+            new PreviewWindow(image, status, _config).Show();
         }
         catch (Exception ex) { _main.ShowStatus("Capture failed: " + ex.Message); }
         finally

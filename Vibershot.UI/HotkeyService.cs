@@ -11,6 +11,7 @@ public sealed class HotkeyService : IDisposable
     private readonly Window _owner;
     private readonly HwndSource _source;
     private readonly HwndSourceHook _hook;
+    private readonly int _id;
     private bool _disposed;
 
     public string Description { get; }
@@ -20,6 +21,7 @@ public sealed class HotkeyService : IDisposable
     public HotkeyService(Window owner, int id, uint modifiers, uint virtualKey, string description)
     {
         _owner = owner;
+        _id = id;
         Description = description;
 
         var handle = new WindowInteropHelper(owner).Handle;
@@ -47,12 +49,6 @@ public sealed class HotkeyService : IDisposable
         }
     }
 
-    public void Unregister(int id)
-    {
-        var handle = new WindowInteropHelper(_owner).Handle;
-        NativeMethods.UnregisterHotKey(handle, id);
-    }
-
     public void Dispose()
     {
         if (_disposed)
@@ -60,7 +56,8 @@ public sealed class HotkeyService : IDisposable
             return;
         }
 
-        Unregister(1);
+        var handle = new WindowInteropHelper(_owner).Handle;
+        NativeMethods.UnregisterHotKey(handle, _id);
         _source.RemoveHook(_hook);
         _disposed = true;
     }

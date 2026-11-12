@@ -1,29 +1,34 @@
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
-
 namespace Vibershot.UI;
-
 public enum CaptureAction { Screenshot, Video, Scrolling }
 
-// All coordinates in SelectedBounds are physical desktop pixels, including negative monitor origins.
+// Selection bounds and hit testing use physical desktop pixels; only drawing uses WPF units.
 public sealed class RegionWindow : Window
 {
     private readonly Canvas _canvas = new();
-    private readonly Rectangle _selection = new() { Stroke = Brushes.White, StrokeThickness = 2, IsHitTestVisible = false };
+    private readonly Rectangle _selection = new() { Stroke = Brushes.Turquoise, StrokeThickness = 2, IsHitTestVisible = false,
+        Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Turquoise, BlurRadius = 16, ShadowDepth = 0, Opacity = .9 } };
     private readonly System.Windows.Shapes.Path _shade = new() { Fill = new SolidColorBrush(Color.FromArgb(155, 20, 24, 30)), IsHitTestVisible = false };
     private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal, Background = new SolidColorBrush(Color.FromRgb(25, 35, 45)), Visibility = Visibility.Collapsed };
+    private readonly TextBlock _hint = new() { Foreground = Brushes.White, Background = Brushes.Black, Padding = new Thickness(10), IsHitTestVisible = false };
+    private readonly WindowTargets _targets = new();
+    private readonly HashSet<IntPtr> _queried = new();
     private readonly BitmapSource _desktop;
     private readonly Int32Rect _bounds;
     private readonly bool _showActions;
     private Point _start;
-    private bool _dragging;
+    private Rect _hover = Rect.Empty;
+    private bool _dragging, _locked, _closed;
+    private static int _providerBusy;
     public BitmapSource? Result { get; private set; }
     public Int32Rect SelectedBounds { get; private set; }
     public CaptureAction Action { get; private set; }
-
     public RegionWindow(BitmapSource desktop, Int32Rect bounds, bool showActions)
     {
         Title = "Vibershot region selection"; _desktop = desktop; _bounds = bounds; _showActions = showActions;
@@ -31,31 +36,41 @@ public sealed class RegionWindow : Window
         Topmost = true; ShowInTaskbar = false; Cursor = Cursors.Cross;
         Background = new ImageBrush(desktop) { Stretch = Stretch.Fill }; Content = _canvas;
         _canvas.Children.Add(_shade); _canvas.Children.Add(_selection);
-        var label = new TextBlock { Text = "Drag a region • Choose an action • Esc to cancel", Foreground = Brushes.White, Background = Brushes.Black, Padding = new Thickness(10), IsHitTestVisible = false };
-        Canvas.SetLeft(label, 24); Canvas.SetTop(label, 24); _canvas.Children.Add(label);
+        _hint.Text = "Hover + click: window or content • Shift: whole window • Drag: region • Esc: cancel";
+        Canvas.SetLeft(_hint, 24); Canvas.SetTop(_hint, 24); _canvas.Children.Add(_hint);
         AddAction("Save screenshot", () => Complete(CaptureAction.Screenshot));
         AddAction("Take video", () => Complete(CaptureAction.Video));
         AddAction("Scrolling photo", () => Complete(CaptureAction.Scrolling));
-        AddAction("Cancel", Close);
-        _canvas.Children.Add(_actions);
+        AddAction("Cancel", Close); _canvas.Children.Add(_actions);
         SourceInitialized += (_, _) => SetWindowPos(new WindowInteropHelper(this).Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x0040);
-        Loaded += (_, _) => Shade(Rect.Empty);
-        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
+        Loaded += (_, _) => UpdateHover();
+        Closed += (_, _) => _closed = true;
+        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); else if (!_locked && !_dragging) UpdateHover(); };
+        KeyUp += (_, _) => { if (!_locked && !_dragging) UpdateHover(); };
         MouseLeftButtonDown += (_, e) =>
         {
             if (_actions.IsMouseOver) return;
-            Result = null; _actions.Visibility = Visibility.Collapsed;
-            _start = PixelPoint(); _dragging = true; CaptureMouse(); e.Handled = true;
+            _locked = false; Result = null; _actions.Visibility = Visibility.Collapsed;
+            UpdateHover(); _start = PixelPoint(); _dragging = true; CaptureMouse(); e.Handled = true;
         };
-        MouseMove += (_, _) => { if (_dragging) DrawSelection(PixelPoint()); };
+        MouseMove += (_, _) =>
+        {
+            if (_dragging) { if ((PixelPoint() - _start).Length >= 4) Draw(new Rect(_start, PixelPoint())); }
+            else if (!_locked) UpdateHover();
+        };
         MouseLeftButtonUp += (_, _) =>
         {
             if (!_dragging) return;
             _dragging = false; ReleaseMouseCapture();
-            var end = PixelPoint(); DrawSelection(end);
-            int x = (int)Math.Min(_start.X, end.X), y = (int)Math.Min(_start.Y, end.Y);
-            int w = (int)Math.Abs(end.X - _start.X), h = (int)Math.Abs(end.Y - _start.Y);
-            if (w < 2 || h < 2) return;
+            var end = PixelPoint();
+            var pixels = (end - _start).Length < 4 ? _hover : new Rect(_start, end);
+            if (pixels.IsEmpty) { UpdateHover(); return; }
+            int x = (int)Math.Floor(pixels.X), y = (int)Math.Floor(pixels.Y);
+            int w = Math.Min(bounds.Width, (int)Math.Ceiling(pixels.Right)) - x;
+            int h = Math.Min(bounds.Height, (int)Math.Ceiling(pixels.Bottom)) - y;
+            if (w < 2 || h < 2) { UpdateHover(); return; }
+            Draw(new Rect(x, y, w, h)); _locked = true;
+            _hint.Text = $"{w} × {h} • Choose an action • Hover + click or drag to replace • Esc: cancel";
             SelectedBounds = new Int32Rect(x + bounds.X, y + bounds.Y, w, h);
             Result = new CroppedBitmap(_desktop, new Int32Rect(x, y, w, h)); Result.Freeze();
             if (!_showActions) { Complete(CaptureAction.Screenshot); return; }
@@ -65,6 +80,34 @@ public sealed class RegionWindow : Window
             Canvas.SetTop(_actions, Math.Clamp(below + _actions.DesiredSize.Height <= ActualHeight ? below : Canvas.GetTop(_selection) - _actions.DesiredSize.Height - 8, 0, Math.Max(0, ActualHeight - _actions.DesiredSize.Height)));
             ((Button)_actions.Children[0]).Focus();
         };
+    }
+    private async void UpdateHover()
+    {
+        var local = PixelPoint(); var point = new Point(local.X + _bounds.X, local.Y + _bounds.Y);
+        var target = _targets.At(point); _hover = Rect.Empty;
+        if (target == null) { _selection.Width = 0; _selection.Height = 0; Shade(Rect.Empty); return; }
+        var area = target.Bounds; string kind = "Window";
+        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            var content = target.Areas.FindAll(r => r.Contains(point));
+            content.Sort((a, b) => (a.Width * a.Height).CompareTo(b.Width * b.Height));
+            if (content.Count > 0) { area = content[0]; kind = "App content"; }
+            else if (target.Client.Contains(point) && target.Client != target.Bounds) { area = target.Client; kind = "Client area"; }
+        }
+        area.Intersect(new Rect(_bounds.X, _bounds.Y, _bounds.Width, _bounds.Height));
+        if (!area.IsEmpty)
+        {
+            area.Offset(-_bounds.X, -_bounds.Y); _hover = area; Draw(area);
+            _hint.Text = $"{kind} • {(int)area.Width} × {(int)area.Height} • Click: select • Shift: whole window • Drag: region • Esc: cancel";
+        }
+        // One provider request at a time. A hung app must not block selection or queue more workers.
+        if (!_queried.Contains(target.Handle) && System.Threading.Interlocked.CompareExchange(ref _providerBusy, 1, 0) == 0)
+        {
+            _queried.Add(target.Handle);
+            try { var areas = await Task.Run(() => WindowTargets.DocumentAreas(target)); if (!_closed) target.Areas.AddRange(areas); }
+            finally { System.Threading.Interlocked.Exchange(ref _providerBusy, 0); }
+            if (!_closed && !_locked && !_dragging) UpdateHover();
+        }
     }
     private void AddAction(string label, Action action)
     {
@@ -81,13 +124,12 @@ public sealed class RegionWindow : Window
     {
         var geometry = new GeometryGroup { FillRule = FillRule.EvenOdd };
         geometry.Children.Add(new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight)));
-        if (!region.IsEmpty) geometry.Children.Add(new RectangleGeometry(region));
-        _shade.Data = geometry;
+        if (!region.IsEmpty) geometry.Children.Add(new RectangleGeometry(region)); _shade.Data = geometry;
     }
-    private void DrawSelection(Point end)
+    private void Draw(Rect pixels)
     {
         double sx = ActualWidth / _bounds.Width, sy = ActualHeight / _bounds.Height;
-        var rect = new Rect(Math.Min(_start.X, end.X) * sx, Math.Min(_start.Y, end.Y) * sy, Math.Abs(end.X - _start.X) * sx, Math.Abs(end.Y - _start.Y) * sy);
+        var rect = new Rect(pixels.X * sx, pixels.Y * sy, pixels.Width * sx, pixels.Height * sy);
         Canvas.SetLeft(_selection, rect.X); Canvas.SetTop(_selection, rect.Y);
         _selection.Width = rect.Width; _selection.Height = rect.Height; Shade(rect);
     }
