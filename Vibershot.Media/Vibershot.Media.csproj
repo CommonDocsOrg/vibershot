@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+    <RootNamespace>Vibershot.Media</RootNamespace>
+  </PropertyGroup>
+
+  <!-- No WPF windows here: FFmpeg process plumbing only, so the console test project can drive it. -->
+
+</Project>
