@@ -8,6 +8,21 @@
   <SolidColorBrush x:Key="Line" Color="#333C47"/>
   <SolidColorBrush x:Key="Muted" Color="#A4AFBD"/>
   <SolidColorBrush x:Key="Accent" Color="#95E6CB"/>
+  <!-- Light "paper" palette used by the capture window. See STYLE_GUIDE.md. -->
+  <SolidColorBrush x:Key="Paper" Color="#FBFBFC"/>
+  <SolidColorBrush x:Key="PaperEdge" Color="#C9CDD3"/>
+  <SolidColorBrush x:Key="Rule" Color="#E4E7EB"/>
+  <SolidColorBrush x:Key="Hover" Color="#F1F2F4"/>
+  <SolidColorBrush x:Key="Ink" Color="#15181C"/>
+  <SolidColorBrush x:Key="Ink2" Color="#5B636D"/>
+  <SolidColorBrush x:Key="Ink3" Color="#9AA2AB"/>
+  <SolidColorBrush x:Key="Tangerine" Color="#F0612A"/>
+  <SolidColorBrush x:Key="TangerineDeep" Color="#E2561F"/>
+  <SolidColorBrush x:Key="TangerineSoft" Color="#FDEAE2"/>
+  <SolidColorBrush x:Key="TangerineInk" Color="#FFF5F0"/>
+  <SolidColorBrush x:Key="Ok" Color="#1F9D6A"/>
+  <SolidColorBrush x:Key="Danger" Color="#D64545"/>
+  <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
   <Style TargetType="Window">
    <Setter Property="Background" Value="{StaticResource Surface}"/>
    <Setter Property="Foreground" Value="#F2F5F8"/>

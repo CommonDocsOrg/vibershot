@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using System.Windows.Automation;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -10,8 +12,25 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _config = config;
+        var version = typeof(MainWindow).Assembly.GetName().Version;
+        VersionLabel.Text = version is null ? "" : $"v{version.Major}.{version.Minor}";
+        RefreshShortcutChips();
     }
-    public void ShowStatus(string message) => StatusLabel.Text = message;
+    /// <summary>
+    /// Updates the footer line and colors the status dot from the message:
+    /// green for a saved or copied capture, red for a failure, neutral otherwise.
+    /// </summary>
+    public void ShowStatus(string message)
+    {
+        StatusLabel.Text = message;
+        string key = message.StartsWith("Saved", StringComparison.OrdinalIgnoreCase) || message.Contains("Copied", StringComparison.OrdinalIgnoreCase) ? "Ok"
+            : message.Contains("failed", StringComparison.OrdinalIgnoreCase) || message.Contains("unavailable", StringComparison.OrdinalIgnoreCase) || message.Contains("in use", StringComparison.OrdinalIgnoreCase) ? "Danger"
+            : "Ink3";
+        StatusDot.Fill = (Brush)FindResource(key);
+    }
+    /// <summary>Shows the Print Screen chip on the Full desktop row only when that key is bound to it.</summary>
+    public void RefreshShortcutChips() =>
+        FullDesktopChip.Visibility = _config.PrintScreen == PrintScreenAction.FullDesktop ? Visibility.Visible : Visibility.Collapsed;
     /// <summary>
     /// Closing the launcher hides it to the tray; the app keeps running so hotkeys still work.
     /// Exit from the tray menu shuts the app down explicitly.
@@ -30,7 +49,7 @@ public partial class MainWindow : Window
     private void Pin_Click(object sender, RoutedEventArgs e)
     {
         Topmost = !Topmost;
-        PinButton.Foreground = Topmost ? (Brush)FindResource("Accent") : new SolidColorBrush(Color.FromRgb(160, 180, 195));
+        PinButton.Foreground = (Brush)FindResource(Topmost ? "Tangerine" : "Ink2");
         PinButton.ToolTip = Topmost ? "Always on top · On" : "Always on top · Off";
         AutomationProperties.SetName(PinButton, Topmost ? "Turn off always on top" : "Turn on always on top");
     }
@@ -41,6 +60,18 @@ public partial class MainWindow : Window
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (new SettingsWindow(_config) { Owner = this }.ShowDialog() == true)
+        {
             ((App)Application.Current).ApplyPrintScreenSetting();
+            RefreshShortcutChips();
+        }
+    }
+    private void OpenFolder_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(_config.OutputFolder);
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_config.OutputFolder}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowStatus("Could not open folder: " + ex.Message); }
     }
 }
