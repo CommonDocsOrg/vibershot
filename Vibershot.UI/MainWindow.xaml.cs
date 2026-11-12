@@ -28,9 +28,20 @@ public partial class MainWindow : Window
             : "Ink3";
         StatusDot.Fill = (Brush)FindResource(key);
     }
-    /// <summary>Shows the Print Screen chip on the Full desktop row only when that key is bound to it.</summary>
-    public void RefreshShortcutChips() =>
-        FullDesktopChip.Visibility = _config.PrintScreen == PrintScreenAction.FullDesktop ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>Shows the configured shortcuts on the capture rows: Print Screen or the Full desktop hotkey, and the region hotkey.</summary>
+    public void RefreshShortcutChips()
+    {
+        var region = _config.Hotkeys.Gesture(HotkeyAction.CaptureRegion);
+        bool printScreenRegion = _config.PrintScreen == PrintScreenAction.CaptureTool;
+        string regionText = printScreenRegion ? (region.IsValid ? "PrtScn · " + region : "PrtScn") : region.IsValid ? region.ToString() : "";
+        RegionChipText.Text = regionText;
+        RegionChip.Visibility = regionText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        CaptureButton.ToolTip = regionText.Length > 0 ? $"Select part of your screen ({regionText})" : "Select part of your screen";
+        var full = _config.Hotkeys.Gesture(HotkeyAction.FullDesktop);
+        string fullText = _config.PrintScreen == PrintScreenAction.FullDesktop ? "PrtScn" : full.IsValid ? full.ToString() : "";
+        FullDesktopChipText.Text = fullText;
+        FullDesktopChip.Visibility = fullText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
     /// <summary>
     /// Closing the launcher hides it to the tray; the app keeps running so hotkeys still work.
     /// Exit from the tray menu shuts the app down explicitly.
@@ -49,7 +60,10 @@ public partial class MainWindow : Window
     private void Pin_Click(object sender, RoutedEventArgs e)
     {
         Topmost = !Topmost;
+        // Segoe Fluent Icons: Pinned (tilted) when on, Pin (upright) when off; the soft fill marks the toggle as on.
+        PinButton.Content = Topmost ? "" : "";
         PinButton.Foreground = (Brush)FindResource(Topmost ? "Tangerine" : "Ink2");
+        PinButton.Background = Topmost ? (Brush)FindResource("TangerineSoft") : Brushes.Transparent;
         PinButton.ToolTip = Topmost ? "Always on top · On" : "Always on top · Off";
         AutomationProperties.SetName(PinButton, Topmost ? "Turn off always on top" : "Turn on always on top");
     }
@@ -57,21 +71,15 @@ public partial class MainWindow : Window
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private void CaptureButton_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow();
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow(false);
-    private void Editor_Click(object sender, RoutedEventArgs e)
-    {
-        // Opens whatever image is on the clipboard; a blank canvas otherwise.
-        System.Windows.Media.Imaging.BitmapSource? image = null;
-        try { image = ClipboardService.GetImage(); } catch (Exception) { }
-        ((App)Application.Current).OpenEditor(image);
-    }
+    // Opens whatever image is on the clipboard; a blank canvas otherwise.
+    private void Editor_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).OpenEditorFromClipboard();
     private void Gallery_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).ShowGallery();
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (new SettingsWindow(_config) { Owner = this }.ShowDialog() == true)
-        {
-            ((App)Application.Current).ApplyPrintScreenSetting();
-            RefreshShortcutChips();
-        }
+            ((App)Application.Current).ApplySettings();
+        // Focus returns to the gear when the dialog closes; drop it so no focus ring lingers there.
+        Keyboard.ClearFocus();
     }
     private void OpenFolder_Click(object sender, RoutedEventArgs e)
     {

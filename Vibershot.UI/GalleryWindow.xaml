@@ -130,7 +130,7 @@
    <Button x:Name="DetailToggle" Grid.Column="4" Click="DetailToggle_Click" Padding="10,8" Margin="14,0,0,0" VerticalAlignment="Center" ToolTip="Show or hide the detail pane" AutomationProperties.Name="Toggle detail pane">
     <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE90B;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" Margin="0,0,6,0"/><TextBlock Text="Details" FontSize="12"/></StackPanel>
    </Button>
-   <Button Grid.Column="6" Style="{StaticResource PrimaryButton}" Click="Capture_Click" Padding="18,9" Margin="14,0,0,0" VerticalAlignment="Center" ToolTip="Select part of your screen (Ctrl+Shift+S)" AutomationProperties.Name="Capture region">
+   <Button Grid.Column="6" Style="{StaticResource PrimaryButton}" Click="Capture_Click" Padding="18,9" Margin="14,0,0,0" VerticalAlignment="Center" ToolTip="Select part of your screen" AutomationProperties.Name="Capture region">
     <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7A8;" FontFamily="Segoe Fluent Icons" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"/><TextBlock Text="Capture region"/></StackPanel>
    </Button>
   </Grid>

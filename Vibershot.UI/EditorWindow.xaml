@@ -85,7 +85,7 @@
   </DrawingBrush>
  </Window.Resources>
  <Grid>
-  <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
 
   <!-- Top bar: document on the left, zoom in the middle, actions on the right. Export is the one tangerine element. -->
   <Grid Margin="22,0,20,0">
@@ -104,20 +104,42 @@
    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
     <Button x:Name="UndoButton" Style="{StaticResource IconButton}" Content="&#xE7A7;" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)" AutomationProperties.Name="Undo"/>
     <Button x:Name="RedoButton" Style="{StaticResource IconButton}" Content="&#xE7A6;" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)" AutomationProperties.Name="Redo" Margin="2,0,14,0"/>
-    <Button Content="Open…" Click="Open_Click" Padding="14,8" ToolTip="Open a .vibeshot project (Ctrl+O)"/>
+    <!-- File menu: the full set of document commands; the two most used also sit beside it. -->
+    <Button x:Name="FileButton" Content="File ▾" Click="File_Click" Padding="14,8" ToolTip="Open, save and export">
+     <Button.ContextMenu>
+      <ContextMenu Placement="Bottom">
+       <MenuItem Header="Open…" InputGestureText="Ctrl+O" Click="Open_Click"/>
+       <Separator/>
+       <MenuItem Header="Save project" InputGestureText="Ctrl+S" Click="SaveProject_Click"/>
+       <MenuItem Header="Save project as…" InputGestureText="Ctrl+Shift+S" Click="SaveProjectAs_Click"/>
+       <Separator/>
+       <MenuItem Header="Export image…" InputGestureText="Ctrl+E" Click="Export_Click"/>
+       <MenuItem Header="Copy image" Click="CopyImage_Click"/>
+      </ContextMenu>
+     </Button.ContextMenu>
+    </Button>
     <Button Content="Save project" Click="SaveProject_Click" Padding="14,8" Margin="8,0,0,0" ToolTip="Keep every item editable (Ctrl+S)"/>
-    <Button Content="Copy image" Click="CopyImage_Click" Padding="14,8" Margin="8,0,0,0" ToolTip="Put the flattened picture on the clipboard"/>
-    <Button Content="Export…" Style="{StaticResource PrimaryButton}" Click="Export_Click" Padding="20,8" Margin="8,0,0,0" ToolTip="Save as PNG, JPEG or WebP (Ctrl+E)"/>
+    <Button Content="Export image…" Style="{StaticResource PrimaryButton}" Click="Export_Click" Padding="20,8" Margin="8,0,0,0" ToolTip="Write a flat PNG, JPEG or WebP (Ctrl+E)"/>
    </StackPanel>
   </Grid>
 
-  <Grid Grid.Row="1" Margin="12,0,20,0">
+  <!-- Flatten notice: shown after an export while the editable document has no project file or unsaved changes. -->
+  <Border x:Name="FlattenNotice" Grid.Row="1" Visibility="Collapsed" Margin="22,0,20,10" Background="{StaticResource TangerineSoft}" BorderBrush="{StaticResource Tangerine}" BorderThickness="1" CornerRadius="8" Padding="14,8,8,8">
+   <Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <TextBlock x:Name="FlattenNoticeText" Foreground="{StaticResource Ink}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"/>
+    <Button Grid.Column="1" Style="{StaticResource SmallButton}" Content="Save project" Click="SaveProject_Click" Margin="14,0,4,0" VerticalAlignment="Center"/>
+    <Button Grid.Column="2" Style="{StaticResource IconButton}" Content="&#xE711;" Click="DismissNotice_Click" ToolTip="Dismiss" AutomationProperties.Name="Dismiss notice" VerticalAlignment="Center"/>
+   </Grid>
+  </Border>
+
+  <Grid Grid.Row="2" Margin="12,0,20,0">
    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="268"/></Grid.ColumnDefinitions>
 
    <!-- Tool rail -->
    <StackPanel x:Name="ToolRail" Margin="4,0,8,0" VerticalAlignment="Top">
     <ToggleButton Style="{StaticResource ToolButton}" Tag="Select" Content="&#xE7C9;" Click="Tool_Click" ToolTip="Select (V)" AutomationProperties.Name="Select tool"/>
-    <ToggleButton Style="{StaticResource ToolButton}" Tag="Marquee" Content="&#xE8B3;" Click="Tool_Click" ToolTip="Marquee: select pixels to copy (M)" AutomationProperties.Name="Marquee tool"/>
+    <ToggleButton Style="{StaticResource ToolButton}" Tag="Marquee" Content="&#xE8B3;" Click="Tool_Click" ToolTip="Marquee: select pixels to move, cut or copy (M)" AutomationProperties.Name="Marquee tool"/>
     <ToggleButton Style="{StaticResource ToolButton}" Tag="Crop" Content="&#xE7A8;" Click="Tool_Click" ToolTip="Crop (C)" AutomationProperties.Name="Crop tool"/>
     <Border Height="1" Background="{StaticResource Rule}" Margin="8,4,8,8"/>
     <ToggleButton Style="{StaticResource ToolButton}" Tag="Arrow" Content="&#xE72A;" Click="Tool_Click" ToolTip="Arrow (A)" AutomationProperties.Name="Arrow tool"/>
@@ -222,9 +244,28 @@
        <Slider x:Name="PaddingSlider" Minimum="0" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Padding_Changed"/>
       </StackPanel>
      </StackPanel>
+     <!-- Layers: top of the list is the top of the stack. Rows are built in code; the active layer sits on a pale tangerine tile. -->
+     <StackPanel Margin="0,22,0,0">
+      <Grid Margin="0,0,0,6">
+       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <TextBlock Style="{StaticResource PanelLabel}" Text="LAYERS" Margin="0" VerticalAlignment="Center"/>
+       <StackPanel Grid.Column="1" Orientation="Horizontal">
+        <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE710;" Click="AddLayer_Click" ToolTip="New layer above the active one" AutomationProperties.Name="New layer"/>
+        <Button x:Name="LayerUpButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE70E;" Click="LayerUp_Click" ToolTip="Move layer up" AutomationProperties.Name="Move layer up"/>
+        <Button x:Name="LayerDownButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE70D;" Click="LayerDown_Click" ToolTip="Move layer down" AutomationProperties.Name="Move layer down"/>
+        <Button x:Name="DeleteLayerButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE74D;" Click="DeleteLayer_Click" ToolTip="Delete layer" AutomationProperties.Name="Delete layer"/>
+       </StackPanel>
+      </Grid>
+      <StackPanel x:Name="LayersList"/>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Layer opacity"/><TextBlock x:Name="LayerOpacityValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
+      <Slider x:Name="LayerOpacitySlider" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="LayerOpacity_Changed" AutomationProperties.Name="Layer opacity"/>
+      <TextBlock Style="{StaticResource Hint}" Text="New items land on the active layer. Double-click a layer to rename it; right-click for more." TextWrapping="Wrap" Margin="0,8,0,0"/>
+     </StackPanel>
      <StackPanel Margin="0,22,0,16">
       <TextBlock Style="{StaticResource PanelLabel}" Text="PICTURE"/>
       <TextBlock x:Name="DocSizeLabel" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Ink2}"/>
+      <TextBlock Style="{StaticResource FieldLabel}" Text="Canvas"/>
+      <local:ColorStrip x:Name="CanvasStrip" AllowNone="True" ToolTip="Colour under every layer; the crossed swatch keeps the canvas transparent"/>
       <TextBlock x:Name="CropHint" Style="{StaticResource Hint}" Text="Drag over the picture, then press Enter to crop. Esc cancels." TextWrapping="Wrap" Visibility="Collapsed"/>
       <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
        <Button x:Name="ApplyCropButton" Style="{StaticResource SmallButton}" Content="Apply crop" Click="ApplyCrop_Click" Visibility="Collapsed" Margin="0,0,6,0"/>
@@ -236,7 +277,7 @@
   </Grid>
 
   <!-- Footer: status on the left, tool shortcuts on the right as mono data. -->
-  <Grid Grid.Row="2" Margin="22,10,22,14">
+  <Grid Grid.Row="3" Margin="22,10,22,14">
    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
     <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="{StaticResource Ink3}" Margin="0,1,7,0" VerticalAlignment="Center"/>

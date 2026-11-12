@@ -41,9 +41,12 @@ public sealed class RegionWindow : Window
     public string? SourceTitle { get; private set; }
     /// <summary>True when the user clicked a hovered window or content area rather than dragging a region.</summary>
     public bool SelectedTarget { get; private set; }
-    public RegionWindow(BitmapSource desktop, Int32Rect bounds, bool showActions)
+    private readonly CaptureAction? _preset;
+    /// <param name="showActions">Offer screenshot, video or scrolling photo after the selection; otherwise take a screenshot at once.</param>
+    /// <param name="preset">An action chosen before the tool opened (a "Record video" hotkey); the chooser is skipped.</param>
+    public RegionWindow(BitmapSource desktop, Int32Rect bounds, bool showActions, CaptureAction? preset = null)
     {
-        Title = "Vibershot region selection"; _desktop = desktop; _bounds = bounds; _showActions = showActions;
+        Title = "Vibershot region selection"; _desktop = desktop; _bounds = bounds; _showActions = showActions && preset is null; _preset = preset;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
         Topmost = true; ShowInTaskbar = false; Cursor = Cursors.Cross;
         Background = new ImageBrush(desktop) { Stretch = Stretch.Fill }; Content = _canvas;
@@ -87,7 +90,7 @@ public sealed class RegionWindow : Window
             HintText = $"{w} × {h} • Choose an action • Hover + click or drag to replace • Esc: cancel";
             SelectedBounds = new Int32Rect(x + bounds.X, y + bounds.Y, w, h);
             Result = new CroppedBitmap(_desktop, new Int32Rect(x, y, w, h)); Result.Freeze();
-            if (!_showActions) { Complete(CaptureAction.Screenshot); return; }
+            if (!_showActions) { Complete(_preset ?? CaptureAction.Screenshot); return; }
             _actions.Visibility = Visibility.Visible; _actions.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             Canvas.SetLeft(_actions, Math.Clamp(Canvas.GetLeft(_selection), 0, Math.Max(0, ActualWidth - _actions.DesiredSize.Width)));
             double below = Canvas.GetTop(_selection) + _selection.Height + 8;

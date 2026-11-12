@@ -21,13 +21,16 @@ public static class DocumentOps
     };
 
     /// <summary>A document whose base layer holds <paramref name="image"/> at 1:1 pixels.</summary>
-    public static ImageDocument FromImage(BitmapSource image, AssetStore assets)
+    public static ImageDocument FromImage(BitmapSource image, AssetStore assets) => FromImage(image, assets, Colors.Transparent);
+
+    public static ImageDocument FromImage(BitmapSource image, AssetStore assets, Color background)
     {
         var assetId = assets.Add(image);
         var baseItem = new ImageItem { AssetId = assetId, Bounds = new Rect(0, 0, image.PixelWidth, image.PixelHeight) };
         return new ImageDocument
         {
             Size = new Size(image.PixelWidth, image.PixelHeight),
+            Background = background,
             Layers =
             [
                 new Layer { Name = BaseLayerName, Items = [baseItem] },
@@ -57,6 +60,53 @@ public static class DocumentOps
         doc with { Layers = doc.Layers.SetItem(index, layer) };
 
     public static ImageDocument AddLayer(ImageDocument doc, Layer layer) => doc with { Layers = doc.Layers.Add(layer) };
+
+    /// <summary>Inserts a layer so it sits at <paramref name="index"/> (0 is the bottom); out-of-range indexes clamp.</summary>
+    public static ImageDocument InsertLayer(ImageDocument doc, int index, Layer layer) =>
+        doc with { Layers = doc.Layers.Insert(Math.Clamp(index, 0, doc.Layers.Count), layer) };
+
+    public static int LayerIndexOf(ImageDocument doc, Layer layer) => doc.Layers.FindIndex(l => l.Id == layer.Id);
+
+    /// <summary>Removes a layer and its items. The last remaining layer stays.</summary>
+    public static ImageDocument RemoveLayer(ImageDocument doc, int index)
+    {
+        if (doc.Layers.Count <= 1 || index < 0 || index >= doc.Layers.Count) return doc;
+        return doc with { Layers = doc.Layers.RemoveAt(index) };
+    }
+
+    /// <summary>Moves a layer up or down the stack by <paramref name="delta"/> positions (positive is towards the top).</summary>
+    public static ImageDocument MoveLayer(ImageDocument doc, int index, int delta)
+    {
+        if (index < 0 || index >= doc.Layers.Count) return doc;
+        int to = Math.Clamp(index + delta, 0, doc.Layers.Count - 1);
+        if (to == index) return doc;
+        var layer = doc.Layers[index];
+        return doc with { Layers = doc.Layers.RemoveAt(index).Insert(to, layer) };
+    }
+
+    /// <summary>Merges the layer at <paramref name="index"/> into the one beneath it; items keep their order on top of the lower layer's items.</summary>
+    public static ImageDocument MergeLayerDown(ImageDocument doc, int index)
+    {
+        if (index < 1 || index >= doc.Layers.Count) return doc;
+        var upper = doc.Layers[index];
+        var lower = doc.Layers[index - 1];
+        var merged = lower with { Items = lower.Items.AddRange(upper.Items) };
+        return doc with { Layers = doc.Layers.RemoveAt(index).SetItem(index - 1, merged) };
+    }
+
+    /// <summary>Moves items to the top of another layer, keeping their relative order.</summary>
+    public static ImageDocument MoveItemsToLayer(ImageDocument doc, IEnumerable<Guid> ids, int layerIndex)
+    {
+        var set = ids.ToHashSet();
+        if (set.Count == 0 || layerIndex < 0 || layerIndex >= doc.Layers.Count) return doc;
+        var moving = doc.AllItems.Where(item => set.Contains(item.Id)).ToList();
+        var stripped = RemoveItems(doc, set);
+        var target = stripped.Layers[layerIndex];
+        return SetLayer(stripped, layerIndex, target with { Items = target.Items.AddRange(moving) });
+    }
+
+    public static ImageDocument SetBackground(ImageDocument doc, Color background) =>
+        doc.Background == background ? doc : doc with { Background = background };
 
     public static ImageDocument AddItem(ImageDocument doc, Item item, int? layerIndex = null) => AddItems(doc, [item], layerIndex);
 

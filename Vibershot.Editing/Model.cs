@@ -119,11 +119,18 @@ public sealed record Layer
 /// <summary>The whole editable picture: a canvas size, an optional crop and layers bottom to top.</summary>
 public sealed record ImageDocument
 {
+    /// <summary>Current <c>document.json</c> schema version written by <see cref="ProjectFile"/>.</summary>
+    public const int CurrentVersion = 1;
+
+    /// <summary>Schema version of the file this document came from; lets later versions migrate older projects.</summary>
+    public int Version { get; init; } = CurrentVersion;
+
     public Size Size { get; init; } = new(1280, 720);
 
     /// <summary>Non-destructive crop; null shows the whole canvas.</summary>
     public Rect? CropRect { get; init; }
 
+    /// <summary>Canvas colour under every layer; transparent shows the checkerboard and exports with alpha.</summary>
     public Color Background { get; init; } = Colors.Transparent;
     public ImmutableList<Layer> Layers { get; init; } = ImmutableList<Layer>.Empty;
 

@@ -21,6 +21,7 @@ public sealed class CaptureSessionWindow : Window
     private VideoWriter? _writer;
     private RecorderSession? _recorder;
     private RecorderStatus? _recorderStatus;
+    private RecordingFrameWindow? _frame;
     private string? _downgradeNote;
     private BitmapSource _previous;
     private bool _busy, _finished, _paused;
@@ -31,9 +32,11 @@ public sealed class CaptureSessionWindow : Window
     public string? VideoPath { get; private set; }
     public bool Completed { get; private set; }
     private readonly string? _sourceProcess, _sourceTitle;
-    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath, VideoSettings? videoSettings = null, string? sourceProcess = null, string? sourceTitle = null)
+    private readonly string? _recordingsFolder;
+    /// <param name="recordingsFolder">Where the Save As for a finished recording starts (the library's Recordings folder).</param>
+    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath, VideoSettings? videoSettings = null, string? sourceProcess = null, string? sourceTitle = null, string? recordingsFolder = null)
     {
-        _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath; _videoSettings = videoSettings ?? new VideoSettings(); _sourceProcess = sourceProcess; _sourceTitle = sourceTitle;
+        _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath; _videoSettings = videoSettings ?? new VideoSettings(); _sourceProcess = sourceProcess; _sourceTitle = sourceTitle; _recordingsFolder = recordingsFolder;
         Title = video ? "Vibershot • Region video" : "Vibershot • Scrolling photo";
         Width = 440; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         Topmost = true; WindowStartupLocation = WindowStartupLocation.Manual;
@@ -75,6 +78,7 @@ public sealed class CaptureSessionWindow : Window
         {
             PlaceControls();
             if (!video) { _status.Text = "Select only page content. Scroll down by less than a page; keep overlapping content visible. Shots are added manually."; return; }
+            ShowFrame();
             if (UseMp4 && await StartMp4()) return;
             StartAvi();
         };
@@ -85,12 +89,12 @@ public sealed class CaptureSessionWindow : Window
                 _writer!.AddFrame(CaptureService.Region(region.X, region.Y, region.Width, region.Height));
                 _frames++; UpdateStatus();
             }
-            catch (Exception ex) { _timer.Stop(); _pause.IsEnabled = false; _status.Text = "Recording stopped: " + ex.Message + " • Stop & save to keep captured frames."; }
+            catch (Exception ex) { _timer.Stop(); CloseFrame(); _pause.IsEnabled = false; _status.Text = "Recording stopped: " + ex.Message + " • Stop & save to keep captured frames."; }
         };
         Closing += (_, e) => { if (_busy) e.Cancel = true; };
         Closed += (_, _) =>
         {
-            _timer.Stop();
+            _timer.Stop(); CloseFrame();
             if (_recorder is not null) { _recorder.Dispose(); _finished = true; return; }
             bool finalized = true;
             try { _writer?.Dispose(); }
@@ -102,6 +106,14 @@ public sealed class CaptureSessionWindow : Window
             _finished = true;
         };
     }
+    // Outline of the recorded region; lives as long as frames are being captured.
+    private void ShowFrame()
+    {
+        try { _frame = new RecordingFrameWindow(_region); _frame.Show(); }
+        catch (Exception) { _frame = null; } // Cosmetic only; never block the recording.
+    }
+    private void CloseFrame() { var frame = _frame; _frame = null; frame?.Close(); }
+    private void SetFramePaused(bool paused) { if (_frame is not null) _frame.Paused = paused; }
     private bool UseMp4 => _videoSettings.Format == VideoFormat.Mp4;
     private FrameRate FrameRateSetting => FrameRate.TryParse(_videoSettings.FrameRate, out var rate) ? rate : FrameRate.Fps30;
     private static string RecoveryFolder => RecorderSettings.DefaultRecordingsFolder;
@@ -145,15 +157,15 @@ public sealed class CaptureSessionWindow : Window
     {
         if (_recorder is null)
         {
-            _paused = !_paused; _pause.Content = _paused ? "Resume" : "Pause"; if (_paused) _timer.Stop(); else _timer.Start(); UpdateStatus();
+            _paused = !_paused; _pause.Content = _paused ? "Resume" : "Pause"; if (_paused) _timer.Stop(); else _timer.Start(); SetFramePaused(_paused); UpdateStatus();
             return;
         }
         if (_busy) return;
         _busy = true; _pause.IsEnabled = false; _finish.IsEnabled = false;
         try
         {
-            if (_recorder.State == RecorderState.Recording) { await _recorder.PauseAsync(); _pause.Content = "Resume"; }
-            else if (_recorder.State == RecorderState.Paused) { await _recorder.ResumeAsync(); _pause.Content = "Pause"; }
+            if (_recorder.State == RecorderState.Recording) { await _recorder.PauseAsync(); _pause.Content = "Resume"; SetFramePaused(true); }
+            else if (_recorder.State == RecorderState.Paused) { await _recorder.ResumeAsync(); _pause.Content = "Pause"; SetFramePaused(false); }
         }
         catch (Exception ex) { _status.Text = "Resume failed: " + ex.Message; }
         finally { _busy = false; _pause.IsEnabled = true; _finish.IsEnabled = true; }
@@ -166,7 +178,7 @@ public sealed class CaptureSessionWindow : Window
         string? final = null;
         try { final = await _recorder.StopAsync(); }
         catch (Exception ex) { System.Windows.MessageBox.Show(this, "Could not finalize recording: " + ex.Message + "\nSegments retained in: " + RecoveryFolder, "Recording"); }
-        finally { _busy = false; }
+        finally { _busy = false; CloseFrame(); }
         Completed = final is not null;
         if (final is not null) { _temporaryVideo = final; VideoPath = final; WriteSidecar(final); SaveRecording(final, "MP4 video|*.mp4", ".mp4"); }
         else VideoPath = null;
@@ -205,6 +217,7 @@ public sealed class CaptureSessionWindow : Window
     {
         try {
             var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Save recording (Cancel keeps recovery copy)", Filter = filter, FileName = $"recording_{DateTime.Now:yyyyMMdd_HHmmss}{extension}", AddExtension = true, DefaultExt = extension };
+            if (_recordingsFolder != null) { try { Directory.CreateDirectory(_recordingsFolder); dialog.InitialDirectory = _recordingsFolder; } catch (Exception) { } }
             if (dialog.ShowDialog() == true) {
                 if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase)) { File.Copy(source, dialog.FileName, true); WriteSidecar(dialog.FileName); }
                 VideoPath = dialog.FileName;

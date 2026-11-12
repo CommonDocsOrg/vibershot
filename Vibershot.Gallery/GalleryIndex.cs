@@ -43,16 +43,22 @@ public sealed class GalleryIndex : IDisposable
 
     public bool IsScanning { get { lock (_scanLock) return _scan is { IsCompleted: false }; } }
 
-    /// <summary>Output folder, the recovery recordings folder, the library root's subfolders and the extra folders.</summary>
+    /// <summary>Recovery copies of recordings that were never saved (also cleaned up by the library tidy pass).</summary>
+    public static string RecoveryFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vibershot", "Recordings");
+
+    /// <summary>
+    /// The library's own folders, the recovery recordings folder and the extra watched folders.
+    /// Custom save destinations are deliberately not included: a capture written to the library
+    /// and to a custom folder would otherwise show twice.
+    /// </summary>
     public static List<string> DefaultFolders(AppConfig config)
     {
         var list = new List<string>
         {
-            config.OutputFolder,
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vibershot", "Recordings"),
-            Path.Combine(config.Gallery.LibraryRoot, "Screenshots"),
-            Path.Combine(config.Gallery.LibraryRoot, "Recordings"),
+            config.Gallery.ScreenshotsFolder,
+            config.Gallery.RecordingsFolder,
             config.Gallery.ProjectsFolder,
+            RecoveryFolder,
         };
         list.AddRange(config.Gallery.ExtraFolders.Where(f => !string.IsNullOrWhiteSpace(f)));
         return Dedupe(list);

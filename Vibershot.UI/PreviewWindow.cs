@@ -1,5 +1,4 @@
 using System.Windows.Media.Imaging;
-using Microsoft.Win32;
 using Vibershot.Core;
 namespace Vibershot.UI;
 
@@ -33,18 +32,10 @@ public partial class PreviewWindow : Window
     }
     private void Save_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new SaveFileDialog
-        {
-            Filter = ScreenshotSaveDialog.Filter, FilterIndex = ScreenshotSaveDialog.FilterIndexFor(_config.Format),
-            FileName = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}", AddExtension = true
-        };
-        if (dialog.ShowDialog(this) != true) return;
         try
         {
-            using (var stream = File.Create(dialog.FileName))
-                ImageEncoding.Encode(_image, ScreenshotSaveDialog.FormatFor(dialog.FilterIndex), _config.WebpQuality, stream);
-            _sidecar?.TryWrite(dialog.FileName);
-            InfoLabel.Text = $"Saved: {dialog.FileName}";
+            var path = ScreenshotSaveDialog.Save(_image, _config, _sidecar, this);
+            if (path != null) InfoLabel.Text = $"Saved: {path}";
         }
         catch (Exception ex) { InfoLabel.Text = $"Save failed: {ex.Message}"; }
     }

@@ -5,3 +5,6 @@ artifacts/
 .claude/settings.local.json
 # ffmpeg binaries are downloaded by tools/get-ffmpeg.ps1, never committed.
 tools/ffmpeg/
+
+# WPF temporary project files from the XAML markup compiler.
+*_wpftmp.csproj

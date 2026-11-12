@@ -2,80 +2,277 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:core="clr-namespace:Vibershot.Core;assembly=Vibershot.Core"
- Style="{StaticResource {x:Type Window}}" Title="Vibershot Settings" Width="560" Height="860" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" Background="{StaticResource Well}">
- <Grid Margin="28,24,28,24">
-  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <StackPanel Margin="0,0,0,22"><TextBlock Text="Settings" FontSize="22" FontWeight="Bold"/><TextBlock Text="Choose what happens after every capture." Foreground="{StaticResource Ink2}" Margin="0,4,0,0"/></StackPanel>
-  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
-   <Border Style="{StaticResource Group}">
-    <StackPanel>
-     <TextBlock Style="{StaticResource GroupLabel}" Text="AFTER CAPTURE"/>
-     <CheckBox x:Name="ActionsCheckbox" AutomationProperties.Name="Choose an action after selection"><StackPanel><TextBlock Text="Choose an action after selection" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Screenshot, video or scrolling photo"/></StackPanel></CheckBox>
-     <Border Style="{StaticResource Divider}"/>
-     <CheckBox x:Name="SaveDialogCheckbox" AutomationProperties.Name="Show Save As"><StackPanel><TextBlock Text="Show Save As" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Pick a name and folder after each screenshot"/></StackPanel></CheckBox>
-     <Border Style="{StaticResource Divider}"/>
-     <CheckBox x:Name="AutosaveCheckbox" AutomationProperties.Name="Save automatically"><StackPanel><TextBlock Text="Save automatically" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Keep a file of each screenshot"/></StackPanel></CheckBox>
-     <Border Style="{StaticResource Divider}"/>
-     <CheckBox x:Name="ClipboardCheckbox" AutomationProperties.Name="Copy to clipboard"><StackPanel><TextBlock Text="Copy to clipboard" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Ready to paste wherever you need it"/></StackPanel></CheckBox>
-    </StackPanel>
-   </Border>
-   <Border Style="{StaticResource Group}">
-    <StackPanel>
-     <TextBlock Style="{StaticResource GroupLabel}" Text="SYSTEM"/>
-     <CheckBox x:Name="StartupCheckbox" AutomationProperties.Name="Start with Windows"><StackPanel><TextBlock Text="Start with Windows" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Launch into the tray when you sign in"/></StackPanel></CheckBox>
-     <Border Style="{StaticResource Divider}"/>
-     <CheckBox x:Name="PrintScreenCheckbox" AutomationProperties.Name="Take over Print Screen" Checked="PrintScreenCheckbox_Changed" Unchecked="PrintScreenCheckbox_Changed"><StackPanel><TextBlock Text="Take over Print Screen" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Vibershot handles the key instead of Windows while it is running"/></StackPanel></CheckBox>
-     <StackPanel x:Name="PrintScreenOptions" Margin="0,14,0,0">
-      <RadioButton x:Name="PrintScreenToolRadio" GroupName="PrintScreen" Content="Open the region tool" Margin="0,0,0,10"/>
-      <RadioButton x:Name="PrintScreenDesktopRadio" GroupName="PrintScreen" Content="Snap the full desktop right away"/>
+ Style="{StaticResource {x:Type Window}}" Title="Vibershot Settings" Width="780" Height="760" MinWidth="680" MinHeight="520" WindowStartupLocation="CenterOwner" Background="{StaticResource Well}">
+ <Window.Resources>
+  <Style x:Key="PageTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="20"/><Setter Property="FontWeight" Value="Bold"/></Style>
+  <Style x:Key="PageSubtitle" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="Margin" Value="0,4,0,18"/></Style>
+  <Style x:Key="CardTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="13.5"/><Setter Property="FontWeight" Value="Bold"/></Style>
+  <Style x:Key="CardHint" TargetType="TextBlock" BasedOn="{StaticResource Hint}"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+  <Style x:Key="ListFrame" TargetType="Border"><Setter Property="BorderBrush" Value="{StaticResource Rule}"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="12,6"/><Setter Property="Background" Value="{StaticResource Paper}"/></Style>
+  <Style x:Key="MonoBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"><Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="FontSize" Value="12"/></Style>
+  <Style x:Key="DaysBox" TargetType="TextBox" BasedOn="{StaticResource MonoBox}"><Setter Property="Width" Value="58"/><Setter Property="Padding" Value="8,5"/><Setter Property="Margin" Value="8,0"/><Setter Property="TextAlignment" Value="Center"/></Style>
+ </Window.Resources>
+ <Grid Margin="20,18,22,20">
+  <Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition/></Grid.ColumnDefinitions>
+  <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
+  <!-- Navigation -->
+  <StackPanel Margin="0,6,18,0">
+   <TextBlock Text="Settings" FontSize="20" FontWeight="Bold" Margin="14,0,0,16"/>
+   <RadioButton x:Name="NavHotkeys" Style="{StaticResource NavItem}" GroupName="Nav" Content="Hotkeys" Tag="Hotkeys" AutomationProperties.Name="Hotkeys page" Checked="Nav_Checked"/>
+   <RadioButton x:Name="NavAfterCapture" Style="{StaticResource NavItem}" GroupName="Nav" Content="After capture" Tag="AfterCapture" AutomationProperties.Name="After capture page" Checked="Nav_Checked"/>
+   <RadioButton x:Name="NavGallery" Style="{StaticResource NavItem}" GroupName="Nav" Content="Gallery" Tag="Gallery" AutomationProperties.Name="Gallery page" Checked="Nav_Checked"/>
+   <RadioButton x:Name="NavEditor" Style="{StaticResource NavItem}" GroupName="Nav" Content="Editor" Tag="Editor" AutomationProperties.Name="Editor page" Checked="Nav_Checked"/>
+   <RadioButton x:Name="NavVideo" Style="{StaticResource NavItem}" GroupName="Nav" Content="Video" Tag="Video" AutomationProperties.Name="Video page" Checked="Nav_Checked"/>
+   <RadioButton x:Name="NavGeneral" Style="{StaticResource NavItem}" GroupName="Nav" Content="General" Tag="General" AutomationProperties.Name="General page" Checked="Nav_Checked"/>
+  </StackPanel>
+
+  <ScrollViewer x:Name="PageScroller" Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,6,8,0">
+   <Grid>
+
+    <!-- After capture -->
+    <StackPanel x:Name="PageAfterCapture" Visibility="Collapsed">
+     <TextBlock Style="{StaticResource PageTitle}" Text="After a screenshot"/>
+     <TextBlock Style="{StaticResource PageSubtitle}" Text="Turn on any mix. With everything off, the capture is not kept: it only shows in the small preview."/>
+     <StackPanel Orientation="Horizontal" Margin="2,0,0,14">
+      <TextBlock Text="Presets" Style="{StaticResource GroupLabel}" Margin="0,0,12,0" VerticalAlignment="Center"/>
+      <StackPanel x:Name="PresetChips" Orientation="Horizontal"/>
      </StackPanel>
+
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <CheckBox x:Name="SaveFileSwitch" AutomationProperties.Name="Save as file" Checked="AfterCapture_Changed" Unchecked="AfterCapture_Changed">
+        <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Save as file"/><TextBlock Style="{StaticResource CardHint}" Text="Writes the capture to every checked place. The gallery shows the library copy."/></StackPanel>
+       </CheckBox>
+       <StackPanel x:Name="SaveOptions" Margin="0,14,0,0">
+        <RadioButton x:Name="SaveAutoRadio" GroupName="SaveMode" Content="Save automatically to" AutomationProperties.Name="Save automatically" Checked="AfterCapture_Changed"/>
+        <Border x:Name="DestinationBox" Style="{StaticResource ListFrame}" Margin="28,8,0,10">
+         <StackPanel>
+          <Grid Margin="0,4">
+           <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+           <CheckBox x:Name="LibraryCheckbox" Style="{StaticResource TickCheckBox}" Content="Library ·" FontWeight="SemiBold" AutomationProperties.Name="Save to library" Checked="AfterCapture_Changed" Unchecked="AfterCapture_Changed"/>
+           <TextBlock x:Name="LibraryPathText" Grid.Column="1" FontFamily="{StaticResource MonoFont}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="6,0,10,0"/>
+           <Button Grid.Column="2" Style="{StaticResource LinkButton}" Content="Change" AutomationProperties.Name="Change library folder" Click="ChangeLibrary_Click"/>
+          </Grid>
+          <TextBlock x:Name="LibraryForcedHint" Style="{StaticResource CardHint}" Text="Kept on while Open in gallery is on." Margin="28,0,0,4" Visibility="Collapsed"/>
+          <StackPanel x:Name="CustomDestinationRows"/>
+          <Button Style="{StaticResource LinkButton}" Content="+ Add a folder" AutomationProperties.Name="Add a save folder" HorizontalAlignment="Left" Margin="-4,4,0,2" Click="AddDestination_Click"/>
+         </StackPanel>
+        </Border>
+        <RadioButton x:Name="SaveAskRadio" GroupName="SaveMode" Content="Ask for a name and folder each time" AutomationProperties.Name="Ask where to save" Checked="AfterCapture_Changed"/>
+        <Grid Margin="0,16,0,0">
+         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+         <TextBlock Text="Format" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,14,0"/>
+         <ComboBox x:Name="FormatComboBox" Grid.Column="1" AutomationProperties.Name="Image format" SelectionChanged="AfterCapture_Changed"/>
+        </Grid>
+        <StackPanel x:Name="WebpQualityPanel" Margin="0,14,0,0">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Quality" FontWeight="Bold"/><TextBlock x:Name="WebpQualityLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
+         <Slider x:Name="WebpQualitySlider" AutomationProperties.Name="WebP quality" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Margin="0,6,0,0" ValueChanged="WebpQualitySlider_ValueChanged"/>
+         <TextBlock Style="{StaticResource Hint}" Text="Lower is smaller; 80 is a good balance"/>
+        </StackPanel>
+       </StackPanel>
+      </StackPanel>
+     </Border>
+
+     <Border Style="{StaticResource Group}">
+      <CheckBox x:Name="ClipboardSwitch" AutomationProperties.Name="Copy to clipboard" Checked="AfterCapture_Changed" Unchecked="AfterCapture_Changed">
+       <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Copy to clipboard"/><TextBlock Style="{StaticResource CardHint}" Text="Ready to paste anywhere right away"/></StackPanel>
+      </CheckBox>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <CheckBox x:Name="GallerySwitch" AutomationProperties.Name="Open in gallery" Checked="AfterCapture_Changed" Unchecked="AfterCapture_Changed">
+       <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Open in gallery"/><TextBlock Style="{StaticResource CardHint}" Text="Shows the new file selected in your library. Turning this on keeps Library checked above."/></StackPanel>
+      </CheckBox>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <CheckBox x:Name="EditorSwitch" AutomationProperties.Name="Open in editor" Checked="AfterCapture_Changed" Unchecked="AfterCapture_Changed">
+       <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Open in editor"/><TextBlock Style="{StaticResource CardHint}" Text="Opens the capture on a new canvas for arrows, text and crops. Works with or without a saved file."/></StackPanel>
+      </CheckBox>
+     </Border>
+
+     <CheckBox x:Name="PreviewCheckbox" Style="{StaticResource TickCheckBox}" AutomationProperties.Name="Show the small preview when nothing else opens" Margin="4,2,0,16" Checked="AfterCapture_Changed" Unchecked="AfterCapture_Changed">
+      <TextBlock TextWrapping="Wrap"><Run Text="Show the small preview when nothing else opens"/><Run Text=" · it has Save and Copy buttons for one-off use" Foreground="{StaticResource Ink2}"/></TextBlock>
+     </CheckBox>
+
+     <Border Background="{StaticResource TangerineSoft}" BorderBrush="{StaticResource Tangerine}" BorderThickness="1" CornerRadius="10" Padding="16,12" Margin="0,0,0,14">
+      <TextBlock x:Name="SummaryText" TextWrapping="Wrap" FontSize="12.5"/>
+     </Border>
     </StackPanel>
-   </Border>
-   <Border Style="{StaticResource Group}">
-    <StackPanel>
-     <TextBlock Style="{StaticResource GroupLabel}" Text="VIDEO"/>
-     <TextBlock Text="Format" FontWeight="Bold" Margin="0,0,0,8"/>
-     <ComboBox x:Name="VideoFormatComboBox" AutomationProperties.Name="Video format" SelectionChanged="VideoFormatComboBox_SelectionChanged"><ComboBoxItem Content="MP4 · H.264, any frame rate" Tag="{x:Static core:VideoFormat.Mp4}"/><ComboBoxItem Content="AVI · Motion JPEG at 10 fps (legacy)" Tag="{x:Static core:VideoFormat.Avi}"/></ComboBox>
-     <StackPanel x:Name="Mp4OptionsPanel">
-      <TextBlock Text="Frame rate" FontWeight="Bold" Margin="0,18,0,8"/>
-      <ComboBox x:Name="FrameRateComboBox" AutomationProperties.Name="Frame rate"/>
-      <Grid Margin="0,18,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Quality" FontWeight="Bold"/><TextBlock x:Name="VideoQualityLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
-      <Slider x:Name="VideoQualitySlider" AutomationProperties.Name="Video quality" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Margin="0,8,0,0" ValueChanged="VideoQualitySlider_ValueChanged"/>
-      <TextBlock Style="{StaticResource Hint}" Text="Higher is sharper and larger; 75 suits screen recordings" Margin="0,6,0,0"/>
-      <Border Style="{StaticResource Divider}"/>
-      <CheckBox x:Name="HardwareEncoderCheckbox" AutomationProperties.Name="Use hardware encoder"><StackPanel><TextBlock Text="Use hardware encoder" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="NVIDIA, Intel or AMD when available; software otherwise"/></StackPanel></CheckBox>
-      <Border Style="{StaticResource Divider}"/>
-      <CheckBox x:Name="CursorCheckbox" AutomationProperties.Name="Show the mouse cursor"><StackPanel><TextBlock Text="Show the mouse cursor" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Draw the pointer into the recording"/></StackPanel></CheckBox>
-     </StackPanel>
+
+    <!-- Hotkeys -->
+    <StackPanel x:Name="PageHotkeys" Visibility="Collapsed">
+     <TextBlock Style="{StaticResource PageTitle}" Text="Hotkeys"/>
+     <TextBlock Style="{StaticResource PageSubtitle}" Text="Start a capture from any app. Shortcuts work while Vibershot runs in the tray."/>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <CheckBox x:Name="PrintScreenSwitch" AutomationProperties.Name="Take over Print Screen" Checked="PrintScreen_Changed" Unchecked="PrintScreen_Changed">
+        <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Take over Print Screen"/><TextBlock Style="{StaticResource CardHint}" Text="On by default. Vibershot answers the key instead of Windows while it is running."/></StackPanel>
+       </CheckBox>
+       <StackPanel x:Name="PrintScreenOptions" Margin="0,14,0,0">
+        <RadioButton x:Name="PsAskRadio" GroupName="PrintScreen" Content="Open the region tool, then ask what to capture" AutomationProperties.Name="Print Screen opens the region tool and asks" Margin="0,0,0,10" Checked="PrintScreen_Changed"/>
+        <RadioButton x:Name="PsShotRadio" GroupName="PrintScreen" Content="Open the region tool and take a screenshot right away" AutomationProperties.Name="Print Screen opens the region tool for a screenshot" Margin="0,0,0,10" Checked="PrintScreen_Changed"/>
+        <RadioButton x:Name="PsDesktopRadio" GroupName="PrintScreen" Content="Snap the full desktop right away" AutomationProperties.Name="Print Screen snaps the full desktop" Checked="PrintScreen_Changed"/>
+       </StackPanel>
+       <ContentControl x:Name="PrintScreenWarningHost" Focusable="False"/>
+      </StackPanel>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Shortcuts"/>
+       <TextBlock Style="{StaticResource CardHint}" Text="Click Change, then press the keys you want. Esc cancels." Margin="0,3,0,10"/>
+       <StackPanel x:Name="HotkeyRows"/>
+      </StackPanel>
+     </Border>
+     <TextBlock Style="{StaticResource CardHint}" Text="Shortcuts only work while Vibershot is running. Start with Windows is under General." Margin="4,0,0,14"/>
     </StackPanel>
-   </Border>
-   <Border Style="{StaticResource Group}">
-    <StackPanel>
-     <TextBlock Style="{StaticResource GroupLabel}" Text="GALLERY"/>
-     <TextBlock Text="Library root" FontWeight="Bold" Margin="0,0,0,8"/>
-     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="LibraryRootTextBox" AutomationProperties.Name="Library root" ToolTip="Gallery library root" FontFamily="{StaticResource MonoFont}" FontSize="12"/><Button Grid.Column="1" Content="Browse…" Margin="8,0,0,0" Padding="14,9" Click="LibraryBrowseButton_Click"/></Grid>
-     <TextBlock Style="{StaticResource Hint}" Text="The gallery shows the save location plus Screenshots, Recordings and Projects under this root" Margin="0,6,0,0"/>
-     <Grid Margin="0,16,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Thumbnail size" FontWeight="Bold"/><TextBlock x:Name="ThumbnailSizeLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
-     <Slider x:Name="ThumbnailSizeSlider" AutomationProperties.Name="Thumbnail size" Minimum="120" Maximum="360" TickFrequency="10" IsSnapToTickEnabled="True" SmallChange="10" LargeChange="40" Margin="0,8,0,0" ValueChanged="ThumbnailSizeSlider_ValueChanged"/>
-     <Border Style="{StaticResource Divider}"/>
-     <CheckBox x:Name="OpenGalleryCheckbox" AutomationProperties.Name="Open the gallery after each capture"><StackPanel><TextBlock Text="Open the gallery after each capture" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Shows the new capture selected in the gallery instead of the preview"/></StackPanel></CheckBox>
+
+    <!-- Gallery -->
+    <StackPanel x:Name="PageGallery" Visibility="Collapsed">
+     <TextBlock Style="{StaticResource PageTitle}" Text="Gallery"/>
+     <TextBlock Style="{StaticResource PageSubtitle}" Text="Your library is the folder Vibershot owns. The gallery shows it, plus any folders you add."/>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Library" Margin="0,0,0,10"/>
+       <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBox x:Name="LibraryRootTextBox" Style="{StaticResource MonoBox}" IsReadOnly="True" AutomationProperties.Name="Library folder"/>
+        <Button Grid.Column="1" Content="Move…" AutomationProperties.Name="Move the library" Margin="8,0,0,0" Padding="14,9" Click="MoveLibrary_Click"/>
+       </Grid>
+       <StackPanel Margin="4,12,0,0" TextBlock.FontSize="12">
+        <TextBlock x:Name="LibraryNameText" FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource Ink2}"/>
+        <TextBlock Margin="18,2,0,0" Foreground="{StaticResource Ink2}"><Run FontFamily="{StaticResource MonoFont}" Text="Screenshots\"/><Run Text=" · captures, when Library is a save destination"/></TextBlock>
+        <TextBlock Margin="18,2,0,0" Foreground="{StaticResource Ink2}"><Run FontFamily="{StaticResource MonoFont}" Text="Recordings\"/><Run Text=" · saved videos"/></TextBlock>
+        <TextBlock Margin="18,2,0,0" Foreground="{StaticResource Ink2}"><Run FontFamily="{StaticResource MonoFont}" Text="Projects\"/><Run Text=" · editor documents (.vibeshot)"/></TextBlock>
+       </StackPanel>
+       <TextBlock x:Name="LibraryHint" Style="{StaticResource CardHint}" Margin="0,12,0,0"/>
+      </StackPanel>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Also watch"/>
+       <TextBlock Style="{StaticResource CardHint}" Text="Other folders shown in the gallery. Captures saved to a custom folder only appear here if you add that folder." Margin="0,3,0,10"/>
+       <StackPanel x:Name="WatchRows"/>
+       <Button Style="{StaticResource LinkButton}" Content="+ Add a folder" AutomationProperties.Name="Add a watched folder" HorizontalAlignment="Left" Margin="-4,4,0,0" Click="AddWatch_Click"/>
+      </StackPanel>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <CheckBox x:Name="CleanupSwitch" AutomationProperties.Name="Clean up old items" Checked="Cleanup_Changed" Unchecked="Cleanup_Changed">
+        <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Clean up old items"/><TextBlock Style="{StaticResource CardHint}" Text="Moves old library files to the Recycle Bin. Never touches watched folders, custom save folders or projects."/></StackPanel>
+       </CheckBox>
+       <StackPanel x:Name="CleanupOptions" Margin="0,14,0,0">
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8"><CheckBox x:Name="CleanShotsCheckbox" Style="{StaticResource TickCheckBox}" Content="Screenshots older than" AutomationProperties.Name="Clean up screenshots"/><TextBox x:Name="CleanShotsDays" Style="{StaticResource DaysBox}" AutomationProperties.Name="Screenshot days"/><TextBlock Text="days" VerticalAlignment="Center"/></StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,8"><CheckBox x:Name="CleanVideosCheckbox" Style="{StaticResource TickCheckBox}" Content="Recordings older than" AutomationProperties.Name="Clean up recordings"/><TextBox x:Name="CleanVideosDays" Style="{StaticResource DaysBox}" AutomationProperties.Name="Recording days"/><TextBlock Text="days" VerticalAlignment="Center"/></StackPanel>
+        <StackPanel Orientation="Horizontal"><CheckBox x:Name="CleanRecoveryCheckbox" Style="{StaticResource TickCheckBox}" Content="Unsaved recording recovery files older than" AutomationProperties.Name="Clean up recovery files"/><TextBox x:Name="CleanRecoveryDays" Style="{StaticResource DaysBox}" AutomationProperties.Name="Recovery days"/><TextBlock Text="days" VerticalAlignment="Center"/></StackPanel>
+       </StackPanel>
+      </StackPanel>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource CardTitle}" Text="Thumbnail size"/><TextBlock x:Name="ThumbnailSizeLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
+       <Slider x:Name="ThumbnailSizeSlider" AutomationProperties.Name="Thumbnail size" Minimum="120" Maximum="360" TickFrequency="10" IsSnapToTickEnabled="True" SmallChange="10" LargeChange="40" Margin="0,8,0,0" ValueChanged="ThumbnailSizeSlider_ValueChanged"/>
+      </StackPanel>
+     </Border>
     </StackPanel>
-   </Border>
-   <Border Style="{StaticResource Group}" Margin="0">
-    <StackPanel>
-     <TextBlock Style="{StaticResource GroupLabel}" Text="FILES"/>
-     <TextBlock Text="Save location" FontWeight="Bold" Margin="0,0,0,8"/>
-     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="FolderTextBox" AutomationProperties.Name="Save location" ToolTip="Screenshot output folder" FontFamily="{StaticResource MonoFont}" FontSize="12"/><Button Grid.Column="1" Content="Browse…" Margin="8,0,0,0" Padding="14,9" Click="BrowseButton_Click"/></Grid>
-     <TextBlock Text="Image format" FontWeight="Bold" Margin="0,18,0,8"/>
-     <ComboBox x:Name="FormatComboBox" AutomationProperties.Name="Image format" SelectionChanged="FormatComboBox_SelectionChanged"><ComboBoxItem Content="PNG · lossless quality" Tag="{x:Static core:ImageFormat.Png}"/><ComboBoxItem Content="JPEG · smaller files" Tag="{x:Static core:ImageFormat.Jpeg}"/><ComboBoxItem Content="WebP lossless · exact pixels, smaller than PNG" Tag="{x:Static core:ImageFormat.WebpLossless}"/><ComboBoxItem Content="WebP · custom quality" Tag="{x:Static core:ImageFormat.Webp}"/></ComboBox>
-     <StackPanel x:Name="WebpQualityPanel" Margin="0,16,0,0">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="WebP quality" FontWeight="Bold"/><TextBlock x:Name="WebpQualityLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
-      <Slider x:Name="WebpQualitySlider" AutomationProperties.Name="WebP quality" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Margin="0,8,0,0" ValueChanged="WebpQualitySlider_ValueChanged"/>
-      <TextBlock Style="{StaticResource Hint}" Text="Lower is smaller; 80 is a good balance" Margin="0,6,0,0"/>
-     </StackPanel>
+
+    <!-- Editor -->
+    <StackPanel x:Name="PageEditor" Visibility="Collapsed">
+     <TextBlock Style="{StaticResource PageTitle}" Text="Editor"/>
+     <TextBlock Style="{StaticResource PageSubtitle}" Text="Defaults for new pictures. Each project can change them in the editor."/>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Canvas background" Margin="0,0,0,8"/>
+       <ComboBox x:Name="CanvasBackgroundComboBox" AutomationProperties.Name="Canvas background" SelectionChanged="CanvasBackgroundComboBox_SelectionChanged"><ComboBoxItem Content="White" Tag="{x:Static core:EditorSettings.White}"/><ComboBoxItem Content="Black" Tag="{x:Static core:EditorSettings.Black}"/><ComboBoxItem Content="Transparent · keeps alpha on export" Tag="{x:Static core:EditorSettings.Transparent}"/><ComboBoxItem Content="Custom colour…" Tag="custom"/></ComboBox>
+       <StackPanel x:Name="CanvasColorPanel" Margin="0,12,0,0">
+        <TextBox x:Name="CanvasColorTextBox" Style="{StaticResource MonoBox}" AutomationProperties.Name="Canvas colour" ToolTip="#RRGGBB or #AARRGGBB" Width="140" HorizontalAlignment="Left"/>
+       </StackPanel>
+       <TextBlock Style="{StaticResource Hint}" Text="For new pictures; the editor's Picture panel changes it per project" Margin="0,6,0,0"/>
+      </StackPanel>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Default stroke" Margin="0,0,0,8"/>
+       <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="140"/><ColumnDefinition Width="24"/><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock Text="Colour" VerticalAlignment="Center" Margin="0,0,10,0"/>
+        <TextBox x:Name="StrokeColorTextBox" Grid.Column="1" Style="{StaticResource MonoBox}" AutomationProperties.Name="Stroke colour" ToolTip="#RRGGBB or #AARRGGBB"/>
+        <TextBlock Grid.Column="3" Text="Width" VerticalAlignment="Center" Margin="0,0,10,0"/>
+        <Slider x:Name="StrokeWidthSlider" Grid.Column="4" AutomationProperties.Name="Stroke width" Minimum="1" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="4" VerticalAlignment="Center" ValueChanged="StrokeWidthSlider_ValueChanged"/>
+        <TextBlock x:Name="StrokeWidthLabel" Grid.Column="5" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12" VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="36"/>
+       </Grid>
+       <TextBlock Style="{StaticResource Hint}" Text="Arrows, lines and shapes start with this pen" Margin="0,6,0,0"/>
+      </StackPanel>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Default text" Margin="0,0,0,8"/>
+       <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="24"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="72"/></Grid.ColumnDefinitions>
+        <TextBlock Text="Font" VerticalAlignment="Center" Margin="0,0,10,0"/>
+        <TextBox x:Name="FontFamilyTextBox" Grid.Column="1" AutomationProperties.Name="Default font family"/>
+        <TextBlock Grid.Column="3" Text="Size" VerticalAlignment="Center" Margin="0,0,10,0"/>
+        <TextBox x:Name="FontSizeTextBox" Grid.Column="4" Style="{StaticResource MonoBox}" AutomationProperties.Name="Default font size" TextAlignment="Center"/>
+       </Grid>
+      </StackPanel>
+     </Border>
     </StackPanel>
-   </Border>
-  </StackPanel></ScrollViewer>
-  <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0"><Button Content="Cancel" IsCancel="True" Width="94" Click="CancelButton_Click"/><Button Content="Save settings" IsDefault="True" Style="{StaticResource PrimaryButton}" Margin="10,0,0,0" Click="OkButton_Click"/></StackPanel>
+
+    <!-- Video -->
+    <StackPanel x:Name="PageVideo" Visibility="Collapsed">
+     <TextBlock Style="{StaticResource PageTitle}" Text="Video"/>
+     <TextBlock Style="{StaticResource PageSubtitle}" Text="How screen recordings are encoded."/>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Text="Format" FontWeight="Bold" Margin="0,0,0,8"/>
+       <ComboBox x:Name="VideoFormatComboBox" AutomationProperties.Name="Video format" SelectionChanged="VideoFormatComboBox_SelectionChanged"><ComboBoxItem Content="MP4 · H.264, any frame rate" Tag="{x:Static core:VideoFormat.Mp4}"/><ComboBoxItem Content="AVI · Motion JPEG at 10 fps (legacy)" Tag="{x:Static core:VideoFormat.Avi}"/></ComboBox>
+       <StackPanel x:Name="Mp4OptionsPanel">
+        <TextBlock Text="Frame rate" FontWeight="Bold" Margin="0,18,0,8"/>
+        <ComboBox x:Name="FrameRateComboBox" AutomationProperties.Name="Frame rate"/>
+        <Grid Margin="0,18,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Quality" FontWeight="Bold"/><TextBlock x:Name="VideoQualityLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
+        <Slider x:Name="VideoQualitySlider" AutomationProperties.Name="Video quality" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Margin="0,8,0,0" ValueChanged="VideoQualitySlider_ValueChanged"/>
+        <TextBlock Style="{StaticResource Hint}" Text="Higher is sharper and larger; 75 suits screen recordings" Margin="0,6,0,0"/>
+        <Border Style="{StaticResource Divider}"/>
+        <CheckBox x:Name="HardwareEncoderCheckbox" AutomationProperties.Name="Use hardware encoder"><StackPanel><TextBlock Text="Use hardware encoder" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="NVIDIA, Intel or AMD when available; software otherwise"/></StackPanel></CheckBox>
+        <Border Style="{StaticResource Divider}"/>
+        <CheckBox x:Name="CursorCheckbox" AutomationProperties.Name="Show the mouse cursor"><StackPanel><TextBlock Text="Show the mouse cursor" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Draw the pointer into the recording"/></StackPanel></CheckBox>
+       </StackPanel>
+      </StackPanel>
+     </Border>
+    </StackPanel>
+
+    <!-- General -->
+    <StackPanel x:Name="PageGeneral" Visibility="Collapsed">
+     <TextBlock Style="{StaticResource PageTitle}" Text="General"/>
+     <TextBlock Style="{StaticResource PageSubtitle}" Text="How Vibershot starts and where its settings live."/>
+     <Border Style="{StaticResource Group}">
+      <CheckBox x:Name="StartupSwitch" AutomationProperties.Name="Start with Windows">
+       <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Start with Windows"/><TextBlock Style="{StaticResource CardHint}" Text="Launch into the tray when you sign in"/></StackPanel>
+      </CheckBox>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Region tool" Margin="0,0,0,10"/>
+       <CheckBox x:Name="AskActionsCheckbox" Style="{StaticResource TickCheckBox}" Content="Ask what to capture after selecting" AutomationProperties.Name="Ask what to capture after selecting" Checked="AskActions_Changed" Unchecked="AskActions_Changed"/>
+       <TextBlock Style="{StaticResource CardHint}" Text="Screenshot, video or scrolling photo. The same choice as the Print Screen option under Hotkeys." Margin="28,3,0,0"/>
+      </StackPanel>
+     </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="Settings file" Margin="0,0,0,8"/>
+       <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock x:Name="ConfigPathText" FontFamily="{StaticResource MonoFont}" FontSize="12" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        <Button Grid.Column="1" Style="{StaticResource LinkButton}" Content="Open folder" AutomationProperties.Name="Open the settings folder" Margin="12,0,0,0" Click="OpenConfigFolder_Click"/>
+       </Grid>
+      </StackPanel>
+     </Border>
+    </StackPanel>
+   </Grid>
+  </ScrollViewer>
+
+  <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+   <Button Content="Cancel" IsCancel="True" Width="94" AutomationProperties.Name="Cancel" Click="CancelButton_Click"/>
+   <Button Content="Save settings" IsDefault="True" Style="{StaticResource PrimaryButton}" AutomationProperties.Name="Save settings" Margin="10,0,0,0" Click="SaveButton_Click"/>
+  </StackPanel>
  </Grid>
 </Window>

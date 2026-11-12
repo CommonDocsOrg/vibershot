@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows.Automation;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -19,22 +20,30 @@ public partial class EditorWindow : Window
     private enum Tool { Select, Marquee, Crop, Arrow, Shape, Text, Image }
     private enum ShapeKind { Rect, Ellipse, Line }
     private enum Handle { None, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left, Rotate, LineTail, LineHead }
-    private enum DragKind { None, Pan, Move, Resize, Rotate, LineEnd, Marquee, PixelSelect, CropDraw, CropResize, CropMove, Create }
+    private enum DragKind { None, Pan, Move, Resize, Rotate, LineEnd, Marquee, PixelSelect, PixelMove, CropDraw, CropResize, CropMove, Create }
 
     private const string ProjectFilter = "Vibershot project|*.vibeshot";
-    private const string ImageFilter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|All files|*.*";
+    private const string ImageExtensions = "*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp;*.tif;*.tiff";
+    private const string ImageFilter = "Images|" + ImageExtensions + "|All files|*.*";
+    private const string OpenFilter = "All supported|*.vibeshot;" + ImageExtensions + "|Vibershot project|*.vibeshot|Images|" + ImageExtensions + "|All files|*.*";
     private const double HandleRadius = 8, RotateHandleDistance = 26;
 
     /// <summary>One store for every editor window so items copied between windows keep their pixels.</summary>
     private static readonly AssetStore SharedAssets = new();
-    private static readonly string ProjectsFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Vibershot", "Projects");
 
     private readonly AppConfig _config;
     private readonly AssetStore _assets = SharedAssets;
     private readonly History<ImageDocument> _history;
     private readonly HashSet<Guid> _selection = new();
     private Guid? _primary;
+    private Guid? _activeLayer;
+    private Guid? _liftedId;
+    private string? _layersSignature;
     private string? _projectPath;
+    /// <summary>The flat image file this document was opened from, when it has no project yet; names the window and seeds the export path.</summary>
+    private string? _sourceImagePath;
+    /// <summary>True once a flat export was written from this window; drives the flatten reminder on close.</summary>
+    private bool _exportedThisSession;
     private Tool _tool = Tool.Select;
     private ShapeKind _shape = ShapeKind.Rect;
     private Rect? _pixelSelection, _cropDraft, _marquee;
@@ -63,9 +72,18 @@ public partial class EditorWindow : Window
     private double _strokeWidth;
 
     private ImageDocument Doc => _history.Current;
-    private string DocumentName => _projectPath != null ? Path.GetFileNameWithoutExtension(_projectPath) : "Untitled";
+    private string DocumentName => _projectPath != null ? Path.GetFileNameWithoutExtension(_projectPath) : _sourceImagePath != null ? Path.GetFileName(_sourceImagePath) : "Untitled";
+    /// <summary>File-name stem offered by the export and save dialogs.</summary>
+    private string ExportStem => _projectPath != null || _sourceImagePath != null ? Path.GetFileNameWithoutExtension(_projectPath ?? _sourceImagePath!) : $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}";
 
-    public EditorWindow(AppConfig config, BitmapSource? image) : this(config, image != null ? DocumentOps.FromImage(image, SharedAssets) : DocumentOps.Blank(new Size(1280, 720), Colors.White), null) { }
+    public EditorWindow(AppConfig config, BitmapSource? image) : this(config, image != null ? DocumentOps.FromImage(image, SharedAssets, CanvasColor(config)) : DocumentOps.Blank(new Size(1280, 720), CanvasColor(config)), null) { }
+
+    /// <summary>The configured canvas colour for new documents (Settings → Editor).</summary>
+    private static Color CanvasColor(AppConfig config)
+    {
+        uint argb = config.Editor.CanvasBackgroundArgb();
+        return Color.FromArgb((byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
+    }
 
     private EditorWindow(AppConfig config, ImageDocument document, string? projectPath)
     {
@@ -86,8 +104,15 @@ public partial class EditorWindow : Window
         FillStrip.ValueChanged += c => { _fill = c; ApplyToSelection(i => i is RectItem or EllipseItem ? i with { Fill = c } : i); };
         TextColorStrip.ValueChanged += c => { if (c is { } color) ApplyText(t => t with { Color = color }); };
         TextBackgroundStrip.ValueChanged += c => ApplyText(t => t with { Background = c });
-        foreach (var slider in new[] { StrokeWidthSlider, CornerSlider, HeadSlider, OpacitySlider, PaddingSlider })
+        CanvasStrip.ValueChanged += c =>
+        {
+            Push(DocumentOps.SetBackground(Doc, c ?? Colors.Transparent));
+            Status(c == null ? "Canvas is transparent; exports keep the alpha channel." : "Canvas colour changed.");
+        };
+        foreach (var slider in new[] { StrokeWidthSlider, CornerSlider, HeadSlider, OpacitySlider, PaddingSlider, LayerOpacitySlider })
             slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => _history.BreakCoalescing()));
+        int initialLayer = DocumentOps.ActiveLayerIndex(document);
+        _activeLayer = initialLayer >= 0 && initialLayer < document.Layers.Count ? document.Layers[initialLayer].Id : null;
 
         PreviewKeyDown += Window_PreviewKeyDown;
         PreviewKeyUp += Window_PreviewKeyUp;
@@ -98,6 +123,7 @@ public partial class EditorWindow : Window
         SetTool(Tool.Select);
         UpdateChrome();
         UpdatePanel();
+        UpdateLayersPanel();
         Loaded += (_, _) => { Surface.Fit(Doc.ContentRect, maxZoom: 1); Surface.Focus(); };
         Status($"{Doc.Size.Width:0} × {Doc.Size.Height:0} px • Pick a tool on the left, or paste an image.");
     }
@@ -110,6 +136,17 @@ public partial class EditorWindow : Window
         return new EditorWindow(config, document, path);
     }
 
+    /// <summary>Opens a flat image file (PNG, JPEG, WebP, GIF, BMP, TIFF) as a new document that remembers where it came from.</summary>
+    public static EditorWindow OpenImage(AppConfig config, string path)
+    {
+        var image = Vibershot.Gallery.ThumbnailCache.LoadImage(path, 0) ?? throw new InvalidOperationException("The file is not a readable image.");
+        var window = new EditorWindow(config, image) { _sourceImagePath = path };
+        window.UpdateChrome();
+        return window;
+    }
+
+    private static bool IsProjectFile(string path) => string.Equals(Path.GetExtension(path), ProjectFile.Extension, StringComparison.OrdinalIgnoreCase);
+
     private static Color? TryParseColor(string text)
     {
         try { return DocumentJson.ParseColor(text); }
@@ -121,11 +158,19 @@ public partial class EditorWindow : Window
     private void OnHistoryChanged()
     {
         Surface.SetDocument(Doc, _assets);
-        var existing = Doc.AllItems.Select(i => i.Id).ToHashSet();
-        _selection.RemoveWhere(id => !existing.Contains(id));
-        if (_primary is Guid p && !existing.Contains(p)) _primary = _selection.FirstOrDefault();
+        // Items on hidden or locked layers cannot be hit, so they leave the selection too.
+        var selectable = Doc.Layers.Where(PixelOps.Editable).SelectMany(l => l.Items).Select(i => i.Id).ToHashSet();
+        _selection.RemoveWhere(id => !selectable.Contains(id));
+        if (_primary is Guid p && !selectable.Contains(p)) _primary = _selection.FirstOrDefault();
+        if (_activeLayer is Guid active && Doc.Layers.All(l => l.Id != active)) _activeLayer = null;
+        if (_activeLayer == null)
+        {
+            int fallback = DocumentOps.ActiveLayerIndex(Doc);
+            if (fallback >= 0 && fallback < Doc.Layers.Count) _activeLayer = Doc.Layers[fallback].Id;
+        }
         UpdateChrome();
         UpdatePanel();
+        UpdateLayersPanel();
         Surface.InvalidateOverlay();
     }
 
@@ -133,6 +178,22 @@ public partial class EditorWindow : Window
     private Item? Find(Guid id) => DocumentOps.FindItem(Doc, id);
     private List<Item> SelectedItems() => Doc.AllItems.Where(i => _selection.Contains(i.Id)).ToList();
     private IEnumerable<Guid> SelectedUnlocked() => _selection.Where(id => !Surface.IsLocked(id));
+
+    private Layer? ActiveLayer => _activeLayer is Guid id ? Doc.Layers.FirstOrDefault(l => l.Id == id) : null;
+
+    /// <summary>Where new items go: the active layer when it is visible and unlocked, else the top-most usable one.</summary>
+    private int ActiveLayerIndex()
+    {
+        if (ActiveLayer is Layer layer && PixelOps.Editable(layer)) return DocumentOps.LayerIndexOf(Doc, layer);
+        return DocumentOps.ActiveLayerIndex(Doc);
+    }
+
+    private ImageDocument AddToActiveLayer(ImageDocument doc, IEnumerable<Item> items)
+    {
+        int index = ActiveLayerIndex();
+        if (ActiveLayer is Layer layer && !PixelOps.Editable(layer)) Status($"\"{layer.Name}\" is {(layer.Visible ? "locked" : "hidden")}; the item went on \"{doc.Layers[Math.Clamp(index, 0, doc.Layers.Count - 1)].Name}\" instead.");
+        return DocumentOps.AddItems(doc, items, index);
+    }
 
     private void Select(Guid id, bool add = false)
     {
@@ -159,6 +220,9 @@ public partial class EditorWindow : Window
 
     private void SelectionChanged()
     {
+        // Picking an item makes its layer the active one, so the next item lands beside it.
+        if (_primary is Guid primary && DocumentOps.LayerIndexOf(Doc, primary) is int index && index >= 0) _activeLayer = Doc.Layers[index].Id;
+        UpdateLayersPanel();
         UpdatePanel();
         Surface.InvalidateOverlay();
     }
@@ -171,8 +235,9 @@ public partial class EditorWindow : Window
         var content = Doc.ContentRect;
         DocInfoLabel.Text = Doc.CropRect != null
             ? $"{Doc.Size.Width:0} × {Doc.Size.Height:0} px · cropped to {content.Width:0} × {content.Height:0}"
-            : $"{Doc.Size.Width:0} × {Doc.Size.Height:0} px · {Doc.AllItems.Count()} items";
+            : $"{Doc.Size.Width:0} × {Doc.Size.Height:0} px · {Doc.AllItems.Count()} items · {Doc.Layers.Count} layer{(Doc.Layers.Count == 1 ? "" : "s")}";
         DocSizeLabel.Text = Doc.CropRect != null ? $"{content.Width:0} × {content.Height:0} of {Doc.Size.Width:0} × {Doc.Size.Height:0}" : $"{Doc.Size.Width:0} × {Doc.Size.Height:0}";
+        CanvasStrip.Value = Doc.Background.A == 0 ? null : Doc.Background;
         UndoButton.IsEnabled = _history.CanUndo;
         RedoButton.IsEnabled = _history.CanRedo;
         ResetCropButton.IsEnabled = Doc.CropRect != null;
@@ -183,7 +248,7 @@ public partial class EditorWindow : Window
     private void Status(string message)
     {
         StatusLabel.Text = message;
-        string key = message.StartsWith("Saved", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Copied", StringComparison.OrdinalIgnoreCase) ? "Ok"
+        string key = message.StartsWith("Saved", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Exported", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Copied", StringComparison.OrdinalIgnoreCase) ? "Ok"
             : message.Contains("failed", StringComparison.OrdinalIgnoreCase) || message.Contains("Could not", StringComparison.OrdinalIgnoreCase) ? "Danger" : "Ink3";
         StatusDot.Fill = (Brush)FindResource(key);
     }
@@ -209,7 +274,7 @@ public partial class EditorWindow : Window
         Status(tool switch
         {
             Tool.Select => "Click to select, drag to move. Shift-click adds. Double-click text to edit.",
-            Tool.Marquee => "Drag over the picture, then Ctrl+C copies those pixels.",
+            Tool.Marquee => "Drag to select pixels. Drag inside the box or press V to move them; Ctrl+C copies, Ctrl+X cuts, Delete clears.",
             Tool.Crop => "Drag the area to keep. Enter crops, Esc cancels; Reset crop restores everything.",
             Tool.Arrow => "Drag from the tail to the head. Shift snaps to 45°.",
             Tool.Shape => $"Drag to draw a {_shape.ToString().ToLowerInvariant()}. Press S again to switch shape.",
@@ -280,7 +345,7 @@ public partial class EditorWindow : Window
                 case Key.V: Paste(); break;
                 case Key.D: Duplicate(); break;
                 case Key.S: SaveProject(saveAs: shift); break;
-                case Key.O: OpenProjectDialog(); break;
+                case Key.O: OpenDialog(); break;
                 case Key.E: Export(); break;
                 case Key.D0 or Key.NumPad0: Surface.Fit(Doc.ContentRect); break;
                 case Key.D1 or Key.NumPad1: Surface.Center(Doc.ContentRect, 1); break;
@@ -296,7 +361,7 @@ public partial class EditorWindow : Window
         double step = shift ? 10 : 1;
         switch (key)
         {
-            case Key.V: SetTool(Tool.Select); break;
+            case Key.V: if (_pixelSelection != null) LiftSelection(); else SetTool(Tool.Select); break;
             case Key.M: SetTool(Tool.Marquee); break;
             case Key.C: SetTool(Tool.Crop); break;
             case Key.A: SetTool(Tool.Arrow); break;
@@ -352,6 +417,7 @@ public partial class EditorWindow : Window
     private void DeleteSelection()
     {
         CommitTextEdit();
+        if (_pixelSelection is Rect pixels) { ErasePixels(pixels, "Cleared"); return; }
         var ids = SelectedUnlocked().ToList();
         if (ids.Count == 0) return;
         Push(DocumentOps.RemoveItems(Doc, ids));
@@ -445,6 +511,12 @@ public partial class EditorWindow : Window
                 break;
             }
             case Tool.Marquee:
+                if (_pixelSelection is Rect pixels && pixels.Contains(doc))
+                {
+                    StartDrag(DragKind.PixelMove, screen, doc);
+                    _liftedId = null;
+                    break;
+                }
                 _pixelSelection = null;
                 StartDrag(DragKind.PixelSelect, screen, doc);
                 break;
@@ -523,6 +595,30 @@ public partial class EditorWindow : Window
                 _pixelSelection = Snap(Rect.Intersect(new Rect(_dragStartDoc, doc), canvas));
                 Surface.InvalidateOverlay();
                 break;
+            case DragKind.PixelMove:
+            {
+                // First movement lifts the pixels into a floating image item; the rest of the drag moves it.
+                if (_liftedId == null)
+                {
+                    if (_pixelSelection is not Rect region) { EndDrag(doc); break; }
+                    var result = PixelOps.Lift(_dragBase, _assets, region);
+                    if (result.Lifted is not ImageItem lifted)
+                    {
+                        EndDrag(doc);
+                        Status("No picture pixels under the selection to move. Rotated images cannot be cut up.");
+                        break;
+                    }
+                    _dragBase = result.Document;
+                    _liftedId = lifted.Id;
+                    _pixelSelection = null;
+                    Push(_dragBase, _dragKey);
+                    Select(lifted.Id);
+                }
+                if (shift) { if (Math.Abs(delta.X) > Math.Abs(delta.Y)) delta.Y = 0; else delta.X = 0; }
+                delta = new Vector(Math.Round(delta.X), Math.Round(delta.Y));
+                Push(DocumentOps.MoveItems(_dragBase, [_liftedId.Value], delta), _dragKey);
+                break;
+            }
             case DragKind.CropDraw:
                 _cropDraft = Snap(Rect.Intersect(new Rect(_dragStartDoc, shift ? SquareEnd(_dragStartDoc, doc) : doc), canvas));
                 UpdateChrome();
@@ -542,7 +638,7 @@ public partial class EditorWindow : Window
                 break;
             }
             case DragKind.Create:
-                Push(DocumentOps.AddItem(_dragBase, BuildItem(_dragStartDoc, doc, shift)), _dragKey);
+                Push(DocumentOps.AddItem(_dragBase, BuildItem(_dragStartDoc, doc, shift), ActiveLayerIndex()), _dragKey);
                 break;
         }
     }
@@ -589,8 +685,18 @@ public partial class EditorWindow : Window
             }
             case DragKind.PixelSelect:
                 if (_pixelSelection is { Width: < 1 } or { Height: < 1 }) _pixelSelection = null;
-                if (_pixelSelection is Rect px) Status($"{px.Width:0} × {px.Height:0} px selected • Ctrl+C copies them as an image.");
+                if (_pixelSelection is Rect px) Status($"{px.Width:0} × {px.Height:0} px selected • drag inside or press V to move, Ctrl+C copies, Ctrl+X cuts, Delete clears.");
                 Surface.InvalidateOverlay();
+                break;
+            case DragKind.PixelMove:
+                if (_liftedId is Guid liftedId && Find(liftedId) is Item floating)
+                {
+                    _history.BreakCoalescing();
+                    SetTool(Tool.Select);
+                    Select(liftedId);
+                    Status($"Moved {floating.Bounds.Width:0} × {floating.Bounds.Height:0} px as a floating image. Drag it further, resize it, or press Delete to drop it.");
+                }
+                _liftedId = null;
                 break;
             case DragKind.CropDraw:
                 if (_cropDraft is { Width: < 1 } or { Height: < 1 }) _cropDraft = null;
@@ -613,7 +719,7 @@ public partial class EditorWindow : Window
             if (_tool != Tool.Text) return;
             var text = NewText(new Rect(Math.Round(doc.X), Math.Round(doc.Y), 240, 10));
             text = text with { Bounds = new Rect(text.Bounds.X, text.Bounds.Y, 240, DocumentRenderer.MeasureText(text).Height) };
-            Push(DocumentOps.AddItem(_dragBase, text), _dragKey);
+            Push(AddToActiveLayer(_dragBase, [text]), _dragKey);
             Select(text.Id);
             BeginTextEdit(text.Id, _dragKey);
             return;
@@ -643,6 +749,10 @@ public partial class EditorWindow : Window
                 Handle.Rotate or Handle.LineTail or Handle.LineHead => Cursors.Hand,
                 _ => Surface.HitItem(screen) != null ? Cursors.SizeAll : Cursors.Arrow,
             };
+        }
+        else if (_tool == Tool.Marquee)
+        {
+            Surface.Cursor = _pixelSelection is Rect pixels && pixels.Contains(Surface.ToDoc(screen)) ? Cursors.SizeAll : Cursors.Cross;
         }
         else if (_tool == Tool.Crop && _cropDraft is Rect crop)
         {
@@ -807,7 +917,7 @@ public partial class EditorWindow : Window
         if (scale < 1) { w = Math.Max(1, Math.Round(w * scale)); h = Math.Max(1, Math.Round(h * scale)); }
         var centre = at ?? Surface.ViewCenter;
         var item = new ImageItem { AssetId = id, Bounds = new Rect(Math.Round(centre.X - w / 2), Math.Round(centre.Y - h / 2), w, h) };
-        Push(DocumentOps.AddItem(Doc, item), key);
+        Push(AddToActiveLayer(Doc, [item]), key);
         if (_tool != Tool.Select) SetTool(Tool.Select);
         Select(item.Id);
         Status($"Placed a {frozen.PixelWidth} × {frozen.PixelHeight} px image{(scale < 1 ? " scaled to fit" : "")}.");
@@ -822,20 +932,8 @@ public partial class EditorWindow : Window
         PlaceImage(bitmap, at);
     }
 
-    private static BitmapSource? LoadImageFile(string path)
-    {
-        try
-        {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(path);
-            bitmap.EndInit();
-            bitmap.Freeze();
-            return bitmap;
-        }
-        catch (Exception) { return null; }
-    }
+    /// <summary>Decodes any supported image file at full size (WPF codecs, plus Skia for WebP); null when unreadable.</summary>
+    private static BitmapSource? LoadImageFile(string path) => Vibershot.Gallery.ThumbnailCache.LoadImage(path, 0);
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
@@ -851,7 +949,7 @@ public partial class EditorWindow : Window
         int placed = 0;
         foreach (var file in files)
         {
-            if (string.Equals(Path.GetExtension(file), ProjectFile.Extension, StringComparison.OrdinalIgnoreCase)) { OpenProjectWindow(file); continue; }
+            if (IsProjectFile(file)) { OpenFileWindow(file); continue; }
             var bitmap = LoadImageFile(file);
             if (bitmap == null) { Status("Could not open " + Path.GetFileName(file)); continue; }
             PlaceImage(bitmap, point + new Vector(20, 20) * placed, key);
@@ -947,15 +1045,48 @@ public partial class EditorWindow : Window
 
     // ----- Clipboard -----
 
+    /// <summary>Marquee: turns the selected pixels into a floating image item that the Select tool can move.</summary>
+    private void LiftSelection()
+    {
+        if (_pixelSelection is not Rect region) return;
+        var result = PixelOps.Lift(Doc, _assets, region);
+        if (result.Lifted is not ImageItem lifted)
+        {
+            Status("No picture pixels under the selection to move. Rotated images cannot be cut up.");
+            return;
+        }
+        Push(result.Document);
+        _pixelSelection = null;
+        SetTool(Tool.Select);
+        Select(lifted.Id);
+        Status($"{region.Width:0} × {region.Height:0} px lifted into a floating image. Drag it, resize it, or press Delete to drop it.");
+    }
+
+    /// <summary>Marquee: clears the selected pixels from every image under them.</summary>
+    private void ErasePixels(Rect region, string verb)
+    {
+        var erased = PixelOps.Erase(Doc, _assets, region);
+        if (ReferenceEquals(erased, Doc))
+        {
+            Status("No picture pixels under the selection. Rotated images cannot be cut up.");
+            return;
+        }
+        Push(erased);
+        _pixelSelection = null;
+        Surface.InvalidateOverlay();
+        Status($"{verb} {region.Width:0} × {region.Height:0} px. Undo brings them back.");
+    }
+
     private void Copy(bool cut)
     {
         CommitTextEdit();
         try
         {
-            if (_tool == Tool.Marquee && _pixelSelection is Rect pixels)
+            if (_pixelSelection is Rect pixels)
             {
                 Clipboard.SetImage(DocumentRenderer.Flatten(Doc, _assets, pixels));
-                Status($"Copied {pixels.Width:0} × {pixels.Height:0} px to the clipboard.");
+                if (cut) ErasePixels(pixels, "Cut");
+                else Status($"Copied {pixels.Width:0} × {pixels.Height:0} px to the clipboard.");
                 return;
             }
             var items = SelectedItems();
@@ -984,7 +1115,7 @@ public partial class EditorWindow : Window
                 var clones = DocumentOps.Clone(items.Where(i => i is not ImageItem image || _assets.Contains(image.AssetId)), new Vector(10, 10));
                 if (clones.Count > 0)
                 {
-                    Push(DocumentOps.AddItems(Doc, clones));
+                    Push(AddToActiveLayer(Doc, clones));
                     _selection.Clear();
                     foreach (var clone in clones) _selection.Add(clone.Id);
                     _primary = clones[^1].Id;
@@ -1016,7 +1147,7 @@ public partial class EditorWindow : Window
                 var size = DocumentRenderer.MeasureText(item);
                 item = item with { Bounds = new Rect(Math.Round(centre.X - size.Width / 2), Math.Round(centre.Y - size.Height / 2), Math.Min(320, size.Width), size.Height) };
                 item = item with { Bounds = new Rect(item.Bounds.X, item.Bounds.Y, item.Bounds.Width, DocumentRenderer.MeasureText(item).Height) };
-                Push(DocumentOps.AddItem(Doc, item));
+                Push(AddToActiveLayer(Doc, [item]));
                 if (_tool != Tool.Select) SetTool(Tool.Select);
                 Select(item.Id);
                 Status("Pasted text as a text box.");
@@ -1032,7 +1163,7 @@ public partial class EditorWindow : Window
         var items = SelectedItems();
         if (items.Count == 0) return;
         var clones = DocumentOps.Clone(items, new Vector(10, 10));
-        Push(DocumentOps.AddItems(Doc, clones));
+        Push(AddToActiveLayer(Doc, clones));
         _selection.Clear();
         foreach (var clone in clones) _selection.Add(clone.Id);
         _primary = clones[^1].Id;
@@ -1088,6 +1219,9 @@ public partial class EditorWindow : Window
             DrawLabel(dc, $"{pixels.Width:0} × {pixels.Height:0}", new Point(screen.Right, screen.Bottom + 8));
         }
         if (_marquee is Rect marquee) dc.DrawRectangle(tint, new Pen(tangerine, 1) { DashStyle = DashStyles.Dash }, Surface.ToScreen(marquee));
+
+        // Like Photoshop's Move tool: the selection persists across tool switches, but its outline and handles only show while Select is active.
+        if (_tool != Tool.Select) return;
 
         var selected = SelectedItems();
         foreach (var item in selected)
@@ -1302,7 +1436,202 @@ public partial class EditorWindow : Window
     private void ContextMenu_Opened(object sender, RoutedEventArgs e)
     {
         bool any = _selection.Count > 0;
-        foreach (var item in new[] { CutMenu, CopyMenu, DuplicateMenu, DeleteMenu, FrontMenu, ForwardMenu, BackwardMenu, BackMenu }) item.IsEnabled = any;
+        bool pixels = _pixelSelection != null;
+        foreach (var item in new[] { DuplicateMenu, FrontMenu, ForwardMenu, BackwardMenu, BackMenu }) item.IsEnabled = any;
+        CutMenu.IsEnabled = CopyMenu.IsEnabled = DeleteMenu.IsEnabled = any || pixels;
+    }
+
+    // ----- Layers panel -----
+
+    private void MoveSelectionToLayer(int index)
+    {
+        var ids = SelectedUnlocked().ToList();
+        if (ids.Count == 0 || index < 0 || index >= Doc.Layers.Count) return;
+        _activeLayer = Doc.Layers[index].Id;
+        Push(DocumentOps.MoveItemsToLayer(Doc, ids, index));
+        Status($"Moved {ids.Count} item{(ids.Count == 1 ? "" : "s")} to \"{Doc.Layers[index].Name}\".");
+    }
+
+    private void UpdateLayersPanel()
+    {
+        // Drags push a snapshot per mouse move; only rebuild the rows when something they show has changed.
+        var signature = string.Join("|", Doc.Layers.Select(l => $"{l.Id:N}:{l.Name}:{l.Visible}:{l.Locked}:{l.Items.Count}")) + $"#{_activeLayer:N}#{_selection.Count > 0}";
+        if (signature != _layersSignature)
+        {
+            _layersSignature = signature;
+            LayersList.Children.Clear();
+            for (int i = Doc.Layers.Count - 1; i >= 0; i--) LayersList.Children.Add(BuildLayerRow(Doc.Layers[i], i));
+        }
+        var active = ActiveLayer;
+        int index = active != null ? DocumentOps.LayerIndexOf(Doc, active) : -1;
+        DeleteLayerButton.IsEnabled = index >= 0 && Doc.Layers.Count > 1;
+        LayerUpButton.IsEnabled = index >= 0 && index < Doc.Layers.Count - 1;
+        LayerDownButton.IsEnabled = index > 0;
+        _syncingPanel = true;
+        try
+        {
+            LayerOpacitySlider.IsEnabled = active != null;
+            LayerOpacitySlider.Value = active != null ? Math.Round(Math.Clamp(active.Opacity, 0, 1) * 100) : 100;
+            LayerOpacityValue.Text = $"{LayerOpacitySlider.Value:0}%";
+        }
+        finally { _syncingPanel = false; }
+    }
+
+    private UIElement BuildLayerRow(Layer layer, int index)
+    {
+        bool active = layer.Id == _activeLayer;
+        var row = new Border
+        {
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(4, 2, 8, 2), Margin = new Thickness(0, 0, 0, 2), Cursor = Cursors.Hand,
+            Background = active ? (Brush)FindResource("TangerineSoft") : Brushes.Transparent,
+        };
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var eye = LayerGlyphButton(layer.Visible ? "" : "", layer.Visible ? "Hide layer" : "Show layer", layer.Visible ? 1 : 0.45);
+        eye.Click += (_, e) => { e.Handled = true; Push(DocumentOps.SetLayer(Doc, index, layer with { Visible = !layer.Visible })); };
+        var padlock = LayerGlyphButton(layer.Locked ? "" : "", layer.Locked ? "Unlock layer" : "Lock layer", layer.Locked ? 1 : 0.3);
+        padlock.Click += (_, e) => { e.Handled = true; Push(DocumentOps.SetLayer(Doc, index, layer with { Locked = !layer.Locked })); };
+        Grid.SetColumn(padlock, 1);
+
+        var name = new TextBlock
+        {
+            Text = layer.Name, FontSize = 12.5, FontWeight = active ? FontWeights.Bold : FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)FindResource(layer.Visible ? "Ink" : "Ink3"), TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(4, 0, 6, 0),
+        };
+        Grid.SetColumn(name, 2);
+        var count = new TextBlock
+        {
+            Text = layer.Items.Count.ToString(), FontFamily = (FontFamily)FindResource("MonoFont"), FontSize = 10.5, Foreground = (Brush)FindResource("Ink3"), VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = $"{layer.Items.Count} item{(layer.Items.Count == 1 ? "" : "s")}",
+        };
+        Grid.SetColumn(count, 3);
+        grid.Children.Add(eye);
+        grid.Children.Add(padlock);
+        grid.Children.Add(name);
+        grid.Children.Add(count);
+        row.Child = grid;
+
+        row.MouseEnter += (_, _) => { if (layer.Id != _activeLayer) row.Background = (Brush)FindResource("Hover"); };
+        row.MouseLeave += (_, _) => { if (layer.Id != _activeLayer) row.Background = Brushes.Transparent; };
+        row.MouseLeftButtonDown += (_, e) =>
+        {
+            CommitTextEdit();
+            if (e.ClickCount == 2) { BeginLayerRename(layer, index, grid, name); e.Handled = true; return; }
+            SetActiveLayer(layer);
+        };
+        row.MouseRightButtonDown += (_, _) => SetActiveLayer(layer);
+
+        var menu = new ContextMenu();
+        var rename = new MenuItem { Header = "Rename", InputGestureText = "Double-click" };
+        rename.Click += (_, _) => BeginLayerRename(layer, index, grid, name);
+        var moveHere = new MenuItem { Header = "Move selection here", IsEnabled = _selection.Count > 0 && PixelOps.Editable(layer) };
+        moveHere.Click += (_, _) => MoveSelectionToLayer(index);
+        var merge = new MenuItem { Header = "Merge down", IsEnabled = index > 0 };
+        merge.Click += (_, _) => { _activeLayer = Doc.Layers[index - 1].Id; Push(DocumentOps.MergeLayerDown(Doc, index)); };
+        var delete = new MenuItem { Header = "Delete layer", IsEnabled = Doc.Layers.Count > 1 };
+        delete.Click += (_, _) => DeleteLayer(index);
+        menu.Items.Add(rename);
+        menu.Items.Add(moveHere);
+        menu.Items.Add(merge);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(delete);
+        row.ContextMenu = menu;
+        return row;
+    }
+
+    private Button LayerGlyphButton(string glyph, string tip, double opacity)
+    {
+        var button = new Button { Style = (Style)FindResource("IconButton"), Width = 24, Height = 24, FontSize = 12, Content = glyph, ToolTip = tip, Opacity = opacity };
+        AutomationProperties.SetName(button, tip);
+        return button;
+    }
+
+    private void SetActiveLayer(Layer layer)
+    {
+        if (_activeLayer == layer.Id) return;
+        _activeLayer = layer.Id;
+        UpdateLayersPanel();
+        Surface.Focus();
+    }
+
+    private void BeginLayerRename(Layer layer, int index, Grid grid, TextBlock name)
+    {
+        if (grid.Children.OfType<TextBox>().Any()) return;
+        var box = new TextBox { Text = layer.Name, FontSize = 12.5, Padding = new Thickness(6, 3, 6, 3), Margin = new Thickness(2, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(box, 2);
+        bool done = false;
+        void Finish(bool commit)
+        {
+            if (done) return;
+            done = true;
+            var text = box.Text.Trim();
+            if (grid.Children.Contains(box)) { grid.Children.Remove(box); name.Visibility = Visibility.Visible; }
+            if (commit && text.Length > 0 && text != layer.Name && index < Doc.Layers.Count && Doc.Layers[index].Id == layer.Id)
+                Push(DocumentOps.SetLayer(Doc, index, Doc.Layers[index] with { Name = text }));
+            else UpdateLayersPanel();
+        }
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) { Finish(true); Surface.Focus(); e.Handled = true; }
+            else if (e.Key == Key.Escape) { Finish(false); Surface.Focus(); e.Handled = true; }
+        };
+        box.LostKeyboardFocus += (_, _) => Finish(true);
+        name.Visibility = Visibility.Collapsed;
+        grid.Children.Add(box);
+        box.Focus();
+        box.SelectAll();
+    }
+
+    private void AddLayer_Click(object sender, RoutedEventArgs e)
+    {
+        var active = ActiveLayer;
+        int above = (active != null ? DocumentOps.LayerIndexOf(Doc, active) : Doc.Layers.Count - 1) + 1;
+        var names = Doc.Layers.Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int n = Doc.Layers.Count + 1;
+        while (names.Contains($"Layer {n}")) n++;
+        var layer = new Layer { Name = $"Layer {n}" };
+        _activeLayer = layer.Id;
+        Push(DocumentOps.InsertLayer(Doc, above, layer));
+        Status($"Added \"{layer.Name}\". New items now go there.");
+        Surface.Focus();
+    }
+
+    private void DeleteLayer_Click(object sender, RoutedEventArgs e)
+    {
+        if (ActiveLayer is Layer active) DeleteLayer(DocumentOps.LayerIndexOf(Doc, active));
+    }
+
+    private void DeleteLayer(int index)
+    {
+        if (Doc.Layers.Count <= 1 || index < 0 || index >= Doc.Layers.Count) return;
+        var removed = Doc.Layers[index];
+        _activeLayer = Doc.Layers[index > 0 ? index - 1 : 1].Id;
+        Push(DocumentOps.RemoveLayer(Doc, index));
+        Status(removed.Items.Count > 0 ? $"Deleted \"{removed.Name}\" and its {removed.Items.Count} item{(removed.Items.Count == 1 ? "" : "s")}. Undo brings it back." : $"Deleted \"{removed.Name}\".");
+        Surface.Focus();
+    }
+
+    private void LayerUp_Click(object sender, RoutedEventArgs e) => ShiftActiveLayer(1);
+    private void LayerDown_Click(object sender, RoutedEventArgs e) => ShiftActiveLayer(-1);
+
+    private void ShiftActiveLayer(int delta)
+    {
+        if (ActiveLayer is not Layer active) return;
+        Push(DocumentOps.MoveLayer(Doc, DocumentOps.LayerIndexOf(Doc, active), delta));
+        Surface.Focus();
+    }
+
+    private void LayerOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingPanel || ActiveLayer is not Layer active) return;
+        double opacity = Math.Round(e.NewValue) / 100;
+        LayerOpacityValue.Text = $"{opacity * 100:0}%";
+        if (Math.Abs(active.Opacity - opacity) < 0.001) return;
+        Push(DocumentOps.SetLayer(Doc, DocumentOps.LayerIndexOf(Doc, active), active with { Opacity = opacity }), "panel:layer-opacity");
     }
 
     private void CopyImage_Click(object sender, RoutedEventArgs e)
@@ -1319,27 +1648,41 @@ public partial class EditorWindow : Window
 
     private void Export_Click(object sender, RoutedEventArgs e) => Export();
 
+    /// <summary>Flattens the document and runs the export dialog; a flat file is not editable, so the notice bar follows when no saved project holds the edits.</summary>
     private void Export()
     {
         CommitTextEdit();
-        var dialog = new SaveFileDialog
-        {
-            Filter = ScreenshotSaveDialog.Filter, FilterIndex = ScreenshotSaveDialog.FilterIndexFor(_config.Format),
-            InitialDirectory = Directory.Exists(_config.OutputFolder) ? _config.OutputFolder : "",
-            FileName = _projectPath != null ? DocumentName : $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}", AddExtension = true,
-        };
-        if (dialog.ShowDialog(this) != true) return;
-        try
-        {
-            var flat = DocumentRenderer.Flatten(Doc, _assets);
-            using var stream = File.Create(dialog.FileName);
-            ImageEncoding.Encode(flat, ScreenshotSaveDialog.FormatFor(dialog.FilterIndex), _config.WebpQuality, stream);
-            Status("Saved: " + dialog.FileName);
-        }
-        catch (Exception ex) { Status("Export failed: " + ex.Message); }
+        BitmapSource flat;
+        try { flat = DocumentRenderer.Flatten(Doc, _assets); }
+        catch (Exception ex) { Status("Export failed: " + ex.Message); return; }
+        var folder = _sourceImagePath != null ? Path.GetDirectoryName(_sourceImagePath) : null;
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder)) folder = Directory.Exists(_config.OutputFolder) ? _config.OutputFolder : null;
+        var initial = ImageEncoding.IsFlat(_config.Format) ? _config.Format : ImageFormat.Png;
+        var dialog = new ExportImageWindow(flat, initial, _config.WebpQuality, ExportStem, folder) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.ExportedPath == null) return;
+        _exportedThisSession = true;
+        Status("Exported: " + dialog.ExportedPath);
+        if (_projectPath == null || _history.IsDirty) ShowFlattenNotice(ExportImageWindow.ShortName(dialog.Format));
+        else FlattenNotice.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowFlattenNotice(string formatName)
+    {
+        FlattenNoticeText.Text = $"Exported as {formatName}. The export is flattened: text, shapes and layers in it can no longer be edited. Save a Vibershot project to keep them editable.";
+        FlattenNotice.Visibility = Visibility.Visible;
+    }
+
+    private void DismissNotice_Click(object sender, RoutedEventArgs e) { FlattenNotice.Visibility = Visibility.Collapsed; Surface.Focus(); }
+
+    private void File_Click(object sender, RoutedEventArgs e)
+    {
+        if (FileButton.ContextMenu is not ContextMenu menu) return;
+        menu.PlacementTarget = FileButton;
+        menu.IsOpen = true;
     }
 
     private void SaveProject_Click(object sender, RoutedEventArgs e) => SaveProject(saveAs: false);
+    private void SaveProjectAs_Click(object sender, RoutedEventArgs e) => SaveProject(saveAs: true);
 
     private bool SaveProject(bool saveAs)
     {
@@ -1347,12 +1690,13 @@ public partial class EditorWindow : Window
         var path = _projectPath;
         if (saveAs || path == null)
         {
-            try { Directory.CreateDirectory(ProjectsFolder); } catch (Exception) { }
+            var projects = _config.Gallery.ProjectsFolder;
+            try { Directory.CreateDirectory(projects); } catch (Exception) { }
             var dialog = new SaveFileDialog
             {
                 Filter = ProjectFilter, DefaultExt = ProjectFile.Extension, AddExtension = true,
-                FileName = _projectPath != null ? DocumentName : $"capture_{DateTime.Now:yyyyMMdd_HHmmss}",
-                InitialDirectory = _projectPath != null ? Path.GetDirectoryName(_projectPath) : ProjectsFolder,
+                FileName = _projectPath != null || _sourceImagePath != null ? ExportStem : $"capture_{DateTime.Now:yyyyMMdd_HHmmss}",
+                InitialDirectory = _projectPath != null ? Path.GetDirectoryName(_projectPath) : projects,
             };
             if (dialog.ShowDialog(this) != true) return false;
             path = dialog.FileName;
@@ -1362,6 +1706,7 @@ public partial class EditorWindow : Window
             ProjectFile.Save(path, Doc, _assets);
             _projectPath = path;
             _history.MarkSaved();
+            FlattenNotice.Visibility = Visibility.Collapsed;
             UpdateChrome();
             Status("Saved: " + path);
             return true;
@@ -1373,27 +1718,32 @@ public partial class EditorWindow : Window
         }
     }
 
-    private void Open_Click(object sender, RoutedEventArgs e) => OpenProjectDialog();
+    private void Open_Click(object sender, RoutedEventArgs e) => OpenDialog();
 
-    private void OpenProjectDialog()
+    /// <summary>Open…: a project opens as a project window; any other image becomes a new document.</summary>
+    private void OpenDialog()
     {
-        var dialog = new OpenFileDialog { Filter = ProjectFilter, InitialDirectory = Directory.Exists(ProjectsFolder) ? ProjectsFolder : "" };
+        var projects = _config.Gallery.ProjectsFolder;
+        var dialog = new OpenFileDialog { Filter = OpenFilter, InitialDirectory = Directory.Exists(projects) ? projects : "" };
         if (dialog.ShowDialog(this) != true) return;
-        OpenProjectWindow(dialog.FileName);
+        OpenFileWindow(dialog.FileName);
     }
 
-    private void OpenProjectWindow(string path)
+    private void OpenFileWindow(string path)
     {
-        try { OpenProject(_config, path).Show(); }
-        catch (Exception ex) { Status("Could not open project: " + ex.Message); }
+        try { (IsProjectFile(path) ? OpenProject(_config, path) : OpenImage(_config, path)).Show(); }
+        catch (Exception ex) { Status($"Could not open {Path.GetFileName(path)}: {ex.Message}"); }
     }
 
     protected override void OnClosing(CancelEventArgs e)
     {
         CommitTextEdit();
-        if (_history.IsDirty)
+        // A flat export cannot be reopened for editing, so an exported document without a project is worth a prompt even when it has no edits.
+        bool flattenedOnly = _exportedThisSession && (_projectPath == null || _history.IsDirty);
+        if (_history.IsDirty || flattenedOnly)
         {
-            switch (SaveChangesDialog.Show(this, DocumentName))
+            var message = flattenedOnly ? $"Save changes to {DocumentName} as a Vibershot project? Your export is flattened; without a project the text, shapes and layers cannot be edited again." : null;
+            switch (SaveChangesDialog.Show(this, DocumentName, message))
             {
                 case SaveChangesDialog.Choice.Save:
                     if (!SaveProject(saveAs: false)) e.Cancel = true;

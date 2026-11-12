@@ -173,8 +173,9 @@ public sealed class ThumbnailCache : IDisposable
                 if (bitmap is null) { bitmap = TileDrawing.FilmTile(item.Name, LongestEdge); cache = false; }
                 break;
             default:
-                bitmap = TileDrawing.ProjectTile(item.Name, LongestEdge);
-                cache = false;
+                bitmap = LoadProjectPreview(item.Path, LongestEdge);
+                if (bitmap is not null) bitmap = OnWhite(bitmap);
+                else { bitmap = TileDrawing.ProjectTile(item.Name, LongestEdge); cache = false; }
                 break;
         }
         if (bitmap is null) return (null, size);
@@ -238,6 +239,41 @@ public sealed class ThumbnailCache : IDisposable
         image.EndInit();
         image.Freeze();
         return image;
+    }
+
+    /// <summary>
+    /// The flattened <c>preview.png</c> a <c>.vibeshot</c> project carries, scaled to the tile size.
+    /// Projects saved before previews existed return null and get the neutral tile.
+    /// </summary>
+    public static BitmapSource? LoadProjectPreview(string path, int longestEdge)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Read);
+            var entry = zip.GetEntry("preview.png");
+            if (entry is null) return null;
+            using var png = entry.Open();
+            using var buffer = new MemoryStream();
+            png.CopyTo(buffer);
+            buffer.Position = 0;
+            var header = BitmapDecoder.Create(buffer, BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.None).Frames[0];
+            int w = header.PixelWidth, h = header.PixelHeight;
+            buffer.Position = 0;
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            image.StreamSource = buffer;
+            if (longestEdge > 0 && (w > longestEdge || h > longestEdge))
+            {
+                if (w >= h) image.DecodePixelWidth = longestEdge; else image.DecodePixelHeight = longestEdge;
+            }
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch { return null; }
     }
 
     private static BitmapSource? LoadWebp(string path, int longestEdge)

@@ -17,7 +17,21 @@ public static class ImageEncoding
     {
         ImageFormat.Jpeg => "jpg",
         ImageFormat.Webp or ImageFormat.WebpLossless => "webp",
+        ImageFormat.Vibeshot => "vibeshot",
         _ => "png",
+    };
+
+    /// <summary>Formats this class can write; the project format is written by the editing library.</summary>
+    public static bool IsFlat(ImageFormat format) => format != ImageFormat.Vibeshot;
+
+    public static string Describe(ImageFormat format) => format switch
+    {
+        ImageFormat.Png => "PNG · lossless",
+        ImageFormat.Jpeg => "JPEG · smaller files",
+        ImageFormat.Webp => "WebP · custom quality",
+        ImageFormat.WebpLossless => "WebP lossless · exact pixels, smaller than PNG",
+        ImageFormat.Vibeshot => "Vibershot project · full quality, stays editable",
+        _ => format.ToString(),
     };
 
     public static int ClampWebpQuality(int quality) => Math.Clamp(quality, MinWebpQuality, MaxWebpQuality);
@@ -28,6 +42,8 @@ public static class ImageEncoding
     {
         switch (format)
         {
+            case ImageFormat.Vibeshot:
+                throw new NotSupportedException("Vibershot projects are written with ProjectFile, not the image encoder.");
             case ImageFormat.Webp:
                 EncodeWebp(image, stream, lossless: false, ClampWebpQuality(webpQuality));
                 break;

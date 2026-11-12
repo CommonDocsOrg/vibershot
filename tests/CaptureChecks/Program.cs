@@ -21,11 +21,13 @@ class Program {
   var path=Path.Combine(AppContext.BaseDirectory,"test.avi");File.Delete(path);using(var writer=new VideoWriter(path,120,100)){writer.AddFrame(first);using var recovery=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.ReadWrite);byte[] checkpoint=new byte[checked((int)recovery.Length)];recovery.ReadExactly(checkpoint);if(BitConverter.ToInt32(checkpoint,4)!=checkpoint.Length-8||BitConverter.ToInt32(checkpoint,48)!=1)throw new Exception("Invalid recovery checkpoint");writer.AddFrame(next);}
   byte[] avi=File.ReadAllBytes(path);if(Encoding.ASCII.GetString(avi,0,4)!="RIFF"||BitConverter.ToInt32(avi,4)!=avi.Length-8||BitConverter.ToInt32(avi,48)!=2)throw new Exception("Invalid AVI header");
   int pos=12;while(pos<avi.Length){string id=Encoding.ASCII.GetString(avi,pos,4);int size=BitConverter.ToInt32(avi,pos+4);if(size<0||pos+8+size>avi.Length)throw new Exception("Invalid AVI chunk");pos+=8+size+(size&1);}if(pos!=avi.Length)throw new Exception("Bad AVI size");
-  var config=JsonSerializer.Deserialize<AppConfig>("{\"Autosave\":true}");if(!config.ShowCaptureActions||config.ShowSaveDialog)throw new Exception("Legacy config defaults");
-  if(config.PrintScreen!=PrintScreenAction.Off)throw new Exception("Print Screen should be off by default");
-  var ps=JsonSerializer.Deserialize<AppConfig>("{\"PrintScreen\":\"FullDesktop\"}");if(ps.PrintScreen!=PrintScreenAction.FullDesktop)throw new Exception("Print Screen setting not read");
+  var config=AppConfig.FromJson("{\"Autosave\":true}")!;if(!config.ShowCaptureActions||config.AfterCapture.AskWhereToSave||!config.AfterCapture.SaveAsFile)throw new Exception("Legacy config defaults");
+  if(new AppConfig().PrintScreen!=PrintScreenAction.CaptureTool||new AppConfig().SetupCompleted)throw new Exception("Fresh install: Print Screen opens the region tool and setup is pending");
+  if(!config.SetupCompleted)throw new Exception("An existing config counts as set up");
+  var ps=JsonSerializer.Deserialize<AppConfig>("{\"PrintScreen\":\"FullDesktop\"}")!;if(ps.PrintScreen!=PrintScreenAction.FullDesktop)throw new Exception("Print Screen setting not read");
   if(config.WebpQuality!=80)throw new Exception("WebP quality default");
-  var legacyWebp=JsonSerializer.Deserialize<AppConfig>("{\"Format\":2}");if(legacyWebp.Format!=ImageFormat.Webp)throw new Exception("Legacy WebP enum value changed");
+  var legacyWebp=AppConfig.FromJson("{\"Format\":2,\"WebpQuality\":55}")!;if(legacyWebp.Format!=ImageFormat.Webp||legacyWebp.AfterCapture.Format!=ImageFormat.Webp||legacyWebp.WebpQuality!=55)throw new Exception("Legacy WebP enum value changed");
+  SettingsChecks.Run();
   foreach(var (fmt,lossless) in new[]{(ImageFormat.Webp,false),(ImageFormat.WebpLossless,true)}){
    var ms=new MemoryStream();ImageEncoding.Encode(first,fmt,60,ms);byte[] webp=ms.ToArray();
    if(webp.Length<12||Encoding.ASCII.GetString(webp,0,4)!="RIFF"||Encoding.ASCII.GetString(webp,8,4)!="WEBP")throw new Exception("Invalid WebP header for "+fmt);
@@ -112,12 +114,14 @@ class Program {
  }
  static void GalleryChecks(BitmapSource image) {
   // Legacy config without a Gallery section loads with defaults; a saved section round-trips.
-  var legacy=JsonSerializer.Deserialize<AppConfig>("{\"Autosave\":true}")!;
-  if(legacy.Gallery is null||legacy.Gallery.ThumbnailSize!=200||legacy.Gallery.OpenGalleryAfterCapture||!legacy.Gallery.ShowDetailPane||legacy.Gallery.WindowWidth is not null)throw new Exception("Gallery config defaults");
-  if(!legacy.Gallery.LibraryRoot.EndsWith("Vibershot",StringComparison.OrdinalIgnoreCase))throw new Exception("Gallery library root default");
-  var withGallery=JsonSerializer.Deserialize<AppConfig>("{\"Gallery\":{\"ThumbnailSize\":260,\"OpenGalleryAfterCapture\":true,\"ExtraFolders\":[\"C:\\\\Shots\"],\"WindowWidth\":1000.5}}")!;
-  if(withGallery.Gallery.ThumbnailSize!=260||!withGallery.Gallery.OpenGalleryAfterCapture||withGallery.Gallery.ExtraFolders.Count!=1||withGallery.Gallery.WindowWidth!=1000.5)throw new Exception("Gallery config not read");
-  var roundTrip=JsonSerializer.Deserialize<AppConfig>(JsonSerializer.Serialize(withGallery))!;if(roundTrip.Gallery.ThumbnailSize!=260||roundTrip.Gallery.ExtraFolders[0]!="C:\\Shots")throw new Exception("Gallery config round trip");
+  var legacy=AppConfig.FromJson("{\"Autosave\":true}")!;
+  if(legacy.Gallery is null||legacy.Gallery.ThumbnailSize!=200||legacy.AfterCapture.OpenGallery||!legacy.Gallery.ShowDetailPane||legacy.Gallery.WindowWidth is not null)throw new Exception("Gallery config defaults");
+  if(!legacy.Gallery.LibraryRoot.EndsWith("Vibershot",StringComparison.OrdinalIgnoreCase))throw new Exception("Legacy config keeps the AppData library root");
+  if(!new AppConfig().Gallery.LibraryRoot.EndsWith("Vibershot Gallery",StringComparison.OrdinalIgnoreCase))throw new Exception("Fresh install library root under Pictures");
+  var withGallery=AppConfig.FromJson("{\"Gallery\":{\"ThumbnailSize\":260,\"OpenGalleryAfterCapture\":true,\"ExtraFolders\":[\"C:\\\\Shots\"],\"WindowWidth\":1000.5}}")!;
+  if(withGallery.Gallery.ThumbnailSize!=260||!withGallery.AfterCapture.OpenGallery||withGallery.Gallery.ExtraFolders.Count!=1||withGallery.Gallery.WindowWidth!=1000.5)throw new Exception("Gallery config not read");
+  var roundTrip=AppConfig.FromJson(withGallery.ToJson())!;if(roundTrip.Gallery.ThumbnailSize!=260||roundTrip.Gallery.ExtraFolders[0]!="C:\\Shots"||!roundTrip.AfterCapture.OpenGallery)throw new Exception("Gallery config round trip");
+  if(withGallery.ToJson().Contains("OpenGalleryAfterCapture"))throw new Exception("Legacy gallery flag must not be written back");
 
   var dir=Path.Combine(AppContext.BaseDirectory,"gallery-test");if(Directory.Exists(dir))Directory.Delete(dir,true);Directory.CreateDirectory(dir);
   // Sidecar round trip next to a real file.
@@ -202,16 +206,97 @@ class Program {
   if(GalleryFiles.UniquePath(renamed)!=Path.Combine(dir,"renamed (2).png"))throw new Exception("Unique path");
   var imported=GalleryFiles.Import(renamed,Path.Combine(dir,"import"))!;if(CaptureSidecar.Read(imported)?.SourceProcess!="chrome")throw new Exception("Import keeps sidecar");
   var importedPlain=GalleryFiles.Import(plain,Path.Combine(dir,"import"))!;if(CaptureSidecar.Read(importedPlain)?.Kind!=CaptureKind.Imported)throw new Exception("Import writes sidecar");
+
+  // Library cleanup: only the library's own folders, age from the sidecar, sidecars go with the media, projects and subfolders untouched.
+  var lib=new GallerySettings{LibraryRoot=Path.Combine(dir,"lib")};lib.Cleanup.Enabled=true;lib.Cleanup.Screenshots=true;lib.Cleanup.ScreenshotDays=30;lib.Cleanup.Recordings=true;lib.Cleanup.RecordingDays=14;lib.Cleanup.Recovery=true;lib.Cleanup.RecoveryDays=7;
+  var now=new DateTime(2026,11,12,12,0,0);string recov=Path.Combine(dir,"recovery");
+  Directory.CreateDirectory(lib.ScreenshotsFolder);Directory.CreateDirectory(lib.RecordingsFolder);Directory.CreateDirectory(lib.ProjectsFolder);Directory.CreateDirectory(recov);Directory.CreateDirectory(Path.Combine(lib.ScreenshotsFolder,"keep"));
+  void Shot(string path,DateTime when){File.WriteAllBytes(path,new byte[]{1});new CaptureSidecar{Kind=CaptureKind.Region,Created=when}.Write(path);}
+  Shot(Path.Combine(lib.ScreenshotsFolder,"old.png"),now.AddDays(-31));Shot(Path.Combine(lib.ScreenshotsFolder,"new.png"),now.AddDays(-29));Shot(Path.Combine(lib.ScreenshotsFolder,"old.vibeshot"),now.AddDays(-400));Shot(Path.Combine(lib.ScreenshotsFolder,"keep","old.png"),now.AddDays(-400));
+  Shot(Path.Combine(lib.RecordingsFolder,"old.mp4"),now.AddDays(-15));Shot(Path.Combine(lib.RecordingsFolder,"new.mp4"),now.AddDays(-13));Shot(Path.Combine(lib.ProjectsFolder,"old.vibeshot"),now.AddDays(-400));
+  var oldRecovery=Path.Combine(recov,"old.mp4");File.WriteAllBytes(oldRecovery,new byte[]{1});File.SetCreationTime(oldRecovery,now.AddDays(-8));var newRecovery=Path.Combine(recov,"new.mp4");File.WriteAllBytes(newRecovery,new byte[]{1});File.SetCreationTime(newRecovery,now.AddDays(-6));
+  var removed=new List<string>();var report=LibraryCleanup.Run(lib,recov,now,p=>{removed.Add(Path.GetFileName(Path.GetDirectoryName(p)!)+"/"+Path.GetFileName(p));File.Delete(p);});
+  if(report.Screenshots!=1||report.Recordings!=1||report.Recovery!=1||report.Failed!=0||report.Count!=3)throw new Exception("Cleanup report: "+report);
+  if(!removed.SequenceEqual(new[]{"Screenshots/old.png","Recordings/old.mp4","recovery/old.mp4"}))throw new Exception("Cleanup removed: "+string.Join(",",removed));
+  if(File.Exists(CaptureSidecar.PathFor(Path.Combine(lib.ScreenshotsFolder,"old.png")))||!File.Exists(CaptureSidecar.PathFor(Path.Combine(lib.ScreenshotsFolder,"new.png"))))throw new Exception("Cleanup sidecars");
+  if(!report.Summary.Contains("1 screenshot, 1 recording, 1 recovery file"))throw new Exception("Cleanup summary: "+report.Summary);
+  var failing=LibraryCleanup.Run(lib,recov,now.AddDays(100),p=>throw new IOException("locked"));if(failing.Failed!=3||failing.Count!=0||!failing.Summary.Contains("3 could not be moved"))throw new Exception("Cleanup failures counted: "+failing);
+  var cfg=new AppConfig{Gallery=lib};cfg.Gallery.Cleanup.LastRun=now.AddHours(-2);if(LibraryCleanup.RunIfDue(cfg,now) is not null)throw new Exception("Cleanup should wait a day between passes");
+  cfg.Gallery.Cleanup.Enabled=false;cfg.Gallery.Cleanup.LastRun=null;if(LibraryCleanup.RunIfDue(cfg,now) is not null)throw new Exception("Cleanup off runs nothing");
+  if(new CleanupReport(0,0,0,0).Summary!="Library cleanup: nothing to remove"||CleanupSettings.ClampDays(0)!=1||CleanupSettings.ClampDays(99999)!=3650)throw new Exception("Cleanup helpers");
+  var defaults=GalleryIndex.DefaultFolders(cfg);if(defaults.Any(f=>f.Contains("Captures"))||!defaults.Contains(lib.ScreenshotsFolder)||!defaults.Contains(lib.ProjectsFolder)||!defaults.Contains(GalleryIndex.RecoveryFolder))throw new Exception("Gallery folders: "+string.Join("|",defaults));
+  cfg.AfterCapture.Destinations.Add(new SaveDestination{Path=Path.Combine(dir,"custom")});if(GalleryIndex.DefaultFolders(cfg).Any(f=>f.EndsWith("custom")))throw new Exception("Custom save folders are not watched");
+  cfg.Gallery.ExtraFolders.Add(Path.Combine(dir,"custom"));if(!GalleryIndex.DefaultFolders(cfg).Any(f=>f.EndsWith("custom")))throw new Exception("Extra folders are watched");
   Directory.Delete(dir,true);
 
+ }
+}
+static class SettingsChecks {
+ static void Check(bool ok,string what){if(!ok)throw new Exception("FAIL: "+what);}
+ public static void Run(){
+  // Fresh install defaults: everything in sections, projects as the capture format, library under Pictures.
+  var fresh=new AppConfig();
+  Check(fresh.AfterCapture.SaveAsFile&&fresh.AfterCapture.SaveToLibrary&&!fresh.AfterCapture.AskWhereToSave&&fresh.AfterCapture.Format==ImageFormat.Vibeshot&&fresh.AfterCapture.CopyToClipboard&&!fresh.AfterCapture.OpenGallery&&!fresh.AfterCapture.OpenEditor&&fresh.AfterCapture.ShowPreview,"After capture defaults");
+  Check(fresh.Hotkeys.CaptureRegion=="Ctrl+Shift+S"&&fresh.Hotkeys.FullDesktop==""&&fresh.Hotkeys.Gesture(HotkeyAction.OpenGallery).IsEmpty,"Hotkey defaults");
+  Check(!fresh.Gallery.Cleanup.Enabled&&fresh.Gallery.Cleanup.ScreenshotDays==30&&fresh.Gallery.Cleanup.RecoveryDays==7,"Cleanup defaults");
+  string json=fresh.ToJson();
+  Check(json.Contains("\"AfterCapture\"")&&json.Contains("\"Hotkeys\"")&&json.Contains("\"Cleanup\"")&&json.Contains("\"PrintScreen\": \"CaptureTool\"")&&!json.Contains("\"Autosave\"")&&!json.Contains("\"OutputFolder\"")&&!json.Contains("HotkeyDescription"),"Fresh config writes sections only: "+json);
+  var back=AppConfig.FromJson(json)!;Check(back.AfterCapture.Format==ImageFormat.Vibeshot&&back.SetupCompleted==false&&back.Gallery.LibraryRoot==fresh.Gallery.LibraryRoot,"Fresh config round trip keeps SetupCompleted false");
+
+  // A pre-section config: flat fields fold into AfterCapture, the custom folder becomes a destination and stays visible in the gallery.
+  var old=AppConfig.FromJson("{\"OutputFolder\":\"D:\\\\Captures\",\"ShowCaptureActions\":false,\"ShowSaveDialog\":false,\"Autosave\":false,\"CopyToClipboard\":false,\"Format\":1,\"WebpQuality\":70,\"HotkeyDescription\":\"Ctrl+Alt+P\",\"PrintScreen\":\"Off\",\"Editor\":{\"OpenEditorAfterCapture\":true},\"Gallery\":{\"LibraryRoot\":\"C:\\\\Lib\",\"OpenGalleryAfterCapture\":true}}")!;
+  Check(!old.AfterCapture.SaveAsFile&&!old.AfterCapture.CopyToClipboard&&old.AfterCapture.Format==ImageFormat.Jpeg&&old.AfterCapture.WebpQuality==70&&old.AfterCapture.OpenEditor&&old.AfterCapture.OpenGallery,"Legacy flags migrate");
+  Check(!old.AfterCapture.SaveToLibrary&&old.AfterCapture.Destinations.Count==1&&old.AfterCapture.Destinations[0].Path=="D:\\Captures"&&old.AfterCapture.Destinations[0].Enabled,"Legacy output folder becomes a destination");
+  Check(old.Gallery.ExtraFolders.Contains("D:\\Captures")&&old.Gallery.LibraryRoot=="C:\\Lib","Legacy output folder is watched; explicit library root kept");
+  Check(old.Hotkeys.CaptureRegion=="Ctrl+Alt+P"&&old.PrintScreen==PrintScreenAction.Off&&old.SetupCompleted&&!old.ShowCaptureActions,"Legacy hotkey, Print Screen and setup state");
+  Check(old.OutputFolder=="C:\\Lib\\Screenshots"&&old.AfterCapture.EnabledFolders(old.Gallery).Count==0,"Save off writes nowhere even with Open in gallery on");
+  old.AfterCapture.SaveAsFile=true;Check(old.AfterCapture.EnabledFolders(old.Gallery).SequenceEqual(new[]{"C:\\Lib\\Screenshots","D:\\Captures"}),"Open in gallery keeps a library copy next to the legacy folder");
+  old.AfterCapture.OpenGallery=false;Check(old.OutputFolder=="D:\\Captures","OutputFolder view points at the first destination when the library is off");
+  string migrated=old.ToJson();Check(!migrated.Contains("\"OutputFolder\"")&&!migrated.Contains("\"Autosave\"")&&!migrated.Contains("OpenEditorAfterCapture")&&migrated.Contains("\"SetupCompleted\": true"),"Migrated config drops legacy fields: "+migrated);
+  var sameFolder=AppConfig.FromJson("{\"OutputFolder\":\""+Path.Combine(GallerySettings.LegacyLibraryRoot,"Screenshots").Replace("\\","\\\\")+"\",\"Autosave\":true}")!;
+  Check(sameFolder.AfterCapture.SaveToLibrary&&sameFolder.AfterCapture.Destinations.Count==0&&sameFolder.Gallery.ExtraFolders.Count==0,"Legacy default folder maps to the library");
+  var sectioned=AppConfig.FromJson("{\"AfterCapture\":{\"SaveAsFile\":false},\"OutputFolder\":\"D:\\\\Old\"}")!;Check(!sectioned.AfterCapture.SaveAsFile&&sectioned.AfterCapture.Destinations.Count==0,"A config with sections ignores leftover legacy fields");
+
+  // Destinations: any mix of library and custom folders, deduplicated; Open in gallery forces the library copy.
+  var g=new GallerySettings{LibraryRoot="C:\\Lib"};var ac=new AfterCaptureSettings{SaveToLibrary=true,Destinations={new SaveDestination{Path="D:\\A"},new SaveDestination{Path="D:\\B",Enabled=false},new SaveDestination{Path="c:\\lib\\Screenshots\\"},new SaveDestination{Path="D:\\A\\"}}};
+  var folders=ac.EnabledFolders(g);Check(folders.Count==2&&folders[0]=="C:\\Lib\\Screenshots"&&folders[1]=="D:\\A","Enabled folders: "+string.Join("|",folders));
+  ac.SaveToLibrary=false;Check(ac.EnabledFolders(g).Count==2&&ac.EnabledFolders(g)[0]=="D:\\A","A custom destination that is the library folder still counts when the library switch is off");
+  ac.Destinations.RemoveAt(2);Check(ac.EnabledFolders(g).Single()=="D:\\A"&&ac.PrimaryFolder(g)=="D:\\A","Library off leaves the custom folder");
+  ac.OpenGallery=true;Check(ac.EnabledFolders(g)[0]=="C:\\Lib\\Screenshots"&&ac.PrimaryFolder(g)=="C:\\Lib\\Screenshots","Open in gallery keeps the library copy");
+  ac.OpenGallery=false;ac.Destinations.Clear();Check(ac.PrimaryFolder(g)=="C:\\Lib\\Screenshots","No destinations falls back to the library");
+  ac.SaveAsFile=false;Check(ac.EnabledFolders(g).Count==0,"Save off writes nowhere");ac.SaveAsFile=true;ac.AskWhereToSave=true;Check(ac.EnabledFolders(g).Count==0,"Ask each time writes nowhere automatically");
+  Check(AfterCaptureSettings.SameFolder("C:\\Lib\\","c:/lib")&&!AfterCaptureSettings.SameFolder("C:\\Lib","C:\\Lib2"),"SameFolder");
+  Check(!g.AddExtraFolder("C:\\Lib\\Projects")&&g.AddExtraFolder("D:\\Watch")&&!g.AddExtraFolder("d:\\watch\\")&&g.ExtraFolders.Count==1,"AddExtraFolder dedupes and skips the library");
+
+  // Presets set the four switches; a matching mix reports its name, anything else is custom.
+  var p=new AfterCaptureSettings();Check(p.MatchingPreset()=="Save to library","Default mix is the Save to library preset");
+  Check(p.ApplyPreset("Quick copy")&&!p.SaveAsFile&&p.CopyToClipboard&&p.MatchingPreset()=="Quick copy","Quick copy preset");
+  Check(p.ApplyPreset("Save and edit")&&p.SaveAsFile&&p.SaveToLibrary&&!p.CopyToClipboard&&p.OpenEditor&&p.MatchingPreset()=="Save and edit","Save and edit preset");
+  Check(p.ApplyPreset("Save and review")&&p.OpenGallery&&!p.OpenEditor&&p.MatchingPreset()=="Save and review","Save and review preset");
+  p.OpenEditor=true;Check(p.MatchingPreset()==null&&!p.ApplyPreset("nope"),"Custom mix has no preset");
+
+  // Hotkey gestures: parsing, canonical text, validity and conflicts.
+  Check(HotkeyGesture.TryParse("ctrl + shift + s",out var gs)&&gs.Modifiers==(HotkeyModifiers.Control|HotkeyModifiers.Shift)&&gs.Key=="S"&&gs.ToString()=="Ctrl+Shift+S"&&gs.IsValid,"Gesture parse");
+  Check(HotkeyGesture.Parse("Win+PrtScn").Key=="PrintScreen"&&HotkeyGesture.Parse("Win+PrtScn").ToString()=="Win+PrtScn"&&HotkeyGesture.Parse("Alt+5").Key=="D5"&&HotkeyGesture.Parse("Alt+5").ToString()=="Alt+5","Gesture aliases");
+  Check(HotkeyGesture.Parse("F11").IsValid&&HotkeyGesture.Parse("PrintScreen").IsValid&&!HotkeyGesture.Parse("S").IsValid&&!HotkeyGesture.Parse("Ctrl+Shift").IsValid&&HotkeyGesture.Parse("").IsEmpty&&HotkeyGesture.Parse(null).IsEmpty,"Gesture validity");
+  Check(!HotkeyGesture.TryParse("Bogus+S",out _)&&HotkeyGesture.Parse("Ctrl+Escape").ToString()=="Ctrl+Esc"&&HotkeyGesture.Parse("Ctrl+pgdn").Key=="PageDown","Gesture errors and friendly names");
+  var hk=new HotkeySettings{FullDesktop="Ctrl+Shift+D",OpenGallery="ctrl+shift+d"};
+  Check(hk.ConflictFor(HotkeyAction.OpenEditor,HotkeyGesture.Parse("Ctrl+Shift+D"))==HotkeyAction.FullDesktop&&hk.ConflictFor(HotkeyAction.FullDesktop,HotkeyGesture.Parse("Ctrl+Shift+D"))==HotkeyAction.OpenGallery&&hk.ConflictFor(HotkeyAction.OpenEditor,HotkeyGesture.Parse("Ctrl+Shift+E"))==null,"Hotkey conflicts");
+  hk[HotkeyAction.RecordVideo]="Ctrl+Shift+R";Check(hk.RecordVideo=="Ctrl+Shift+R"&&hk[HotkeyAction.RecordVideo]=="Ctrl+Shift+R"&&HotkeySettings.Label(HotkeyAction.CaptureRegion)=="Capture region or window","Hotkey indexer");
+  Check(ImageEncoding.Extension(ImageFormat.Vibeshot)=="vibeshot"&&!ImageEncoding.IsFlat(ImageFormat.Vibeshot)&&ImageEncoding.IsFlat(ImageFormat.Png),"Vibeshot format facts");
+  bool threw=false;try{ImageEncoding.Encode(BitmapSource.Create(1,1,96,96,PixelFormats.Bgra32,null,new byte[4],4),ImageFormat.Vibeshot,80,new MemoryStream());}catch(NotSupportedException){threw=true;}Check(threw,"Encoder refuses the project format");
+  var dir=Path.Combine(AppContext.BaseDirectory,"nextpath");if(Directory.Exists(dir))Directory.Delete(dir,true);var when=new DateTime(2026,11,12,9,30,15);
+  var p1=FileSaveService.NextPath(dir,ImageFormat.Vibeshot,when);Check(p1.EndsWith("screenshot_20261112_093015_0000000.vibeshot")&&Directory.Exists(dir),"NextPath name");File.WriteAllText(p1,"x");
+  Check(FileSaveService.NextPath(dir,ImageFormat.Vibeshot,when).EndsWith(" (2).vibeshot"),"NextPath avoids collisions");Directory.Delete(dir,true);
+  Console.WriteLine("PASS: settings sections, legacy migration, destinations, presets, hotkey gestures.");
  }
 }
 static class EditorChecks {
  static void Check(bool ok,string what){if(!ok)throw new Exception(what);}
  public static void Run(BitmapSource image){
   // Legacy config without an Editor section gets the defaults; a saved section reads back.
-  var legacy=JsonSerializer.Deserialize<AppConfig>("{\"Autosave\":true}")!;Check(legacy.Editor.DefaultFontFamily=="Segoe UI"&&legacy.Editor.DefaultFontSize==18&&legacy.Editor.DefaultStrokeColor=="#F0612A"&&legacy.Editor.DefaultStrokeWidth==3&&!legacy.Editor.OpenEditorAfterCapture,"Editor settings defaults");
-  var editorCfg=JsonSerializer.Deserialize<AppConfig>("{\"Editor\":{\"OpenEditorAfterCapture\":true,\"DefaultStrokeWidth\":5}}")!;Check(editorCfg.Editor.OpenEditorAfterCapture&&editorCfg.Editor.DefaultStrokeWidth==5,"Editor settings not read");
+  var legacy=AppConfig.FromJson("{\"Autosave\":true}")!;Check(legacy.Editor.DefaultFontFamily=="Segoe UI"&&legacy.Editor.DefaultFontSize==18&&legacy.Editor.DefaultStrokeColor=="#F0612A"&&legacy.Editor.DefaultStrokeWidth==3&&!legacy.AfterCapture.OpenEditor,"Editor settings defaults");
+  var editorCfg=AppConfig.FromJson("{\"Editor\":{\"OpenEditorAfterCapture\":true,\"DefaultStrokeWidth\":5}}")!;Check(editorCfg.AfterCapture.OpenEditor&&editorCfg.Editor.DefaultStrokeWidth==5&&!editorCfg.ToJson().Contains("OpenEditorAfterCapture"),"Editor settings not read");
   var cfgJson=JsonSerializer.Serialize(new AppConfig());Check(cfgJson.Contains("\"Editor\""),"Editor settings not written");
 
   // History: undo/redo, coalescing, rollback, depth limit, dirty tracking.
@@ -259,6 +344,50 @@ static class EditorChecks {
   var rotatedBounds=Vibershot.Editing.DocumentOps.VisualBounds(new Vibershot.Editing.RectItem{Bounds=new Rect(0,0,10,10),Rotation=90});Check(Math.Abs(rotatedBounds.X)<0.001&&Math.Abs(rotatedBounds.Width-10)<0.001,"VisualBounds of a 90 degree square");
   var clones=Vibershot.Editing.DocumentOps.Clone(new[]{rect},new Vector(10,10));Check(clones[0].Id!=rect.Id&&clones[0].Bounds==new Rect(20,20,40,30),"Clone");
 
+  // Layer operations: insert, move, remove, merge down, move items between layers, background.
+  var middle=new Vibershot.Editing.Layer{Name="Middle"};var three=Vibershot.Editing.DocumentOps.InsertLayer(doc2,1,middle);
+  Check(three.Layers.Count==3&&three.Layers[1].Name=="Middle"&&three.Layers[2].Items.Count==4,"InsertLayer");
+  Check(Vibershot.Editing.DocumentOps.InsertLayer(doc2,99,middle).Layers[2].Name=="Middle","InsertLayer clamps to the top");
+  Check(Vibershot.Editing.DocumentOps.LayerIndexOf(three,middle)==1&&Vibershot.Editing.DocumentOps.MoveLayer(three,1,1).Layers[2].Name=="Middle"&&Vibershot.Editing.DocumentOps.MoveLayer(three,1,-5).Layers[0].Name=="Middle","MoveLayer");
+  Check(ReferenceEquals(Vibershot.Editing.DocumentOps.MoveLayer(three,2,1),three),"MoveLayer past the top is a no-op");
+  Check(Vibershot.Editing.DocumentOps.RemoveLayer(three,1).Layers.Count==2&&Vibershot.Editing.DocumentOps.RemoveLayer(three,1).Layers[1].Items.Count==4,"RemoveLayer");
+  var single=Vibershot.Editing.DocumentOps.Blank(new Size(10,10),Colors.White) with{Layers=[new Vibershot.Editing.Layer()]};Check(ReferenceEquals(Vibershot.Editing.DocumentOps.RemoveLayer(single,0),single),"The last layer cannot be removed");
+  var mergedDown=Vibershot.Editing.DocumentOps.MergeLayerDown(doc2,1);Check(mergedDown.Layers.Count==1&&mergedDown.Layers[0].Items.Count==5&&mergedDown.Layers[0].Items[0] is Vibershot.Editing.ImageItem&&mergedDown.Layers[0].Items[4].Id==text.Id,"MergeLayerDown keeps order with the upper items on top");
+  Check(ReferenceEquals(Vibershot.Editing.DocumentOps.MergeLayerDown(doc2,0),doc2),"MergeLayerDown on the bottom layer is a no-op");
+  var movedToBase=Vibershot.Editing.DocumentOps.MoveItemsToLayer(doc2,new[]{rect.Id,text.Id},0);
+  Check(movedToBase.Layers[0].Items.Count==3&&movedToBase.Layers[0].Items[1].Id==rect.Id&&movedToBase.Layers[0].Items[2].Id==text.Id&&movedToBase.Layers[1].Items.Count==2,"MoveItemsToLayer");
+  Check(Vibershot.Editing.DocumentOps.SetBackground(doc2,Colors.Black).Background==Colors.Black&&ReferenceEquals(Vibershot.Editing.DocumentOps.SetBackground(doc2,doc2.Background),doc2),"SetBackground");
+  Check(Vibershot.Editing.DocumentOps.FromImage(image,assets,Colors.White).Background==Colors.White&&doc.Background==Colors.Transparent,"FromImage background");
+
+  // Pixel operations: a marquee lift copies the pixels into a floating item and clears them underneath; erase only clears.
+  var liftDoc=Vibershot.Editing.DocumentOps.FromImage(image,assets,Colors.White);var liftBase=((Vibershot.Editing.ImageItem)liftDoc.Layers[0].Items[0]).AssetId;
+  var lift=Vibershot.Editing.PixelOps.Lift(liftDoc,assets,new Rect(10.4,19.6,30,15));
+  Check(lift.Lifted!=null&&lift.Lifted.Bounds==new Rect(10,20,30,15),"Lift snaps the region and reports the floating item");
+  Check(lift.Document.Layers[0].Items.Count==2&&lift.Document.Layers[0].Items[1].Id==lift.Lifted!.Id&&lift.Document.Layers[1].Items.Count==0,"The lifted item sits on top of the layer it came from");
+  var liftedBitmap=assets.Get(lift.Lifted.AssetId);Check(liftedBitmap!=null&&liftedBitmap.PixelWidth==30&&liftedBitmap.PixelHeight==15,"Lifted asset size");
+  byte[] liftedPx=new byte[30*15*4];new FormatConvertedBitmap(liftedBitmap,PixelFormats.Bgra32,null,0).CopyPixels(liftedPx,120,0);byte[] srcPx=new byte[30*15*4];image.CopyPixels(new Int32Rect(10,20,30,15),srcPx,120,0);
+  for(int i=0;i<liftedPx.Length;i+=4)Check(liftedPx[i]==srcPx[i]&&liftedPx[i+1]==srcPx[i+1]&&liftedPx[i+2]==srcPx[i+2]&&liftedPx[i+3]==255,"Lifted pixels should match the source at byte "+i);
+  var baseAfter=(Vibershot.Editing.ImageItem)lift.Document.Layers[0].Items[0];Check(baseAfter.Id==liftDoc.Layers[0].Items[0].Id&&baseAfter.AssetId!=liftBase&&assets.Get(liftBase)!=null,"Erase swaps in a new asset and keeps the old one for undo");
+  byte[] px=new byte[4];assets.Get(baseAfter.AssetId)!.CopyPixels(new Int32Rect(15,25,1,1),px,4,0);Check(px[3]==0,"Erased pixel should be transparent");
+  assets.Get(baseAfter.AssetId)!.CopyPixels(new Int32Rect(39,34,1,1),px,4,0);Check(px[3]==0,"Last erased pixel should be transparent");
+  assets.Get(baseAfter.AssetId)!.CopyPixels(new Int32Rect(40,35,1,1),px,4,0);Check(px[3]==255,"Pixel just outside the marquee stays");
+  assets.Get(baseAfter.AssetId)!.CopyPixels(new Int32Rect(9,19,1,1),px,4,0);Check(px[3]==255,"Pixel before the marquee stays");
+  Check(ReferenceEquals(Vibershot.Editing.PixelOps.Erase(liftDoc,assets,new Rect(200,200,10,10)),liftDoc)&&Vibershot.Editing.PixelOps.Lift(liftDoc,assets,new Rect(200,200,10,10)).Lifted==null,"Regions off the canvas are no-ops");
+  var lockedDoc=Vibershot.Editing.DocumentOps.SetLayer(liftDoc,0,liftDoc.Layers[0] with{Locked=true});
+  Check(Vibershot.Editing.PixelOps.Lift(lockedDoc,assets,new Rect(0,0,10,10)).Lifted==null&&ReferenceEquals(Vibershot.Editing.PixelOps.Erase(lockedDoc,assets,new Rect(0,0,10,10)),lockedDoc),"Locked layers are left alone");
+  var rotatedDoc=Vibershot.Editing.DocumentOps.ReplaceItem(liftDoc,liftDoc.Layers[0].Items[0] with{Rotation=10});Check(Vibershot.Editing.PixelOps.Lift(rotatedDoc,assets,new Rect(0,0,10,10)).Lifted==null,"Rotated images are left alone");
+  var scaled=Vibershot.Editing.DocumentOps.AddItem(Vibershot.Editing.DocumentOps.Blank(new Size(60,50),Colors.Transparent),new Vibershot.Editing.ImageItem{AssetId=liftBase,Bounds=new Rect(0,0,60,50)},0);
+  var scaledErased=(Vibershot.Editing.ImageItem)Vibershot.Editing.PixelOps.Erase(scaled,assets,new Rect(0,0,30,25)).Layers[0].Items[0];
+  assets.Get(scaledErased.AssetId)!.CopyPixels(new Int32Rect(59,49,1,1),px,4,0);Check(px[3]==0,"Erase maps document space to a scaled image's pixels");
+  assets.Get(scaledErased.AssetId)!.CopyPixels(new Int32Rect(60,0,1,1),px,4,0);Check(px[3]==255,"Erase on a scaled image stops at the mapped edge");
+  var cleared=Vibershot.Editing.PixelOps.ClearRect(image,new Int32Rect(-5,-5,10,10));cleared.CopyPixels(new Int32Rect(4,4,1,1),px,4,0);Check(px[3]==0&&cleared.IsFrozen,"ClearRect clamps and freezes");
+
+  // Editor settings: the canvas colour parses as hex or the word transparent and defaults to white.
+  var editorDefaults=new EditorSettings();Check(editorDefaults.CanvasBackground==EditorSettings.White&&editorDefaults.CanvasBackgroundArgb()==0xFFFFFFFF,"Canvas background defaults to white");
+  Check(EditorSettings.ParseArgb("transparent")==0u&&EditorSettings.ParseArgb("#00000000")==0u&&EditorSettings.ParseArgb("#80FF0000")==0x80FF0000u&&EditorSettings.ParseArgb("000000")==0xFF000000u&&EditorSettings.ParseArgb("nope")==null&&EditorSettings.ParseArgb("")==null,"Canvas background parsing");
+  Check(new EditorSettings{CanvasBackground="bad"}.CanvasBackgroundArgb()==0xFFFFFFFF,"Unreadable canvas colour falls back to white");
+  Check(JsonSerializer.Deserialize<AppConfig>("{\"Editor\":{\"DefaultFontSize\":20}}")!.Editor.CanvasBackground==EditorSettings.White,"Older configs get the white canvas");
+
   // JSON polymorphism: every item kind round trips with its discriminator and properties.
   var itemsJson=Vibershot.Editing.ItemClipboard.Serialize(new Vibershot.Editing.Item[]{rect,ellipse,arrow,text,doc.Layers[0].Items[0]});
   Check(itemsJson.Contains("\"type\": \"rect\"")&&itemsJson.Contains("\"type\": \"arrow\"")&&itemsJson.Contains("\"type\": \"text\"")&&itemsJson.Contains("\"type\": \"image\"")&&itemsJson.Contains("\"type\": \"ellipse\""),"Discriminators missing");
@@ -271,12 +400,22 @@ static class EditorChecks {
   project=Vibershot.Editing.DocumentOps.SetLayer(project,1,project.Layers[1] with{Name="Notes",Opacity=0.75,Locked=true,Visible=false});
   var projectPath=Path.Combine(AppContext.BaseDirectory,"roundtrip.vibeshot");Vibershot.Editing.ProjectFile.Save(projectPath,project,assets);
   var (loaded,loadedAssets)=Vibershot.Editing.ProjectFile.Load(projectPath);
-  Check(loaded.Size==project.Size&&loaded.CropRect==project.CropRect&&loaded.Background==project.Background&&loaded.Layers.Count==2,"Project document fields");
+  Check(loaded.Size==project.Size&&loaded.CropRect==project.CropRect&&loaded.Background==project.Background&&loaded.Layers.Count==2&&loaded.Version==Vibershot.Editing.ImageDocument.CurrentVersion,"Project document fields");
+  Check(Vibershot.Editing.DocumentJson.Serialize(project).Contains("\"version\": 1")||Vibershot.Editing.DocumentJson.Serialize(project).Contains("\"Version\": 1"),"Project JSON carries a schema version");
+  Check(Vibershot.Editing.DocumentJson.Deserialize<Vibershot.Editing.ImageDocument>("{\"Size\":[10,10],\"Layers\":[]}")!.Version==1,"Documents without a version read as version 1");
   Check(loaded.Layers[1].Name=="Notes"&&loaded.Layers[1].Opacity==0.75&&loaded.Layers[1].Locked&&!loaded.Layers[1].Visible&&loaded.Layers[1].Id==project.Layers[1].Id,"Project layer fields");
   var originalItems=project.AllItems.ToList();var loadedItems=loaded.AllItems.ToList();Check(loadedItems.Count==originalItems.Count,"Project item count");
   for(int i=0;i<originalItems.Count;i++)Check(loadedItems[i].Equals(originalItems[i]),"Project item "+i+" changed: "+originalItems[i].GetType().Name);
   var baseAsset=((Vibershot.Editing.ImageItem)loaded.Layers[0].Items[0]).AssetId;var loadedBitmap=loadedAssets.Get(baseAsset);Check(loadedBitmap!=null&&loadedBitmap.PixelWidth==120&&loadedBitmap.PixelHeight==100,"Project asset missing");
   byte[] original=new byte[120*100*4];image.CopyPixels(original,480,0);byte[] restored=new byte[120*100*4];new FormatConvertedBitmap(loadedBitmap,PixelFormats.Bgra32,null,0).CopyPixels(restored,480,0);Check(original.AsSpan().SequenceEqual(restored),"Project asset pixels changed");
+  // The project carries a flattened preview the gallery can draw without loading the document.
+  var preview=Vibershot.Editing.ProjectFile.ReadPreview(projectPath);Check(preview!=null&&preview.PixelWidth==60&&preview.PixelHeight==50&&preview.IsFrozen,"Project preview matches the crop size");
+  Check(Vibershot.Editing.ProjectFile.ReadSize(projectPath) is (60,50),"Project size read from document.json");
+  var galleryPreview=ThumbnailCache.LoadProjectPreview(projectPath,30);Check(galleryPreview!=null&&galleryPreview.PixelWidth==30&&galleryPreview.PixelHeight==25,"Gallery scales the project preview");
+  var wideDoc=Vibershot.Editing.DocumentOps.FromImage(image,assets) with{Size=new Size(2000,500)};Check(Vibershot.Editing.ProjectFile.RenderPreview(wideDoc,assets).PixelWidth==Vibershot.Editing.ProjectFile.PreviewEdge,"Preview is capped at the preview edge");
+  using(var zip=System.IO.Compression.ZipFile.OpenRead(projectPath))Check(zip.GetEntry("preview.png")!=null&&zip.GetEntry("document.json")!=null,"Project zip entries");
+  var noPreview=Path.Combine(AppContext.BaseDirectory,"nopreview.vibeshot");using(var zip=System.IO.Compression.ZipFile.Open(noPreview,System.IO.Compression.ZipArchiveMode.Create)){using var e=new StreamWriter(zip.CreateEntry("document.json").Open());e.Write(Vibershot.Editing.DocumentJson.Serialize(project));}
+  Check(Vibershot.Editing.ProjectFile.ReadPreview(noPreview)==null&&ThumbnailCache.LoadProjectPreview(noPreview,30)==null,"Projects without a preview return null");
 
   // Flatten honours the crop and renders items; a tall document renders in bands.
   var flat=Vibershot.Editing.DocumentRenderer.Flatten(Vibershot.Editing.DocumentOps.SetCrop(doc,new Rect(10,20,50,40)),assets);

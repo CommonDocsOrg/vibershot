@@ -104,7 +104,8 @@ internal static class SaveChangesDialog
 {
     public enum Choice { Cancel, Discard, Save }
 
-    public static Choice Show(Window owner, string documentName)
+    /// <param name="message">Replaces the default "Save changes to …?" headline when given (the hint line stays).</param>
+    public static Choice Show(Window owner, string documentName, string? message = null)
     {
         var result = Choice.Cancel;
         var window = new Window
@@ -115,7 +116,7 @@ internal static class SaveChangesDialog
         };
         WindowAppearance.Apply(window);
         var panel = new StackPanel { Margin = new Thickness(24, 20, 24, 20) };
-        panel.Children.Add(new TextBlock { Text = $"Save changes to {documentName}?", FontSize = 16, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = message ?? $"Save changes to {documentName}?", FontSize = 16, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock { Text = "Your edits are lost if you don't save them as a project.", Style = (Style)Application.Current.FindResource("Hint"), Margin = new Thickness(0, 6, 0, 18), TextWrapping = TextWrapping.Wrap });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(16, 9, 16, 9) };

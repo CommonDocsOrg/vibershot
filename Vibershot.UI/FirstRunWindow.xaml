@@ -1,0 +1,72 @@
+<Window x:Class="Vibershot.UI.FirstRunWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Style="{StaticResource {x:Type Window}}" Title="Welcome to Vibershot" Width="620" Height="740" ResizeMode="NoResize" WindowStartupLocation="CenterScreen" Background="{StaticResource Well}">
+ <Window.Resources>
+  <Style x:Key="CardTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="13.5"/><Setter Property="FontWeight" Value="Bold"/></Style>
+  <Style x:Key="CardHint" TargetType="TextBlock" BasedOn="{StaticResource Hint}"><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="Margin" Value="0,3,0,10"/></Style>
+  <Style x:Key="Card" TargetType="Border" BasedOn="{StaticResource Group}"><Setter Property="Padding" Value="18,16"/><Setter Property="Margin" Value="0,0,0,12"/></Style>
+  <Style x:Key="MonoBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"><Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="FontSize" Value="12"/></Style>
+ </Window.Resources>
+ <Grid Margin="28,24,28,22">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Margin="0,0,0,14">
+   <TextBlock Text="Welcome to Vibershot" FontSize="22" FontWeight="Bold"/>
+   <TextBlock Text="Two quick choices. Everything can be changed later in Settings." Foreground="{StaticResource Ink2}" Margin="0,4,0,0"/>
+  </StackPanel>
+
+  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+   <StackPanel>
+    <Border Style="{StaticResource Card}">
+     <StackPanel>
+      <TextBlock Style="{StaticResource CardTitle}" Text="Where should your library live?"/>
+      <TextBlock Style="{StaticResource CardHint}" Text="Screenshots, recordings and editor projects are kept here, and the gallery shows this folder."/>
+      <RadioButton x:Name="PicturesRadio" GroupName="Library" Content="Pictures (recommended)" AutomationProperties.Name="Library under Pictures" FontWeight="SemiBold" Checked="Library_Changed"/>
+      <StackPanel Margin="28,4,0,12">
+       <TextBlock x:Name="DefaultPathText" FontFamily="{StaticResource MonoFont}" FontSize="12" TextWrapping="Wrap"/>
+       <TextBlock x:Name="PicturesHint" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+      </StackPanel>
+      <RadioButton x:Name="ElsewhereRadio" GroupName="Library" Content="Somewhere else" AutomationProperties.Name="Library somewhere else" FontWeight="SemiBold" Checked="Library_Changed"/>
+      <Grid x:Name="CustomPathPanel" Margin="28,8,0,0">
+       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <TextBox x:Name="CustomPathBox" Style="{StaticResource MonoBox}" AutomationProperties.Name="Custom library folder"/>
+       <Button Grid.Column="1" Content="Browse…" AutomationProperties.Name="Browse for a library folder" Margin="8,0,0,0" Padding="14,9" Click="Browse_Click"/>
+      </Grid>
+     </StackPanel>
+    </Border>
+
+    <Border Style="{StaticResource Card}">
+     <StackPanel>
+      <TextBlock Style="{StaticResource CardTitle}" Text="Use Print Screen for captures?"/>
+      <TextBlock Style="{StaticResource CardHint}" Text="Pressing PrtScn opens the region tool. Drag a region or click a window, then pick screenshot, video or scrolling photo."/>
+      <RadioButton x:Name="PsYesRadio" GroupName="PrintScreen" Content="Yes, let Vibershot handle Print Screen" AutomationProperties.Name="Use Print Screen" FontWeight="SemiBold" Margin="0,0,0,10"/>
+      <RadioButton x:Name="PsNoRadio" GroupName="PrintScreen" AutomationProperties.Name="Do not use Print Screen" FontWeight="SemiBold">
+       <StackPanel Orientation="Horizontal"><TextBlock Text="No, I will use " VerticalAlignment="Center"/><ContentControl x:Name="HotkeyCaps" Focusable="False" VerticalAlignment="Center"/></StackPanel>
+      </RadioButton>
+      <ContentControl x:Name="PrintScreenWarningHost" Focusable="False"/>
+     </StackPanel>
+    </Border>
+
+    <Border Style="{StaticResource Card}" Margin="0">
+     <StackPanel>
+      <TextBlock Style="{StaticResource CardTitle}" Text="After each screenshot"/>
+      <TextBlock x:Name="AfterCaptureText" Style="{StaticResource CardHint}" Margin="0,3,0,6" FontSize="12.5" Foreground="{StaticResource Ink}"/>
+      <TextBlock FontSize="12"><Hyperlink Click="OpenSettings_Click" AutomationProperties.Name="Open after-capture settings">Change this in Settings › After capture</Hyperlink></TextBlock>
+     </StackPanel>
+    </Border>
+   </StackPanel>
+  </ScrollViewer>
+
+  <Grid Grid.Row="2" Margin="0,18,0,0">
+   <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <StackPanel VerticalAlignment="Center">
+    <StackPanel Orientation="Horizontal">
+     <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource Ok}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+     <TextBlock Text="Starts with Windows and lives in the tray" FontWeight="SemiBold" VerticalAlignment="Center"/>
+    </StackPanel>
+    <CheckBox x:Name="StartupCheckbox" Style="{StaticResource TickCheckBox}" IsChecked="True" Content="Start with Windows when I sign in" AutomationProperties.Name="Start with Windows" FontSize="12" Margin="0,8,0,0"/>
+   </StackPanel>
+   <Button Grid.Column="1" Content="Start capturing" Style="{StaticResource PrimaryButton}" IsDefault="True" AutomationProperties.Name="Start capturing" Padding="22,12" VerticalAlignment="Center" Click="Start_Click"/>
+  </Grid>
+ </Grid>
+</Window>
