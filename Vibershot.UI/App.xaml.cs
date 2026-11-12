@@ -35,6 +35,14 @@ public partial class App : Application
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
         _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "Vibershot • running in tray", ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => { _main.Show(); _main.WindowState = WindowState.Normal; _main.Activate(); };
+        ProbeFfmpeg();
+    }
+    /// <summary>Reports a missing or broken ffmpeg in the launcher footer instead of at the first recording.</summary>
+    private async void ProbeFfmpeg()
+    {
+        if (_config.Video.Format != Vibershot.Core.VideoFormat.Mp4) return;
+        var probe = await Task.Run(Vibershot.Media.FfmpegLocator.Probe);
+        if (!probe.Ok) _main.ShowStatus("MP4 recording unavailable: " + probe.Error + " Videos record as AVI.");
     }
     /// <summary>
     /// Registers or releases the Print Screen key to match the saved setting.
@@ -87,7 +95,7 @@ public partial class App : Application
                 image = overlay.ShowDialog() == true ? overlay.Result : null;
                 if (image != null && overlay.Action != CaptureAction.Screenshot)
                 {
-                    var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, null);
+                    var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, null, _config.Video);
                     session.ShowDialog();
                     if (overlay.Action == CaptureAction.Video) { _main.ShowStatus(session.VideoPath == null ? "No video recorded." : "Video available: " + session.VideoPath); return; }
                     if (!session.Completed) { _main.ShowStatus("Capture cancelled."); return; }
