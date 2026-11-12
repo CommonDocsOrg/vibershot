@@ -2,44 +2,46 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:core="clr-namespace:Vibershot.Core;assembly=Vibershot.Core"
- Style="{StaticResource {x:Type Window}}" Title="Vibershot Settings" Width="560" Height="860" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
- <Grid Margin="28,20,28,24">
+ Style="{StaticResource {x:Type Window}}" Title="Vibershot Settings" Width="560" Height="860" ResizeMode="NoResize" WindowStartupLocation="CenterOwner" Background="{StaticResource Well}">
+ <Grid Margin="28,24,28,24">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <StackPanel><TextBlock Text="Make it yours" FontSize="25" FontWeight="SemiBold"/><TextBlock Text="Choose what happens after every capture." Foreground="{StaticResource Muted}" Margin="0,6,0,22"/></StackPanel>
+  <StackPanel Margin="0,0,0,22"><TextBlock Text="Settings" FontSize="22" FontWeight="Bold"/><TextBlock Text="Choose what happens after every capture." Foreground="{StaticResource Ink2}" Margin="0,4,0,0"/></StackPanel>
   <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel>
-   <Border Background="{StaticResource Card}" CornerRadius="12" Padding="20" Margin="0,0,0,14">
+   <Border Style="{StaticResource Group}">
     <StackPanel>
-     <TextBlock Text="AFTER CAPTURE" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,14"/>
-     <CheckBox x:Name="ActionsCheckbox" Content="Choose screenshot, video or scrolling after selection" Margin="0,0,0,14"/>
-     <CheckBox x:Name="SaveDialogCheckbox" Content="Show Save As after taking a screenshot" Margin="0,0,0,14"/>
-     <CheckBox x:Name="AutosaveCheckbox" AutomationProperties.Name="Save automatically"><StackPanel><TextBlock Text="Save automatically" FontWeight="SemiBold"/><TextBlock Text="Keep a file of each screenshot" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel></CheckBox>
-     <Border Height="1" Background="{StaticResource Line}" Margin="0,14"/>
-     <CheckBox x:Name="ClipboardCheckbox" AutomationProperties.Name="Copy to clipboard"><StackPanel><TextBlock Text="Copy to clipboard" FontWeight="SemiBold"/><TextBlock Text="Ready to paste wherever you need it" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel></CheckBox>
+     <TextBlock Style="{StaticResource GroupLabel}" Text="AFTER CAPTURE"/>
+     <CheckBox x:Name="ActionsCheckbox" AutomationProperties.Name="Choose an action after selection"><StackPanel><TextBlock Text="Choose an action after selection" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Screenshot, video or scrolling photo"/></StackPanel></CheckBox>
+     <Border Style="{StaticResource Divider}"/>
+     <CheckBox x:Name="SaveDialogCheckbox" AutomationProperties.Name="Show Save As"><StackPanel><TextBlock Text="Show Save As" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Pick a name and folder after each screenshot"/></StackPanel></CheckBox>
+     <Border Style="{StaticResource Divider}"/>
+     <CheckBox x:Name="AutosaveCheckbox" AutomationProperties.Name="Save automatically"><StackPanel><TextBlock Text="Save automatically" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Keep a file of each screenshot"/></StackPanel></CheckBox>
+     <Border Style="{StaticResource Divider}"/>
+     <CheckBox x:Name="ClipboardCheckbox" AutomationProperties.Name="Copy to clipboard"><StackPanel><TextBlock Text="Copy to clipboard" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Ready to paste wherever you need it"/></StackPanel></CheckBox>
     </StackPanel>
    </Border>
-   <Border Background="{StaticResource Card}" CornerRadius="12" Padding="20" Margin="0,0,0,14">
+   <Border Style="{StaticResource Group}">
     <StackPanel>
-     <TextBlock Text="SYSTEM" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,14"/>
-     <CheckBox x:Name="StartupCheckbox" AutomationProperties.Name="Start with Windows"><StackPanel><TextBlock Text="Start with Windows" FontWeight="SemiBold"/><TextBlock Text="Launch into the tray when you sign in" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel></CheckBox>
-     <Border Height="1" Background="{StaticResource Line}" Margin="0,14"/>
-     <CheckBox x:Name="PrintScreenCheckbox" AutomationProperties.Name="Take over Print Screen" Checked="PrintScreenCheckbox_Changed" Unchecked="PrintScreenCheckbox_Changed"><StackPanel><TextBlock Text="Take over Print Screen" FontWeight="SemiBold"/><TextBlock Text="Vibershot handles the key instead of Windows while it is running" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/></StackPanel></CheckBox>
-     <StackPanel x:Name="PrintScreenOptions" Margin="24,12,0,0">
-      <RadioButton x:Name="PrintScreenToolRadio" GroupName="PrintScreen" Content="Open the capture region/window tool" Margin="0,0,0,10"/>
+     <TextBlock Style="{StaticResource GroupLabel}" Text="SYSTEM"/>
+     <CheckBox x:Name="StartupCheckbox" AutomationProperties.Name="Start with Windows"><StackPanel><TextBlock Text="Start with Windows" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Launch into the tray when you sign in"/></StackPanel></CheckBox>
+     <Border Style="{StaticResource Divider}"/>
+     <CheckBox x:Name="PrintScreenCheckbox" AutomationProperties.Name="Take over Print Screen" Checked="PrintScreenCheckbox_Changed" Unchecked="PrintScreenCheckbox_Changed"><StackPanel><TextBlock Text="Take over Print Screen" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Vibershot handles the key instead of Windows while it is running"/></StackPanel></CheckBox>
+     <StackPanel x:Name="PrintScreenOptions" Margin="0,14,0,0">
+      <RadioButton x:Name="PrintScreenToolRadio" GroupName="PrintScreen" Content="Open the region tool" Margin="0,0,0,10"/>
       <RadioButton x:Name="PrintScreenDesktopRadio" GroupName="PrintScreen" Content="Snap the full desktop right away"/>
      </StackPanel>
     </StackPanel>
    </Border>
-   <Border Background="{StaticResource Card}" CornerRadius="12" Padding="20">
+   <Border Style="{StaticResource Group}" Margin="0">
     <StackPanel>
-     <TextBlock Text="FILES" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,14"/>
-     <TextBlock Text="Save location" Margin="0,0,0,7"/>
-     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="FolderTextBox" AutomationProperties.Name="Save location" ToolTip="Screenshot output folder"/><Button Grid.Column="1" Content="Browse…" Margin="8,0,0,0" Padding="12,9" Click="BrowseButton_Click"/></Grid>
-     <TextBlock Text="Image format" Margin="0,16,0,7"/>
+     <TextBlock Style="{StaticResource GroupLabel}" Text="FILES"/>
+     <TextBlock Text="Save location" FontWeight="Bold" Margin="0,0,0,8"/>
+     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="FolderTextBox" AutomationProperties.Name="Save location" ToolTip="Screenshot output folder" FontFamily="{StaticResource MonoFont}" FontSize="12"/><Button Grid.Column="1" Content="Browse…" Margin="8,0,0,0" Padding="14,9" Click="BrowseButton_Click"/></Grid>
+     <TextBlock Text="Image format" FontWeight="Bold" Margin="0,18,0,8"/>
      <ComboBox x:Name="FormatComboBox" AutomationProperties.Name="Image format" SelectionChanged="FormatComboBox_SelectionChanged"><ComboBoxItem Content="PNG · lossless quality" Tag="{x:Static core:ImageFormat.Png}"/><ComboBoxItem Content="JPEG · smaller files" Tag="{x:Static core:ImageFormat.Jpeg}"/><ComboBoxItem Content="WebP lossless · exact pixels, smaller than PNG" Tag="{x:Static core:ImageFormat.WebpLossless}"/><ComboBoxItem Content="WebP · custom quality" Tag="{x:Static core:ImageFormat.Webp}"/></ComboBox>
-     <StackPanel x:Name="WebpQualityPanel" Margin="0,12,0,0">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="WebP quality"/><TextBlock x:Name="WebpQualityLabel" Grid.Column="1" Foreground="{StaticResource Muted}"/></Grid>
-      <Slider x:Name="WebpQualitySlider" AutomationProperties.Name="WebP quality" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Margin="0,6,0,0" ValueChanged="WebpQualitySlider_ValueChanged"/>
-      <TextBlock Text="Lower is smaller; 80 is a good balance" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,4,0,0"/>
+     <StackPanel x:Name="WebpQualityPanel" Margin="0,16,0,0">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="WebP quality" FontWeight="Bold"/><TextBlock x:Name="WebpQualityLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
+      <Slider x:Name="WebpQualitySlider" AutomationProperties.Name="WebP quality" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Margin="0,8,0,0" ValueChanged="WebpQualitySlider_ValueChanged"/>
+      <TextBlock Style="{StaticResource Hint}" Text="Lower is smaller; 80 is a good balance" Margin="0,6,0,0"/>
      </StackPanel>
     </StackPanel>
    </Border>

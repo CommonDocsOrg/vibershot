@@ -19,6 +19,7 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 | `PaperEdge` | `#C9CDD3` | 1px outer border of a window |
 | `Rule` | `#E4E7EB` | Chip borders, pressed row fill, chrome hover |
 | `Hover` | `#F1F2F4` | Row hover fill, disabled icon tile |
+| `Well` | `#EEF0F3` | Page background behind grouped cards (Settings) |
 | `Ink` | `#15181C` | Primary text, wordmark, icon tile for the logo |
 | `Ink2` | `#5B636D` | Secondary text, hints, chrome icons, pin off state |
 | `Ink3` | `#9AA2AB` | Section labels, chips, version tag, neutral status |
@@ -31,7 +32,7 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 
 Semantic colors (`Ok`, `Danger`) are separate from the accent and never used for decoration.
 
-The older dark tokens (`Surface`, `Card`, `Line`, `Muted`, `Accent`) are still in `App.xaml` and still back the Settings and Preview windows. New work should use the paper palette; those windows are candidates for porting.
+Every window uses this palette: the capture window, Settings, Preview, the recording and scrolling control panel, and the region overlay's hint and action bar. The default control styles in `App.xaml` (Button, PrimaryButton, TextBox, CheckBox toggle, RadioButton, ComboBox, Slider) are already themed, so a new window gets the look by using them. Standard windows call `WindowAppearance.Apply` so the native title bar is paper with ink text and rounded corners.
 
 ## Typography
 
@@ -93,6 +94,12 @@ Shadow on a window: color `#14181C`, blur 40, depth 10, opacity 0.22.
 **Section label.** Uppercase, 10.5 bold, `Ink3`, inset 4px past the content edge.
 
 **Footer.** No rule above it. A 7px status dot, the status text trimmed with an ellipsis and a tooltip holding the full message, and a text link on the right.
+
+**Settings group.** Cards use the `Group` style: paper fill, `PaperEdge` border, radius 12, 20px padding, on a `Well` page background. A `GroupLabel` (uppercase, 10.5 bold, `Ink3`) heads each card. Toggles sit on the right of a bold title and a `Hint` line, separated by `Divider` rules. Dividers are allowed inside a card because the rows are settings, not actions.
+
+**Preview well.** Captures sit on a light checkerboard (`#F3F4F6` and `#E6E8EC`, 10px squares) inside a `PaperEdge` border so transparent and white images both read.
+
+**Overlay chrome.** On the region selector the selection stroke and glow are `Tangerine`. The hint and the action bar are paper panels with a `PaperEdge` border and a shadow. The first action is the primary button.
 
 **Focus.** Every interactive element shows a 2px `Tangerine` border when keyboard focused. On the tangerine primary action the ring is `Ink` instead.
 

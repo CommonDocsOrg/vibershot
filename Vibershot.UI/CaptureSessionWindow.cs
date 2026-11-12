@@ -32,11 +32,14 @@ public sealed class CaptureSessionWindow : Window
         Topmost = true; WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
         var panel = new StackPanel { Margin = new Thickness(20) };
-        Content = new Border { CornerRadius = new CornerRadius(24), BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Color.FromArgb(100, 170, 225, 218)), Background = new LinearGradientBrush(Color.FromRgb(45, 65, 75), Color.FromRgb(24, 32, 46), 60), Child = panel };
-        var header = new TextBlock { Text = "vibershot / " + (video ? "Video capture" : "Scrolling photo"), FontSize = 20, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) };
+        // Same paper panel as the capture window: solid surface, 1px edge, soft shadow.
+        Content = new Border { Margin = new Thickness(12), CornerRadius = new CornerRadius(16), BorderThickness = new Thickness(1), BorderBrush = (Brush)FindResource("PaperEdge"), Background = (Brush)FindResource("Paper"), Child = panel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0x14, 0x18, 0x1C), BlurRadius = 32, ShadowDepth = 8, Opacity = 0.2 } };
+        var header = new TextBlock { Text = video ? "Recording" : "Scrolling photo", FontSize = 16, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) };
         header.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove(); };
         panel.Children.Add(header);
-        panel.Children.Add(new TextBlock { Text = video ? "Recording region • 10 fps • No audio" : "Scroll the browser, then add a shot", FontSize = 18 });
+        panel.Children.Add(new TextBlock { Text = video ? "Region video • 10 fps • No audio" : "Scroll the page, then add a shot", FontSize = 12, Foreground = (Brush)FindResource("Ink2") });
+        _status.Foreground = (Brush)FindResource("Ink2"); _status.FontSize = 11.5;
         panel.Children.Add(_status);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal }; panel.Children.Add(buttons);
         if (!video) buttons.Children.Add(_add);

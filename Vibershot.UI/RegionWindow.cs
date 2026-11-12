@@ -12,11 +12,17 @@ public enum CaptureAction { Screenshot, Video, Scrolling }
 public sealed class RegionWindow : Window
 {
     private readonly Canvas _canvas = new();
-    private readonly Rectangle _selection = new() { Stroke = Brushes.Turquoise, StrokeThickness = 2, IsHitTestVisible = false,
-        Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Turquoise, BlurRadius = 16, ShadowDepth = 0, Opacity = .9 } };
-    private readonly System.Windows.Shapes.Path _shade = new() { Fill = new SolidColorBrush(Color.FromArgb(155, 20, 24, 30)), IsHitTestVisible = false };
-    private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal, Background = new SolidColorBrush(Color.FromRgb(25, 35, 45)), Visibility = Visibility.Collapsed };
-    private readonly TextBlock _hint = new() { Foreground = Brushes.White, Background = Brushes.Black, Padding = new Thickness(10), IsHitTestVisible = false };
+    // Overlay chrome follows the paper palette: tangerine selection, paper action bar and hint.
+    private static readonly Color AccentColor = Color.FromRgb(0xF0, 0x61, 0x2A);
+    private readonly Rectangle _selection = new() { Stroke = new SolidColorBrush(AccentColor), StrokeThickness = 2, IsHitTestVisible = false,
+        Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = AccentColor, BlurRadius = 14, ShadowDepth = 0, Opacity = .8 } };
+    private readonly System.Windows.Shapes.Path _shade = new() { Fill = new SolidColorBrush(Color.FromArgb(150, 21, 24, 28)), IsHitTestVisible = false };
+    private readonly Border _actions = new() { Background = new SolidColorBrush(Color.FromRgb(0xFB, 0xFB, 0xFC)), BorderBrush = new SolidColorBrush(Color.FromRgb(0xC9, 0xCD, 0xD3)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Visibility = Visibility.Collapsed,
+        Child = new StackPanel { Orientation = Orientation.Horizontal }, Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0x14, 0x18, 0x1C), BlurRadius = 24, ShadowDepth = 6, Opacity = .25 } };
+    private readonly Border _hint = new() { Background = new SolidColorBrush(Color.FromRgb(0xFB, 0xFB, 0xFC)), BorderBrush = new SolidColorBrush(Color.FromRgb(0xC9, 0xCD, 0xD3)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8), IsHitTestVisible = false,
+        Child = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0x15, 0x18, 0x1C)), FontSize = 12, FontWeight = FontWeights.SemiBold } };
+    private string HintText { set => ((TextBlock)_hint.Child).Text = value; }
+    private UIElementCollection ActionButtons => ((StackPanel)_actions.Child).Children;
     private readonly WindowTargets _targets = new();
     private readonly HashSet<IntPtr> _queried = new();
     private readonly BitmapSource _desktop;
@@ -36,7 +42,7 @@ public sealed class RegionWindow : Window
         Topmost = true; ShowInTaskbar = false; Cursor = Cursors.Cross;
         Background = new ImageBrush(desktop) { Stretch = Stretch.Fill }; Content = _canvas;
         _canvas.Children.Add(_shade); _canvas.Children.Add(_selection);
-        _hint.Text = "Hover + click: window or content • Shift: whole window • Drag: region • Esc: cancel";
+        HintText = "Hover + click: window or content • Shift: whole window • Drag: region • Esc: cancel";
         Canvas.SetLeft(_hint, 24); Canvas.SetTop(_hint, 24); _canvas.Children.Add(_hint);
         AddAction("Save screenshot", () => Complete(CaptureAction.Screenshot));
         AddAction("Take video", () => Complete(CaptureAction.Video));
@@ -70,7 +76,7 @@ public sealed class RegionWindow : Window
             int h = Math.Min(bounds.Height, (int)Math.Ceiling(pixels.Bottom)) - y;
             if (w < 2 || h < 2) { UpdateHover(); return; }
             Draw(new Rect(x, y, w, h)); _locked = true;
-            _hint.Text = $"{w} × {h} • Choose an action • Hover + click or drag to replace • Esc: cancel";
+            HintText = $"{w} × {h} • Choose an action • Hover + click or drag to replace • Esc: cancel";
             SelectedBounds = new Int32Rect(x + bounds.X, y + bounds.Y, w, h);
             Result = new CroppedBitmap(_desktop, new Int32Rect(x, y, w, h)); Result.Freeze();
             if (!_showActions) { Complete(CaptureAction.Screenshot); return; }
@@ -78,7 +84,7 @@ public sealed class RegionWindow : Window
             Canvas.SetLeft(_actions, Math.Clamp(Canvas.GetLeft(_selection), 0, Math.Max(0, ActualWidth - _actions.DesiredSize.Width)));
             double below = Canvas.GetTop(_selection) + _selection.Height + 8;
             Canvas.SetTop(_actions, Math.Clamp(below + _actions.DesiredSize.Height <= ActualHeight ? below : Canvas.GetTop(_selection) - _actions.DesiredSize.Height - 8, 0, Math.Max(0, ActualHeight - _actions.DesiredSize.Height)));
-            ((Button)_actions.Children[0]).Focus();
+            ((Button)ActionButtons[0]).Focus();
         };
     }
     private async void UpdateHover()
@@ -98,7 +104,7 @@ public sealed class RegionWindow : Window
         if (!area.IsEmpty)
         {
             area.Offset(-_bounds.X, -_bounds.Y); _hover = area; Draw(area);
-            _hint.Text = $"{kind} • {(int)area.Width} × {(int)area.Height} • Click: select • Shift: whole window • Drag: region • Esc: cancel";
+            HintText = $"{kind} • {(int)area.Width} × {(int)area.Height} • Click: select • Shift: whole window • Drag: region • Esc: cancel";
         }
         // One provider request at a time. A hung app must not block selection or queue more workers.
         if (!_queried.Contains(target.Handle) && System.Threading.Interlocked.CompareExchange(ref _providerBusy, 1, 0) == 0)
@@ -111,8 +117,9 @@ public sealed class RegionWindow : Window
     }
     private void AddAction(string label, Action action)
     {
-        var button = new Button { Content = label, Margin = new Thickness(4), Padding = new Thickness(10, 9, 10, 9), Cursor = Cursors.Hand };
-        button.Click += (_, _) => action(); _actions.Children.Add(button);
+        var button = new Button { Content = label, Margin = new Thickness(3), Padding = new Thickness(12, 8, 12, 8), Cursor = Cursors.Hand };
+        if (ActionButtons.Count == 0) button.Style = (Style)FindResource("PrimaryButton"); // The first action is the default one.
+        button.Click += (_, _) => action(); ActionButtons.Add(button);
     }
     private void Complete(CaptureAction action) { Action = action; DialogResult = true; }
     private Point PixelPoint()
