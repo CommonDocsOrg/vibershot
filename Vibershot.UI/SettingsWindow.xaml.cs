@@ -23,6 +23,11 @@ public partial class SettingsWindow : Window
         SelectFormat(config.Format);
         UpdateWebpQualityVisibility();
 
+        LibraryRootTextBox.Text = config.Gallery.LibraryRoot;
+        ThumbnailSizeSlider.Value = Math.Clamp(config.Gallery.ThumbnailSize, 120, 360);
+        ThumbnailSizeLabel.Text = $"{(int)ThumbnailSizeSlider.Value} px";
+        OpenGalleryCheckbox.IsChecked = config.Gallery.OpenGalleryAfterCapture;
+
         StartupCheckbox.IsChecked = StartupRegistration.IsEnabled;
         PrintScreenCheckbox.IsChecked = config.PrintScreen != PrintScreenAction.Off;
         PrintScreenDesktopRadio.IsChecked = config.PrintScreen == PrintScreenAction.FullDesktop;
@@ -85,6 +90,28 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private void ThumbnailSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (ThumbnailSizeLabel is not null)
+        {
+            ThumbnailSizeLabel.Text = $"{(int)e.NewValue} px";
+        }
+    }
+
+    private void LibraryBrowseButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new FolderBrowserDialog
+        {
+            Description = "Select the gallery library root",
+            SelectedPath = _config.Gallery.LibraryRoot,
+        };
+
+        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+        {
+            LibraryRootTextBox.Text = dialog.SelectedPath;
+        }
+    }
+
     private void OkButton_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(FolderTextBox.Text) || !Path.IsPathFullyQualified(FolderTextBox.Text))
@@ -92,6 +119,14 @@ public partial class SettingsWindow : Window
             System.Windows.MessageBox.Show(this, "Choose an absolute output folder path.", "Vibershot settings");
             return;
         }
+        if (string.IsNullOrWhiteSpace(LibraryRootTextBox.Text) || !Path.IsPathFullyQualified(LibraryRootTextBox.Text))
+        {
+            System.Windows.MessageBox.Show(this, "Choose an absolute library root path.", "Vibershot settings");
+            return;
+        }
+        _config.Gallery.LibraryRoot = LibraryRootTextBox.Text;
+        _config.Gallery.ThumbnailSize = (int)ThumbnailSizeSlider.Value;
+        _config.Gallery.OpenGalleryAfterCapture = OpenGalleryCheckbox.IsChecked == true;
         _config.OutputFolder = FolderTextBox.Text;
         _config.Autosave = AutosaveCheckbox.IsChecked ?? true;
         _config.ShowCaptureActions = ActionsCheckbox.IsChecked == true;

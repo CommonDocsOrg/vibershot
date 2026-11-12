@@ -57,6 +57,7 @@ public partial class MainWindow : Window
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private void CaptureButton_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow();
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow(false);
+    private void Gallery_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).ShowGallery();
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (new SettingsWindow(_config) { Owner = this }.ShowDialog() == true)

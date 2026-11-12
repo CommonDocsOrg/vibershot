@@ -7,12 +7,15 @@ public partial class PreviewWindow : Window
 {
     private readonly BitmapSource _image;
     private readonly AppConfig _config;
-    public PreviewWindow(BitmapSource image, string status, AppConfig config)
+    private readonly Vibershot.Gallery.CaptureSidecar? _sidecar;
+    /// <param name="sidecar">Gallery metadata for the capture; written next to any file saved from here.</param>
+    public PreviewWindow(BitmapSource image, string status, AppConfig config, Vibershot.Gallery.CaptureSidecar? sidecar = null)
     {
         InitializeComponent();
         WindowAppearance.Apply(this);
         _image = image;
         _config = config;
+        _sidecar = sidecar;
         Title = $"Vibershot — {image.PixelWidth} × {image.PixelHeight}";
         DimensionsLabel.Text = $"{image.PixelWidth:N0} × {image.PixelHeight:N0} pixels  ·  Screenshot preview";
         CaptureImage.Source = image;
@@ -33,8 +36,9 @@ public partial class PreviewWindow : Window
         if (dialog.ShowDialog(this) != true) return;
         try
         {
-            using var stream = File.Create(dialog.FileName);
-            ImageEncoding.Encode(_image, ScreenshotSaveDialog.FormatFor(dialog.FilterIndex), _config.WebpQuality, stream);
+            using (var stream = File.Create(dialog.FileName))
+                ImageEncoding.Encode(_image, ScreenshotSaveDialog.FormatFor(dialog.FilterIndex), _config.WebpQuality, stream);
+            _sidecar?.TryWrite(dialog.FileName);
             InfoLabel.Text = $"Saved: {dialog.FileName}";
         }
         catch (Exception ex) { InfoLabel.Text = $"Save failed: {ex.Message}"; }
