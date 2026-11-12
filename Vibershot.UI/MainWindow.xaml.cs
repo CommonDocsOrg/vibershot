@@ -57,6 +57,13 @@ public partial class MainWindow : Window
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private void CaptureButton_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow();
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow(false);
+    private void Editor_Click(object sender, RoutedEventArgs e)
+    {
+        // Opens whatever image is on the clipboard; a blank canvas otherwise.
+        System.Windows.Media.Imaging.BitmapSource? image = null;
+        try { image = ClipboardService.GetImage(); } catch (Exception) { }
+        ((App)Application.Current).OpenEditor(image);
+    }
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (new SettingsWindow(_config) { Owner = this }.ShowDialog() == true)

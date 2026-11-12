@@ -23,6 +23,11 @@ public partial class PreviewWindow : Window
         try { ClipboardService.SetImage(_image); InfoLabel.Text = "Copied to clipboard. Ready to paste."; }
         catch (Exception ex) { InfoLabel.Text = "Could not copy: " + ex.Message; }
     }
+    private void Edit_Click(object sender, RoutedEventArgs e)
+    {
+        ((App)Application.Current).OpenEditor(_image);
+        Close();
+    }
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SaveFileDialog

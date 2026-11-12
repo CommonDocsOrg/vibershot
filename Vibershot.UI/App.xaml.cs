@@ -59,6 +59,12 @@ public partial class App : Application
             _main.ShowStatus("Print Screen is in use by another app. In Windows Settings, turn off \"Use the Print screen key to open screen capture\".");
         }
     }
+    /// <summary>Opens the image editor on <paramref name="image"/>, or on a blank 1280×720 canvas when null.</summary>
+    public void OpenEditor(System.Windows.Media.Imaging.BitmapSource? image)
+    {
+        try { new EditorWindow(_config, image).Show(); }
+        catch (Exception ex) { _main.ShowStatus("Editor failed to open: " + ex.Message); }
+    }
     protected override void OnExit(ExitEventArgs e)
     {
         _printScreen?.Dispose();
@@ -116,7 +122,7 @@ public partial class App : Application
                 catch (Exception) { status += " • Clipboard busy; use Copy image to retry."; }
             }
             _main.ShowStatus(status);
-            new PreviewWindow(image, status, _config).Show();
+            if (_config.Editor.OpenEditorAfterCapture) OpenEditor(image); else new PreviewWindow(image, status, _config).Show();
         }
         catch (Exception ex) { _main.ShowStatus("Capture failed: " + ex.Message); }
         finally

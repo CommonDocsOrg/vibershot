@@ -128,12 +128,11 @@
       <Border Grid.Column="2" Style="{StaticResource Chip}"><TextBlock Style="{StaticResource ChipText}" Text="SOON" FontSize="9.5"/></Border>
      </Grid>
     </Button>
-    <Button Style="{StaticResource RowButton}" Margin="0,6,0,0" IsEnabled="False" AutomationProperties.Name="Editor, coming soon" ToolTip="Editor is coming soon">
+    <Button Style="{StaticResource RowButton}" Margin="0,6,0,0" Click="Editor_Click" AutomationProperties.Name="Editor" ToolTip="Open the clipboard image, or a blank canvas, in the editor">
      <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Border Style="{StaticResource RowIcon}" Background="{StaticResource Hover}"><TextBlock Style="{StaticResource RowGlyph}" Text="&#xE70F;" Foreground="{StaticResource Ink3}"/></Border>
-      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Style="{StaticResource RowTitle}" Text="Editor" Foreground="{StaticResource Ink2}"/><TextBlock Style="{StaticResource RowHint}" Text="Annotate, crop and blur"/></StackPanel>
-      <Border Grid.Column="2" Style="{StaticResource Chip}"><TextBlock Style="{StaticResource ChipText}" Text="SOON" FontSize="9.5"/></Border>
+      <Border Style="{StaticResource RowIcon}"><TextBlock Style="{StaticResource RowGlyph}" Text="&#xE70F;"/></Border>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Style="{StaticResource RowTitle}" Text="Editor"/><TextBlock Style="{StaticResource RowHint}" Text="Annotate, crop and export"/></StackPanel>
      </Grid>
     </Button>
    </StackPanel>
