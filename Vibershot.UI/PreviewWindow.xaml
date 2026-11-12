@@ -6,7 +6,7 @@
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <Grid Margin="0,0,0,18"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
    <StackPanel VerticalAlignment="Center"><TextBlock Text="Your capture" FontSize="20" FontWeight="Bold"/><TextBlock x:Name="DimensionsLabel" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12" Margin="0,4,0,0"/></StackPanel>
-   <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button Content="Copy image" Click="Copy_Click" Padding="18,10"/><Button Content="Save as…" Style="{StaticResource PrimaryButton}" Click="Save_Click" Margin="10,0,0,0" Padding="22,10"/></StackPanel>
+   <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button Content="Copy image" Click="Copy_Click" Padding="18,10"/><Button Content="Save as…" Click="Save_Click" Margin="10,0,0,0" Padding="18,10"/><Button Content="Edit" Style="{StaticResource PrimaryButton}" Click="Edit_Click" Margin="10,0,0,0" Padding="22,10" ToolTip="Annotate and crop in the editor"/></StackPanel>
   </Grid>
   <!-- A checkerboard well so transparent and white captures both read against the page. -->
   <Border Grid.Row="1" CornerRadius="12" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" Padding="20" ClipToBounds="True">

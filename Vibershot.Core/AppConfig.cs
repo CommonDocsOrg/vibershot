@@ -57,6 +57,9 @@ public sealed class AppConfig
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public PrintScreenAction PrintScreen { get; set; } = PrintScreenAction.Off;
 
+    // Image editor defaults; missing in older configs, so it falls back to EditorSettings defaults.
+    public EditorSettings Editor { get; set; } = new();
+
     private static string ConfigPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

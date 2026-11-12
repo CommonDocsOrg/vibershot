@@ -1,0 +1,134 @@
+using System.Collections.Immutable;
+using System.Text.Json.Serialization;
+using System.Windows;
+using System.Windows.Media;
+
+namespace Vibershot.Editing;
+
+public enum TextAlign { Left, Center, Right }
+
+/// <summary>
+/// One object on a layer. Items are immutable records: editing produces a new item with the
+/// same <see cref="Id"/>. The JSON discriminator lets later item kinds (callout, stamp,
+/// blur, highlight) be added as further derived records.
+/// </summary>
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
+[JsonDerivedType(typeof(ImageItem), "image")]
+[JsonDerivedType(typeof(RectItem), "rect")]
+[JsonDerivedType(typeof(EllipseItem), "ellipse")]
+[JsonDerivedType(typeof(LineItem), "line")]
+[JsonDerivedType(typeof(ArrowItem), "arrow")]
+[JsonDerivedType(typeof(TextItem), "text")]
+public abstract record Item
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+
+    /// <summary>Unrotated bounds in document pixels.</summary>
+    public Rect Bounds { get; init; }
+
+    /// <summary>Degrees, clockwise, about the centre of <see cref="Bounds"/>.</summary>
+    public double Rotation { get; init; }
+
+    public Color? Stroke { get; init; }
+    public double StrokeWidth { get; init; }
+    public Color? Fill { get; init; }
+    public double Opacity { get; init; } = 1;
+    public bool Shadow { get; init; }
+
+    [JsonIgnore] public Point Center => new(Bounds.X + Bounds.Width / 2, Bounds.Y + Bounds.Height / 2);
+    [JsonIgnore] public bool HasStroke => Stroke is { A: > 0 } && StrokeWidth > 0;
+}
+
+/// <summary>A placed bitmap; the pixels live in the <see cref="AssetStore"/> under <see cref="AssetId"/>.</summary>
+public sealed record ImageItem : Item
+{
+    public Guid AssetId { get; init; }
+}
+
+public sealed record RectItem : Item
+{
+    public double CornerRadius { get; init; }
+}
+
+public sealed record EllipseItem : Item;
+
+/// <summary>
+/// A straight line from one corner of <see cref="Item.Bounds"/> to the opposite one: top-left
+/// to bottom-right normally, bottom-left to top-right when <see cref="Flipped"/>.
+/// </summary>
+public record LineItem : Item
+{
+    public bool Flipped { get; init; }
+
+    [JsonIgnore] public Point Start => Flipped ? new Point(Bounds.Left, Bounds.Bottom) : Bounds.TopLeft;
+    [JsonIgnore] public Point End => Flipped ? new Point(Bounds.Right, Bounds.Top) : Bounds.BottomRight;
+
+    /// <summary>Builds the bounds and flip flag for a line between two points.</summary>
+    public static (Rect Bounds, bool Flipped) FromPoints(Point start, Point end)
+    {
+        var bounds = new Rect(start, end);
+        bool flipped = (end.X - start.X) * (end.Y - start.Y) < 0;
+        return (bounds, flipped);
+    }
+
+    /// <summary>Returns the item re-laid between two points (keeps direction: the line starts at <paramref name="start"/>).</summary>
+    public LineItem WithPoints(Point start, Point end)
+    {
+        var (bounds, flipped) = FromPoints(start, end);
+        bool reversed = end.X < start.X || (end.X == start.X && end.Y < start.Y);
+        return this with { Bounds = bounds, Flipped = flipped, Reversed = reversed };
+    }
+
+    /// <summary>True when the line runs right-to-left (the arrow head sits at the left end).</summary>
+    public bool Reversed { get; init; }
+
+    [JsonIgnore] public Point Tail => Reversed ? End : Start;
+    [JsonIgnore] public Point Head => Reversed ? Start : End;
+}
+
+public sealed record ArrowItem : LineItem
+{
+    public double HeadSize { get; init; } = 14;
+}
+
+public sealed record TextItem : Item
+{
+    public string Text { get; init; } = "";
+    public string FontFamily { get; init; } = "Segoe UI";
+    public double FontSize { get; init; } = 18;
+    public bool Bold { get; init; }
+    public bool Italic { get; init; }
+    public bool Underline { get; init; }
+    public Color Color { get; init; } = Colors.Black;
+    [JsonConverter(typeof(JsonStringEnumConverter<TextAlign>))]
+    public TextAlign Alignment { get; init; } = TextAlign.Left;
+    public Color? Background { get; init; }
+    public double Padding { get; init; } = 6;
+}
+
+public sealed record Layer
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public string Name { get; init; } = "Layer";
+    public bool Visible { get; init; } = true;
+    public bool Locked { get; init; }
+    public double Opacity { get; init; } = 1;
+    public ImmutableList<Item> Items { get; init; } = ImmutableList<Item>.Empty;
+}
+
+/// <summary>The whole editable picture: a canvas size, an optional crop and layers bottom to top.</summary>
+public sealed record ImageDocument
+{
+    public Size Size { get; init; } = new(1280, 720);
+
+    /// <summary>Non-destructive crop; null shows the whole canvas.</summary>
+    public Rect? CropRect { get; init; }
+
+    public Color Background { get; init; } = Colors.Transparent;
+    public ImmutableList<Layer> Layers { get; init; } = ImmutableList<Layer>.Empty;
+
+    /// <summary>The rectangle export produces: the crop when set, otherwise the full canvas.</summary>
+    [JsonIgnore] public Rect ContentRect => CropRect ?? new Rect(Size);
+
+    [JsonIgnore] public IEnumerable<Item> AllItems => Layers.SelectMany(layer => layer.Items);
+}

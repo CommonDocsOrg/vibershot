@@ -13,5 +13,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Vibershot.Core\Vibershot.Core.csproj" />
+    <ProjectReference Include="..\Vibershot.Editing\Vibershot.Editing.csproj" />
   </ItemGroup>
 </Project>
