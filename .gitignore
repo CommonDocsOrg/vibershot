@@ -2,3 +2,5 @@
 **/obj/
 .vs/
 artifacts/
+# ffmpeg binaries are downloaded by tools/get-ffmpeg.ps1, never committed.
+tools/ffmpeg/
