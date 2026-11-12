@@ -57,6 +57,9 @@ public sealed class AppConfig
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public PrintScreenAction PrintScreen { get; set; } = PrintScreenAction.Off;
 
+    // Gallery library, thumbnails and window placement. Missing in legacy configs: defaults apply.
+    public GallerySettings Gallery { get; set; } = new();
+
     private static string ConfigPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
