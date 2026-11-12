@@ -1,0 +1,285 @@
+<Window x:Class="Vibershot.UI.GalleryWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:ui="clr-namespace:Vibershot.UI"
+ Style="{StaticResource {x:Type Window}}" Title="Vibershot Gallery" Width="1200" Height="780" MinWidth="860" MinHeight="520"
+ WindowStartupLocation="CenterScreen" Background="{StaticResource Well}" AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop">
+ <Window.Resources>
+  <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+  <ui:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility"/>
+  <ui:NullToVisibilityConverter x:Key="NullToVisibility"/>
+  <ui:EmptyStringToVisibilityConverter x:Key="EmptyToVisibility"/>
+  <ui:KindGlyphConverter x:Key="KindGlyph"/>
+  <ui:FavouriteGlyphConverter x:Key="FavouriteGlyph"/>
+  <ui:FavouriteBrushConverter x:Key="FavouriteBrush"/>
+
+  <!-- Section labels: uppercase, like the launcher's MORE. -->
+  <Style x:Key="SectionLabel" TargetType="TextBlock">
+   <Setter Property="FontSize" Value="10.5"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="{StaticResource Ink3}"/>
+  </Style>
+  <!-- Rail rows: borderless, hover fill, tangerine tint when chosen. -->
+  <Style x:Key="RailButton" TargetType="RadioButton">
+   <Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,0,2"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
+    <Border x:Name="Shell" Background="Transparent" CornerRadius="8" Padding="12,8">
+     <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <TextBlock x:Name="Glyph" Text="{TemplateBinding Tag}" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+      <ContentPresenter Grid.Column="1" VerticalAlignment="Center" TextElement.FontWeight="SemiBold"/>
+      <TextBlock x:Name="Count" Grid.Column="2" Text="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=(ui:GalleryWindow.Count)}" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{StaticResource Ink3}" VerticalAlignment="Center" Margin="8,0,0,0"/>
+     </Grid>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource Tangerine}"/><Setter Property="FontWeight" Value="Bold"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/><Setter TargetName="Shell" Property="Padding" Value="10,6"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <!-- Toolbar: compact secondary buttons with a glyph and a short label. -->
+  <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+   <Setter Property="Padding" Value="10,6"/><Setter Property="Margin" Value="0,0,6,0"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontSize" Value="12"/>
+   <Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/>
+  </Style>
+  <Style x:Key="ToolGlyph" TargetType="TextBlock">
+   <Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Margin" Value="0,0,6,0"/>
+  </Style>
+  <!-- Chips on tiles are opaque paper so they read over any capture. -->
+  <Style x:Key="TileChip" TargetType="Border">
+   <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="BorderBrush" Value="{StaticResource Rule}"/><Setter Property="BorderThickness" Value="1"/>
+   <Setter Property="CornerRadius" Value="5"/><Setter Property="Padding" Value="6,2"/><Setter Property="Margin" Value="6"/>
+  </Style>
+  <Style x:Key="ChipText" TargetType="TextBlock">
+   <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="FontSize" Value="10.5"/><Setter Property="Foreground" Value="{StaticResource Ink3}"/>
+  </Style>
+  <Style x:Key="TagChip" TargetType="Border">
+   <Setter Property="Background" Value="{StaticResource TangerineSoft}"/><Setter Property="CornerRadius" Value="5"/><Setter Property="Padding" Value="8,3"/><Setter Property="Margin" Value="0,0,6,6"/>
+  </Style>
+  <DrawingBrush x:Key="Checkerboard" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
+   <DrawingBrush.Drawing><DrawingGroup>
+    <GeometryDrawing Brush="#F3F4F6"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#E6E8EC"><GeometryDrawing.Geometry><GeometryGroup><RectangleGeometry Rect="0,0,10,10"/><RectangleGeometry Rect="10,10,10,10"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
+   </DrawingGroup></DrawingBrush.Drawing>
+  </DrawingBrush>
+  <Style x:Key="MetaKey" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Margin" Value="0,0,12,6"/></Style>
+  <Style x:Key="MetaValue" TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Margin" Value="0,0,0,6"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/><Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/></Style>
+
+  <!-- A tile: thumbnail well with overlays, then the name and a hint line. -->
+  <DataTemplate x:Key="TileTemplate">
+   <Grid Width="{Binding TileSize, RelativeSource={RelativeSource AncestorType=ui:GalleryWindow}}" Loaded="Tile_Loaded" DataContextChanged="Tile_DataContextChanged" Background="Transparent">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border Height="{Binding TileImageHeight, RelativeSource={RelativeSource AncestorType=ui:GalleryWindow}}" CornerRadius="8" Background="{StaticResource Hover}" BorderBrush="{StaticResource Rule}" BorderThickness="1" ClipToBounds="True">
+     <Grid>
+      <Image Source="{Binding Thumbnail}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Margin="1"/>
+      <Border Style="{StaticResource TileChip}" HorizontalAlignment="Left" VerticalAlignment="Top" Padding="5,3">
+       <TextBlock Text="{Binding Kind, Converter={StaticResource KindGlyph}}" FontFamily="Segoe Fluent Icons" FontSize="11" Foreground="{StaticResource Ink2}"/>
+      </Border>
+      <Button Click="TileFavourite_Click" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="6" Padding="0" Width="26" Height="26" Background="{StaticResource Paper}" BorderBrush="{StaticResource Rule}" Focusable="False" ToolTip="Favourite" AutomationProperties.Name="Favourite">
+       <TextBlock Text="{Binding Favourite, Converter={StaticResource FavouriteGlyph}}" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{Binding Favourite, Converter={StaticResource FavouriteBrush}}"/>
+      </Button>
+      <Border Style="{StaticResource TileChip}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="{Binding Badge, Converter={StaticResource EmptyToVisibility}}">
+       <TextBlock Style="{StaticResource ChipText}" Text="{Binding Badge}"/>
+      </Border>
+     </Grid>
+    </Border>
+    <StackPanel Grid.Row="1" Margin="2,8,2,2">
+     <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding Path}" Visibility="{Binding IsRenaming, Converter={StaticResource InverseBoolToVisibility}}"/>
+     <TextBox x:Name="RenameBox" Text="{Binding Name, Mode=OneWay}" FontSize="12" Padding="6,3" Visibility="{Binding IsRenaming, Converter={StaticResource BoolToVisibility}}" IsVisibleChanged="RenameBox_IsVisibleChanged" KeyDown="RenameBox_KeyDown" LostKeyboardFocus="RenameBox_LostFocus"/>
+     <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="{StaticResource Ink2}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
+    </StackPanel>
+   </Grid>
+  </DataTemplate>
+  <Style x:Key="TileContainer" TargetType="ListBoxItem">
+   <Setter Property="Margin" Value="4"/><Setter Property="Padding" Value="6"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem">
+    <Border x:Name="Shell" Background="Transparent" BorderBrush="Transparent" BorderThickness="2" CornerRadius="12" Padding="{TemplateBinding Padding}">
+     <ContentPresenter/>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+     <Trigger Property="IsSelected" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+ </Window.Resources>
+
+ <Grid Margin="24,18,24,20">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+
+  <!-- Header: title and count, search, sort, tile size, detail toggle, the one primary action. -->
+  <Grid Margin="0,0,0,14">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <StackPanel VerticalAlignment="Center" Margin="0,0,24,0">
+    <TextBlock Text="Gallery" FontSize="22" FontWeight="Bold"/>
+    <TextBlock x:Name="CountLabel" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Margin="0,3,0,0"/>
+   </StackPanel>
+   <Grid Grid.Column="1" VerticalAlignment="Center" MaxWidth="360" HorizontalAlignment="Left" MinWidth="220">
+    <TextBox x:Name="SearchBox" Padding="32,8,30,8" TextChanged="SearchBox_TextChanged" KeyDown="SearchBox_KeyDown" AutomationProperties.Name="Search" ToolTip="Search file names, apps, window titles and tags (Ctrl+F)"/>
+    <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource Ink3}" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+    <TextBlock Text="Search captures" Foreground="{StaticResource Ink3}" Margin="34,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" Visibility="{Binding Text, ElementName=SearchBox, Converter={StaticResource EmptyToVisibility}, ConverterParameter=Invert}"/>
+   </Grid>
+   <ComboBox x:Name="SortBox" Grid.Column="2" Width="150" Margin="14,0,0,0" VerticalAlignment="Center" SelectionChanged="SortBox_SelectionChanged" AutomationProperties.Name="Sort">
+    <ComboBoxItem Content="Newest first" IsSelected="True"/><ComboBoxItem Content="Oldest first"/><ComboBoxItem Content="Name A to Z"/><ComboBoxItem Content="Name Z to A"/><ComboBoxItem Content="Largest first"/><ComboBoxItem Content="Smallest first"/>
+   </ComboBox>
+   <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+    <TextBlock Text="&#xE8A9;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+    <Slider x:Name="SizeSlider" Width="110" Minimum="120" Maximum="360" SmallChange="10" LargeChange="40" ValueChanged="SizeSlider_ValueChanged" AutomationProperties.Name="Thumbnail size" VerticalAlignment="Center"/>
+    <TextBlock x:Name="SizeLabel" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource Ink3}" VerticalAlignment="Center" Margin="8,0,0,0" MinWidth="42"/>
+   </StackPanel>
+   <Button x:Name="DetailToggle" Grid.Column="4" Click="DetailToggle_Click" Padding="10,8" Margin="14,0,0,0" VerticalAlignment="Center" ToolTip="Show or hide the detail pane" AutomationProperties.Name="Toggle detail pane">
+    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE90B;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" Margin="0,0,6,0"/><TextBlock Text="Details" FontSize="12"/></StackPanel>
+   </Button>
+   <Button Grid.Column="6" Style="{StaticResource PrimaryButton}" Click="Capture_Click" Padding="18,9" Margin="14,0,0,0" VerticalAlignment="Center" ToolTip="Select part of your screen (Ctrl+Shift+S)" AutomationProperties.Name="Capture region">
+    <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7A8;" FontFamily="Segoe Fluent Icons" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"/><TextBlock Text="Capture region"/></StackPanel>
+   </Button>
+  </Grid>
+
+  <Grid Grid.Row="1">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+
+   <!-- Left rail: library filters and tags. -->
+   <Border Style="{StaticResource Group}" Padding="10,16" Margin="0,0,14,0">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+     <StackPanel>
+      <TextBlock Style="{StaticResource SectionLabel}" Text="LIBRARY" Margin="12,0,0,8"/>
+      <RadioButton x:Name="FilterAll" Style="{StaticResource RailButton}" GroupName="Filter" Content="All" Tag="&#xE8B7;" IsChecked="True" Checked="Filter_Checked"/>
+      <RadioButton x:Name="FilterImages" Style="{StaticResource RailButton}" GroupName="Filter" Content="Images" Tag="&#xE91B;" Checked="Filter_Checked"/>
+      <RadioButton x:Name="FilterVideos" Style="{StaticResource RailButton}" GroupName="Filter" Content="Videos" Tag="&#xE714;" Checked="Filter_Checked"/>
+      <RadioButton x:Name="FilterProjects" Style="{StaticResource RailButton}" GroupName="Filter" Content="Projects" Tag="&#xE70F;" Checked="Filter_Checked"/>
+      <RadioButton x:Name="FilterFavourites" Style="{StaticResource RailButton}" GroupName="Filter" Content="Favourites" Tag="&#xE734;" Checked="Filter_Checked"/>
+      <TextBlock Style="{StaticResource SectionLabel}" Text="TAGS" Margin="12,18,0,8"/>
+      <ItemsControl x:Name="TagList">
+       <ItemsControl.ItemTemplate><DataTemplate>
+        <RadioButton Style="{StaticResource RailButton}" GroupName="Filter" Content="{Binding Tag}" Tag="&#xE8EC;" ui:GalleryWindow.Count="{Binding Count}" Checked="TagFilter_Checked"/>
+       </DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock x:Name="NoTagsHint" Text="Tag a capture to see it here" Style="{StaticResource Hint}" Margin="12,2,0,0"/>
+     </StackPanel>
+    </ScrollViewer>
+   </Border>
+
+   <!-- Center: toolbar, the tile grid, a status line. -->
+   <Border Grid.Column="1" Style="{StaticResource Group}" Padding="14,12,14,10" Margin="0">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <StackPanel x:Name="Toolbar" Orientation="Horizontal" Margin="0,0,0,8">
+      <Button Style="{StaticResource ToolButton}" Click="Open_Click" ToolTip="Open (Enter)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8A7;"/><TextBlock Text="Open"/></StackPanel></Button>
+      <Button Style="{StaticResource ToolButton}" Click="CopyImage_Click" ToolTip="Copy image to the clipboard (Ctrl+Shift+C)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8C8;"/><TextBlock Text="Copy image"/></StackPanel></Button>
+      <Button Style="{StaticResource ToolButton}" Click="CopyFile_Click" ToolTip="Copy the file (Ctrl+C)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8C9;"/><TextBlock Text="Copy file"/></StackPanel></Button>
+      <Button Style="{StaticResource ToolButton}" Click="Rename_Click" ToolTip="Rename (F2)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8AC;"/><TextBlock Text="Rename"/></StackPanel></Button>
+      <Button Style="{StaticResource ToolButton}" Click="Favourite_Click" ToolTip="Favourite (Space)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE734;"/><TextBlock Text="Favourite"/></StackPanel></Button>
+      <Button x:Name="TagButton" Style="{StaticResource ToolButton}" Click="Tag_Click" ToolTip="Add or remove tags (T)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8EC;"/><TextBlock Text="Tag"/></StackPanel></Button>
+      <Button Style="{StaticResource ToolButton}" Click="Delete_Click" ToolTip="Move to the Recycle Bin (Delete)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE74D;"/><TextBlock Text="Delete"/></StackPanel></Button>
+      <Button Style="{StaticResource ToolButton}" Click="ShowInFolder_Click" ToolTip="Show in folder"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE838;"/><TextBlock Text="Show in folder"/></StackPanel></Button>
+      <Button Style="{StaticResource ToolButton}" Click="OpenOriginal_Click" ToolTip="Open with the default app"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8E5;"/><TextBlock Text="Open original"/></StackPanel></Button>
+     </StackPanel>
+     <Popup x:Name="TagPopup" PlacementTarget="{Binding ElementName=TagButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" VerticalOffset="4">
+      <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="10" Padding="14" Width="260">
+       <Border.Effect><DropShadowEffect Color="#14181C" BlurRadius="24" ShadowDepth="6" Opacity="0.16"/></Border.Effect>
+       <StackPanel>
+        <TextBlock Style="{StaticResource SectionLabel}" Text="TAGS" Margin="0,0,0,8"/>
+        <TextBox x:Name="NewTagBox" Padding="10,7" KeyDown="NewTagBox_KeyDown" AutomationProperties.Name="New tag" ToolTip="Type a tag and press Enter"/>
+        <TextBlock Text="Enter adds the tag to the selection" Style="{StaticResource Hint}" Margin="0,6,0,8"/>
+        <ItemsControl x:Name="TagToggles" MaxHeight="260">
+         <ItemsControl.ItemTemplate><DataTemplate>
+          <CheckBox Content="{Binding Tag}" IsChecked="{Binding IsOn, Mode=TwoWay}" Tag="{Binding Tag}" Checked="TagToggle_Changed" Unchecked="TagToggle_Changed" Margin="0,2"/>
+         </DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
+       </StackPanel>
+      </Border>
+     </Popup>
+
+     <Grid Grid.Row="1">
+      <ListBox x:Name="Tiles" SelectionMode="Extended" Background="Transparent" BorderThickness="0" Padding="0" ItemTemplate="{StaticResource TileTemplate}" ItemContainerStyle="{StaticResource TileContainer}"
+       ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True"
+       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.IsVirtualizingWhenGrouping="True" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="1" VirtualizingPanel.CacheLengthUnit="Page"
+       SelectionChanged="Tiles_SelectionChanged" PreviewMouseLeftButtonDown="Tiles_PreviewMouseLeftButtonDown" PreviewMouseMove="Tiles_PreviewMouseMove" PreviewMouseLeftButtonUp="Tiles_PreviewMouseLeftButtonUp" MouseDoubleClick="Tiles_MouseDoubleClick" KeyDown="Tiles_KeyDown" AutomationProperties.Name="Captures">
+       <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+       <ListBox.GroupStyle>
+        <GroupStyle>
+         <GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" Style="{StaticResource SectionLabel}" Margin="8,14,0,6"/></DataTemplate></GroupStyle.HeaderTemplate>
+         <GroupStyle.Panel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></GroupStyle.Panel>
+        </GroupStyle>
+       </ListBox.GroupStyle>
+       <ListBox.ContextMenu>
+        <ContextMenu>
+         <MenuItem Header="Open" Click="Open_Click" InputGestureText="Enter"/>
+         <MenuItem Header="Open original" Click="OpenOriginal_Click"/>
+         <MenuItem Header="Show in folder" Click="ShowInFolder_Click"/>
+         <Separator/>
+         <MenuItem Header="Copy image" Click="CopyImage_Click" InputGestureText="Ctrl+Shift+C"/>
+         <MenuItem Header="Copy file" Click="CopyFile_Click" InputGestureText="Ctrl+C"/>
+         <Separator/>
+         <MenuItem Header="Rename" Click="Rename_Click" InputGestureText="F2"/>
+         <MenuItem Header="Favourite" Click="Favourite_Click" InputGestureText="Space"/>
+         <MenuItem Header="Tag…" Click="Tag_Click" InputGestureText="T"/>
+         <Separator/>
+         <MenuItem Header="Delete" Click="Delete_Click" InputGestureText="Del"/>
+        </ContextMenu>
+       </ListBox.ContextMenu>
+      </ListBox>
+      <!-- Marquee for drag-selecting over empty space. -->
+      <Canvas x:Name="MarqueeLayer" IsHitTestVisible="False">
+       <Rectangle x:Name="Marquee" Stroke="{StaticResource Tangerine}" StrokeThickness="1" Fill="{StaticResource TangerineSoft}" Opacity="0.7" Visibility="Collapsed" RadiusX="3" RadiusY="3"/>
+      </Canvas>
+      <StackPanel x:Name="EmptyState" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False">
+       <TextBlock Text="&#xEB9F;" FontFamily="Segoe Fluent Icons" FontSize="34" Foreground="{StaticResource Ink3}" HorizontalAlignment="Center"/>
+       <TextBlock x:Name="EmptyTitle" Text="Nothing here yet" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,12,0,4"/>
+       <TextBlock x:Name="EmptyHint" Text="Captures land here automatically. Drop files in to import them." Foreground="{StaticResource Ink2}" FontSize="11.5" HorizontalAlignment="Center"/>
+      </StackPanel>
+     </Grid>
+     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="2,8,0,0">
+      <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="{StaticResource Ink3}" Margin="0,1,7,0" VerticalAlignment="Center"/>
+      <TextBlock x:Name="StatusLabel" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+     </StackPanel>
+    </Grid>
+   </Border>
+
+   <!-- Right: detail pane. -->
+   <Border x:Name="DetailPane" Grid.Column="2" Style="{StaticResource Group}" Width="330" Margin="14,0,0,0" Padding="18">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+     <StackPanel>
+      <Border Height="210" CornerRadius="10" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" Background="{StaticResource Checkerboard}" ClipToBounds="True">
+       <Image x:Name="DetailImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Margin="8"/>
+      </Border>
+      <TextBlock x:Name="DetailName" FontSize="14" FontWeight="Bold" TextWrapping="Wrap" Margin="0,14,0,2"/>
+      <TextBlock x:Name="DetailSubtitle" Foreground="{StaticResource Ink2}" FontSize="11.5" TextWrapping="Wrap"/>
+      <TextBlock x:Name="DetailEmpty" Text="Select a capture to see its details." Foreground="{StaticResource Ink2}" FontSize="11.5" Margin="0,12,0,0"/>
+      <StackPanel x:Name="DetailBody">
+       <TextBlock Style="{StaticResource SectionLabel}" Text="DETAILS" Margin="0,18,0,10"/>
+       <Grid>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+        <TextBlock Style="{StaticResource MetaKey}" Text="Kind"/><TextBlock x:Name="MetaKind" Grid.Column="1" Style="{StaticResource MetaValue}"/>
+        <TextBlock Grid.Row="1" Style="{StaticResource MetaKey}" Text="Size"/><TextBlock x:Name="MetaSize" Grid.Row="1" Grid.Column="1" Style="{StaticResource MetaValue}"/>
+        <TextBlock Grid.Row="2" Style="{StaticResource MetaKey}" Text="File"/><TextBlock x:Name="MetaBytes" Grid.Row="2" Grid.Column="1" Style="{StaticResource MetaValue}"/>
+        <TextBlock Grid.Row="3" Style="{StaticResource MetaKey}" Text="Captured"/><TextBlock x:Name="MetaCreated" Grid.Row="3" Grid.Column="1" Style="{StaticResource MetaValue}"/>
+        <TextBlock Grid.Row="4" Style="{StaticResource MetaKey}" Text="App"/><TextBlock x:Name="MetaApp" Grid.Row="4" Grid.Column="1" Style="{StaticResource MetaValue}"/>
+        <TextBlock Grid.Row="5" Style="{StaticResource MetaKey}" Text="Title"/><TextBlock x:Name="MetaTitle" Grid.Row="5" Grid.Column="1" Style="{StaticResource MetaValue}"/>
+        <TextBlock Grid.Row="6" Style="{StaticResource MetaKey}" Text="Folder"/><TextBlock x:Name="MetaFolder" Grid.Row="6" Grid.Column="1" Style="{StaticResource MetaValue}"/>
+       </Grid>
+       <TextBlock Style="{StaticResource SectionLabel}" Text="TAGS" Margin="0,12,0,10"/>
+       <ItemsControl x:Name="DetailTags">
+        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate><DataTemplate>
+         <Border Style="{StaticResource TagChip}">
+          <StackPanel Orientation="Horizontal">
+           <TextBlock Text="{Binding}" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource Tangerine}" VerticalAlignment="Center"/>
+           <Button Click="RemoveTag_Click" Tag="{Binding}" Content="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="9" Padding="4,2" Margin="6,0,0,0" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Tangerine}" ToolTip="Remove tag" AutomationProperties.Name="Remove tag"/>
+          </StackPanel>
+         </Border>
+        </DataTemplate></ItemsControl.ItemTemplate>
+       </ItemsControl>
+       <TextBox x:Name="DetailTagBox" Padding="10,7" Margin="0,2,0,0" KeyDown="DetailTagBox_KeyDown" AutomationProperties.Name="Add tag" ToolTip="Type a tag and press Enter"/>
+       <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+        <Button Content="Open" Click="Open_Click" Padding="14,8"/>
+        <Button Content="Open original" Click="OpenOriginal_Click" Padding="14,8" Margin="8,0,0,0"/>
+       </StackPanel>
+      </StackPanel>
+     </StackPanel>
+    </ScrollViewer>
+   </Border>
+  </Grid>
+ </Grid>
+</Window>
