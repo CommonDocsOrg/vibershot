@@ -35,6 +35,12 @@ public sealed class RegionWindow : Window
     public BitmapSource? Result { get; private set; }
     public Int32Rect SelectedBounds { get; private set; }
     public CaptureAction Action { get; private set; }
+    /// <summary>Process name of the window under the selection, for the gallery sidecar; null when unknown.</summary>
+    public string? SourceProcess { get; private set; }
+    /// <summary>Title of that window at selection time; null when unknown.</summary>
+    public string? SourceTitle { get; private set; }
+    /// <summary>True when the user clicked a hovered window or content area rather than dragging a region.</summary>
+    public bool SelectedTarget { get; private set; }
     public RegionWindow(BitmapSource desktop, Int32Rect bounds, bool showActions)
     {
         Title = "Vibershot region selection"; _desktop = desktop; _bounds = bounds; _showActions = showActions;
@@ -76,6 +82,8 @@ public sealed class RegionWindow : Window
             int h = Math.Min(bounds.Height, (int)Math.Ceiling(pixels.Bottom)) - y;
             if (w < 2 || h < 2) { UpdateHover(); return; }
             Draw(new Rect(x, y, w, h)); _locked = true;
+            SelectedTarget = (end - _start).Length < 4;
+            (SourceProcess, SourceTitle) = Describe(_targets.At(new Point(_start.X + bounds.X, _start.Y + bounds.Y)));
             HintText = $"{w} × {h} • Choose an action • Hover + click or drag to replace • Esc: cancel";
             SelectedBounds = new Int32Rect(x + bounds.X, y + bounds.Y, w, h);
             Result = new CroppedBitmap(_desktop, new Int32Rect(x, y, w, h)); Result.Freeze();
@@ -122,6 +130,17 @@ public sealed class RegionWindow : Window
         button.Click += (_, _) => action(); ActionButtons.Add(button);
     }
     private void Complete(CaptureAction action) { Action = action; DialogResult = true; }
+    // Source app and title for the gallery sidecar. Best effort: a protected process simply yields null.
+    private static (string? Process, string? Title) Describe(WindowTargets.Target? target)
+    {
+        if (target == null) return (null, null);
+        string? process = null, title = null;
+        try { GetWindowThreadProcessId(target.Handle, out uint pid); if (pid != 0) { using var p = System.Diagnostics.Process.GetProcessById((int)pid); process = p.ProcessName; } } catch { }
+        try { var text = new System.Text.StringBuilder(512); if (GetWindowText(target.Handle, text, text.Capacity) > 0) title = text.ToString(); } catch { }
+        return (process, title);
+    }
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hwnd, System.Text.StringBuilder text, int count);
     private Point PixelPoint()
     {
         GetCursorPos(out var p);

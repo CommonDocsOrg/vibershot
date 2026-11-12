@@ -64,6 +64,7 @@ public partial class MainWindow : Window
         try { image = ClipboardService.GetImage(); } catch (Exception) { }
         ((App)Application.Current).OpenEditor(image);
     }
+    private void Gallery_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).ShowGallery();
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         if (new SettingsWindow(_config) { Owner = this }.ShowDialog() == true)

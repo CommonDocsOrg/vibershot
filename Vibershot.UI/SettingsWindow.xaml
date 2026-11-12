@@ -49,6 +49,18 @@
      </StackPanel>
     </StackPanel>
    </Border>
+   <Border Style="{StaticResource Group}">
+    <StackPanel>
+     <TextBlock Style="{StaticResource GroupLabel}" Text="GALLERY"/>
+     <TextBlock Text="Library root" FontWeight="Bold" Margin="0,0,0,8"/>
+     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox x:Name="LibraryRootTextBox" AutomationProperties.Name="Library root" ToolTip="Gallery library root" FontFamily="{StaticResource MonoFont}" FontSize="12"/><Button Grid.Column="1" Content="Browse…" Margin="8,0,0,0" Padding="14,9" Click="LibraryBrowseButton_Click"/></Grid>
+     <TextBlock Style="{StaticResource Hint}" Text="The gallery shows the save location plus Screenshots, Recordings and Projects under this root" Margin="0,6,0,0"/>
+     <Grid Margin="0,16,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Thumbnail size" FontWeight="Bold"/><TextBlock x:Name="ThumbnailSizeLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
+     <Slider x:Name="ThumbnailSizeSlider" AutomationProperties.Name="Thumbnail size" Minimum="120" Maximum="360" TickFrequency="10" IsSnapToTickEnabled="True" SmallChange="10" LargeChange="40" Margin="0,8,0,0" ValueChanged="ThumbnailSizeSlider_ValueChanged"/>
+     <Border Style="{StaticResource Divider}"/>
+     <CheckBox x:Name="OpenGalleryCheckbox" AutomationProperties.Name="Open the gallery after each capture"><StackPanel><TextBlock Text="Open the gallery after each capture" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Shows the new capture selected in the gallery instead of the preview"/></StackPanel></CheckBox>
+    </StackPanel>
+   </Border>
    <Border Style="{StaticResource Group}" Margin="0">
     <StackPanel>
      <TextBlock Style="{StaticResource GroupLabel}" Text="FILES"/>

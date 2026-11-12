@@ -64,6 +64,9 @@ public sealed class AppConfig
     private VideoSettings _video = new();
     public VideoSettings Video { get => _video; set => _video = value ?? new VideoSettings(); }
 
+    // Gallery library, thumbnails and window placement. Missing in legacy configs: defaults apply.
+    public GallerySettings Gallery { get; set; } = new();
+
     private static string ConfigPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

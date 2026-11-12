@@ -14,7 +14,8 @@ public static class ScreenshotSaveDialog
     public static ImageFormat FormatFor(int filterIndex) =>
         Enum.IsDefined(typeof(ImageFormat), filterIndex - 1) ? (ImageFormat)(filterIndex - 1) : ImageFormat.Png;
 
-    public static string? Save(BitmapSource image, AppConfig config)
+    /// <param name="sidecar">Gallery metadata written next to the file when provided.</param>
+    public static string? Save(BitmapSource image, AppConfig config, Vibershot.Gallery.CaptureSidecar? sidecar = null)
     {
         var dialog = new SaveFileDialog
         {
@@ -23,8 +24,9 @@ public static class ScreenshotSaveDialog
             FileName = $"screenshot_{DateTime.Now:yyyyMMdd_HHmmss}", AddExtension = true
         };
         if (dialog.ShowDialog() != true) return null;
-        using var stream = File.Create(dialog.FileName);
-        ImageEncoding.Encode(image, FormatFor(dialog.FilterIndex), config.WebpQuality, stream);
+        using (var stream = File.Create(dialog.FileName))
+            ImageEncoding.Encode(image, FormatFor(dialog.FilterIndex), config.WebpQuality, stream);
+        sidecar?.TryWrite(dialog.FileName);
         return dialog.FileName;
     }
 }

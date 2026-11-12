@@ -30,9 +30,10 @@ public sealed class CaptureSessionWindow : Window
     public BitmapSource? Image { get; private set; }
     public string? VideoPath { get; private set; }
     public bool Completed { get; private set; }
-    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath, VideoSettings? videoSettings = null)
+    private readonly string? _sourceProcess, _sourceTitle;
+    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath, VideoSettings? videoSettings = null, string? sourceProcess = null, string? sourceTitle = null)
     {
-        _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath; _videoSettings = videoSettings ?? new VideoSettings();
+        _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath; _videoSettings = videoSettings ?? new VideoSettings(); _sourceProcess = sourceProcess; _sourceTitle = sourceTitle;
         Title = video ? "Vibershot • Region video" : "Vibershot • Scrolling photo";
         Width = 440; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         Topmost = true; WindowStartupLocation = WindowStartupLocation.Manual;
@@ -96,7 +97,7 @@ public sealed class CaptureSessionWindow : Window
             catch (Exception ex) { finalized = false; System.Windows.MessageBox.Show("Could not finalize recording: " + ex.Message + "\nRecovery file retained: " + _temporaryVideo); }
             if (video && _writer is not null) {
                 Completed = _frames > 0;
-                if (_frames > 0 && finalized) SaveRecording(_temporaryVideo!, "Motion JPEG video|*.avi", ".avi");
+                if (_frames > 0 && finalized) { WriteSidecar(_temporaryVideo); SaveRecording(_temporaryVideo!, "Motion JPEG video|*.avi", ".avi"); }
             }
             _finished = true;
         };
@@ -167,7 +168,7 @@ public sealed class CaptureSessionWindow : Window
         catch (Exception ex) { System.Windows.MessageBox.Show(this, "Could not finalize recording: " + ex.Message + "\nSegments retained in: " + RecoveryFolder, "Recording"); }
         finally { _busy = false; }
         Completed = final is not null;
-        if (final is not null) { _temporaryVideo = final; VideoPath = final; SaveRecording(final, "MP4 video|*.mp4", ".mp4"); }
+        if (final is not null) { _temporaryVideo = final; VideoPath = final; WriteSidecar(final); SaveRecording(final, "MP4 video|*.mp4", ".mp4"); }
         else VideoPath = null;
         Close();
     }
@@ -197,12 +198,15 @@ public sealed class CaptureSessionWindow : Window
         if (s.CurrentFile is not null) line += "\nRecovery file: " + s.CurrentFile;
         _status.Text = line;
     }
+    // Gallery sidecar next to the recording (recovery copy and saved copy alike).
+    private double RecordedSeconds => _recorderStatus?.Elapsed.TotalSeconds ?? _frames / 10.0;
+    private void WriteSidecar(string? path) { if (path != null) Vibershot.Gallery.CaptureSidecar.ForVideo(_region.Width, _region.Height, RecordedSeconds, _sourceProcess, _sourceTitle).TryWrite(path); }
     private void SaveRecording(string source, string filter, string extension)
     {
         try {
             var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Save recording (Cancel keeps recovery copy)", Filter = filter, FileName = $"recording_{DateTime.Now:yyyyMMdd_HHmmss}{extension}", AddExtension = true, DefaultExt = extension };
             if (dialog.ShowDialog() == true) {
-                if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase)) File.Copy(source, dialog.FileName, true);
+                if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase)) { File.Copy(source, dialog.FileName, true); WriteSidecar(dialog.FileName); }
                 VideoPath = dialog.FileName;
             } else System.Windows.MessageBox.Show("Recording kept at:\n" + source, "Recording retained");
         } catch (Exception ex) { System.Windows.MessageBox.Show("Save failed: " + ex.Message + "\nRecovery copy retained: " + source); }

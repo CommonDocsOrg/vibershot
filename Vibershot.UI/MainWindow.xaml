@@ -120,12 +120,11 @@
       <Border x:Name="FullDesktopChip" Grid.Column="2" Style="{StaticResource Chip}" Visibility="Collapsed"><TextBlock Style="{StaticResource ChipText}" Text="PrtScn"/></Border>
      </Grid>
     </Button>
-    <Button Style="{StaticResource RowButton}" Margin="0,6,0,0" IsEnabled="False" AutomationProperties.Name="Gallery, coming soon" ToolTip="Gallery is coming soon">
+    <Button Style="{StaticResource RowButton}" Margin="0,6,0,0" Click="Gallery_Click" AutomationProperties.Name="Gallery" ToolTip="Browse, search and manage everything you have captured">
      <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Border Style="{StaticResource RowIcon}" Background="{StaticResource Hover}"><TextBlock Style="{StaticResource RowGlyph}" Text="&#xEB9F;" Foreground="{StaticResource Ink3}"/></Border>
-      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Style="{StaticResource RowTitle}" Text="Gallery" Foreground="{StaticResource Ink2}"/><TextBlock Style="{StaticResource RowHint}" Text="Browse recent captures"/></StackPanel>
-      <Border Grid.Column="2" Style="{StaticResource Chip}"><TextBlock Style="{StaticResource ChipText}" Text="SOON" FontSize="9.5"/></Border>
+      <Border Style="{StaticResource RowIcon}"><TextBlock Style="{StaticResource RowGlyph}" Text="&#xEB9F;"/></Border>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Style="{StaticResource RowTitle}" Text="Gallery"/><TextBlock Style="{StaticResource RowHint}" Text="Browse recent captures"/></StackPanel>
      </Grid>
     </Button>
     <Button Style="{StaticResource RowButton}" Margin="0,6,0,0" Click="Editor_Click" AutomationProperties.Name="Editor" ToolTip="Open the clipboard image, or a blank canvas, in the editor">

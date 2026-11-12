@@ -15,6 +15,7 @@
     <ProjectReference Include="..\Vibershot.Core\Vibershot.Core.csproj" />
     <ProjectReference Include="..\Vibershot.Editing\Vibershot.Editing.csproj" />
     <ProjectReference Include="..\Vibershot.Media\Vibershot.Media.csproj" />
+    <ProjectReference Include="..\Vibershot.Gallery\Vibershot.Gallery.csproj" />
   </ItemGroup>
   <!-- ffmpeg binaries from tools\get-ffmpeg.ps1 ship next to the exe in ffmpeg\ when present. -->
   <ItemGroup Condition="Exists('..\tools\ffmpeg\ffmpeg.exe')">
