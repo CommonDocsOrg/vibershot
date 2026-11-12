@@ -31,6 +31,24 @@
      </StackPanel>
     </StackPanel>
    </Border>
+   <Border Style="{StaticResource Group}">
+    <StackPanel>
+     <TextBlock Style="{StaticResource GroupLabel}" Text="VIDEO"/>
+     <TextBlock Text="Format" FontWeight="Bold" Margin="0,0,0,8"/>
+     <ComboBox x:Name="VideoFormatComboBox" AutomationProperties.Name="Video format" SelectionChanged="VideoFormatComboBox_SelectionChanged"><ComboBoxItem Content="MP4 · H.264, any frame rate" Tag="{x:Static core:VideoFormat.Mp4}"/><ComboBoxItem Content="AVI · Motion JPEG at 10 fps (legacy)" Tag="{x:Static core:VideoFormat.Avi}"/></ComboBox>
+     <StackPanel x:Name="Mp4OptionsPanel">
+      <TextBlock Text="Frame rate" FontWeight="Bold" Margin="0,18,0,8"/>
+      <ComboBox x:Name="FrameRateComboBox" AutomationProperties.Name="Frame rate"/>
+      <Grid Margin="0,18,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Quality" FontWeight="Bold"/><TextBlock x:Name="VideoQualityLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
+      <Slider x:Name="VideoQualitySlider" AutomationProperties.Name="Video quality" Minimum="1" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="10" Margin="0,8,0,0" ValueChanged="VideoQualitySlider_ValueChanged"/>
+      <TextBlock Style="{StaticResource Hint}" Text="Higher is sharper and larger; 75 suits screen recordings" Margin="0,6,0,0"/>
+      <Border Style="{StaticResource Divider}"/>
+      <CheckBox x:Name="HardwareEncoderCheckbox" AutomationProperties.Name="Use hardware encoder"><StackPanel><TextBlock Text="Use hardware encoder" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="NVIDIA, Intel or AMD when available; software otherwise"/></StackPanel></CheckBox>
+      <Border Style="{StaticResource Divider}"/>
+      <CheckBox x:Name="CursorCheckbox" AutomationProperties.Name="Show the mouse cursor"><StackPanel><TextBlock Text="Show the mouse cursor" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Draw the pointer into the recording"/></StackPanel></CheckBox>
+     </StackPanel>
+    </StackPanel>
+   </Border>
    <Border Style="{StaticResource Group}" Margin="0">
     <StackPanel>
      <TextBlock Style="{StaticResource GroupLabel}" Text="FILES"/>

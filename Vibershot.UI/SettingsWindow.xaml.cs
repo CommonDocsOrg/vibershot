@@ -23,6 +23,17 @@ public partial class SettingsWindow : Window
         SelectFormat(config.Format);
         UpdateWebpQualityVisibility();
 
+        foreach (var rate in Vibershot.Media.FrameRate.Presets)
+        {
+            FrameRateComboBox.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = $"{rate} fps", Tag = rate });
+        }
+        SelectVideoFormat(config.Video.Format);
+        SelectFrameRate(config.Video.FrameRate);
+        VideoQualitySlider.Value = VideoSettings.ClampQuality(config.Video.Quality);
+        HardwareEncoderCheckbox.IsChecked = config.Video.PreferHardwareEncoder;
+        CursorCheckbox.IsChecked = config.Video.ShowCursor;
+        UpdateMp4OptionsVisibility();
+
         StartupCheckbox.IsChecked = StartupRegistration.IsEnabled;
         PrintScreenCheckbox.IsChecked = config.PrintScreen != PrintScreenAction.Off;
         PrintScreenDesktopRadio.IsChecked = config.PrintScreen == PrintScreenAction.FullDesktop;
@@ -71,6 +82,60 @@ public partial class SettingsWindow : Window
         }
     }
 
+    private VideoFormat SelectedVideoFormat =>
+        (VideoFormatComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is VideoFormat fmt ? fmt : VideoFormat.Mp4;
+
+    private Vibershot.Media.FrameRate SelectedFrameRate =>
+        (FrameRateComboBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag is Vibershot.Media.FrameRate rate ? rate : Vibershot.Media.FrameRate.Fps30;
+
+    private void VideoFormatComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => UpdateMp4OptionsVisibility();
+
+    private void UpdateMp4OptionsVisibility()
+    {
+        if (Mp4OptionsPanel is not null)
+        {
+            Mp4OptionsPanel.Visibility = SelectedVideoFormat == VideoFormat.Mp4 ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void VideoQualitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (VideoQualityLabel is not null)
+        {
+            VideoQualityLabel.Text = $"{(int)e.NewValue}%";
+        }
+    }
+
+    private void SelectVideoFormat(VideoFormat format)
+    {
+        foreach (System.Windows.Controls.ComboBoxItem item in VideoFormatComboBox.Items)
+        {
+            if (item.Tag is VideoFormat tag && tag == format)
+            {
+                VideoFormatComboBox.SelectedItem = item;
+                return;
+            }
+        }
+        VideoFormatComboBox.SelectedIndex = 0;
+    }
+
+    private void SelectFrameRate(string setting)
+    {
+        var wanted = Vibershot.Media.FrameRate.TryParse(setting, out var parsed) ? parsed : Vibershot.Media.FrameRate.Fps30;
+        foreach (System.Windows.Controls.ComboBoxItem item in FrameRateComboBox.Items)
+        {
+            if (item.Tag is Vibershot.Media.FrameRate tag && tag == wanted)
+            {
+                FrameRateComboBox.SelectedItem = item;
+                return;
+            }
+        }
+        // A custom rate from a hand-edited config stays available as its own entry.
+        var custom = new System.Windows.Controls.ComboBoxItem { Content = $"{wanted} fps", Tag = wanted };
+        FrameRateComboBox.Items.Add(custom);
+        FrameRateComboBox.SelectedItem = custom;
+    }
+
     private void BrowseButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new FolderBrowserDialog
@@ -99,6 +164,11 @@ public partial class SettingsWindow : Window
         _config.CopyToClipboard = ClipboardCheckbox.IsChecked ?? true;
         _config.Format = SelectedFormat;
         _config.WebpQuality = ImageEncoding.ClampWebpQuality((int)WebpQualitySlider.Value);
+        _config.Video.Format = SelectedVideoFormat;
+        _config.Video.FrameRate = SelectedFrameRate.ToString();
+        _config.Video.Quality = VideoSettings.ClampQuality((int)VideoQualitySlider.Value);
+        _config.Video.PreferHardwareEncoder = HardwareEncoderCheckbox.IsChecked != false;
+        _config.Video.ShowCursor = CursorCheckbox.IsChecked != false;
         _config.PrintScreen = PrintScreenCheckbox.IsChecked != true ? PrintScreenAction.Off
             : PrintScreenDesktopRadio.IsChecked == true ? PrintScreenAction.FullDesktop
             : PrintScreenAction.CaptureTool;

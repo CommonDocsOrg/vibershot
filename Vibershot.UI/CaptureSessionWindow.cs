@@ -4,6 +4,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Windows.Media;
 using Vibershot.Core;
+using Vibershot.Media;
 
 namespace Vibershot.UI;
 
@@ -11,11 +12,16 @@ public sealed class CaptureSessionWindow : Window
 {
     private readonly Int32Rect _region;
     private readonly bool _video;
+    private readonly VideoSettings _videoSettings;
+    private readonly TextBlock _subtitle;
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 12) };
     private readonly Button _add = new() { Content = "Add shot (2 second delay)", Margin = new Thickness(0, 0, 8, 0) };
     private readonly Button _finish = new() { Content = "Finish", Margin = new Thickness(0, 0, 8, 0) };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private VideoWriter? _writer;
+    private RecorderSession? _recorder;
+    private RecorderStatus? _recorderStatus;
+    private string? _downgradeNote;
     private BitmapSource _previous;
     private bool _busy, _finished, _paused;
     private readonly Button _pause = new() { Content = "Pause", Margin = new Thickness(0, 0, 8, 0) };
@@ -24,9 +30,9 @@ public sealed class CaptureSessionWindow : Window
     public BitmapSource? Image { get; private set; }
     public string? VideoPath { get; private set; }
     public bool Completed { get; private set; }
-    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath)
+    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath, VideoSettings? videoSettings = null)
     {
-        _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath;
+        _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath; _videoSettings = videoSettings ?? new VideoSettings();
         Title = video ? "Vibershot • Region video" : "Vibershot • Scrolling photo";
         Width = 440; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         Topmost = true; WindowStartupLocation = WindowStartupLocation.Manual;
@@ -38,7 +44,8 @@ public sealed class CaptureSessionWindow : Window
         var header = new TextBlock { Text = video ? "Recording" : "Scrolling photo", FontSize = 16, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) };
         header.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove(); };
         panel.Children.Add(header);
-        panel.Children.Add(new TextBlock { Text = video ? "Region video • 10 fps • No audio" : "Scroll the page, then add a shot", FontSize = 12, Foreground = (Brush)FindResource("Ink2") });
+        _subtitle = new TextBlock { Text = video ? (UseMp4 ? $"Region video • MP4 {FrameRateSetting} fps • No audio" : "Region video • 10 fps • No audio") : "Scroll the page, then add a shot", FontSize = 12, Foreground = (Brush)FindResource("Ink2") };
+        panel.Children.Add(_subtitle);
         _status.Foreground = (Brush)FindResource("Ink2"); _status.FontSize = 11.5;
         panel.Children.Add(_status);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal }; panel.Children.Add(buttons);
@@ -46,7 +53,7 @@ public sealed class CaptureSessionWindow : Window
         else {
             _finish.Content = "Stop & save…"; _finish.Style = (Style)FindResource("PrimaryButton");
             buttons.Children.Add(_pause);
-            _pause.Click += (_, _) => { _paused = !_paused; _pause.Content = _paused ? "Resume" : "Pause"; if (_paused) _timer.Stop(); else _timer.Start(); UpdateStatus(); };
+            _pause.Click += async (_, _) => await TogglePause();
         }
         buttons.Children.Add(_finish);
         var cancel = new Button { Content = video ? "Open folder" : "Cancel" }; buttons.Children.Add(cancel);
@@ -56,19 +63,19 @@ public sealed class CaptureSessionWindow : Window
             catch (Exception ex) { System.Windows.MessageBox.Show(ex.Message + "\n" + RecoveryFolder); }
         };
         _add.Click += async (_, _) => await AddShot();
-        _finish.Click += (_, _) => { Completed = true; Close(); };
+        _finish.Click += async (_, _) => await Finish();
         SourceInitialized += (_, _) =>
         {
             // Windows 10 2004+: keep session controls out of desktop captures.
             if (!SetWindowDisplayAffinity(new WindowInteropHelper(this).Handle, 0x11) && video)
                 _status.Text = "Keep this control window outside the selected region.";
         };
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
             PlaceControls();
             if (!video) { _status.Text = "Select only page content. Scroll down by less than a page; keep overlapping content visible. Shots are added manually."; return; }
-            try { Directory.CreateDirectory(RecoveryFolder); _temporaryVideo = Path.Combine(RecoveryFolder, $"recording_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.avi"); VideoPath = _temporaryVideo; _writer = new VideoWriter(_temporaryVideo, region.Width, region.Height); UpdateStatus(); _timer.Start(); }
-            catch (Exception ex) { System.Windows.MessageBox.Show(this, ex.Message, "Recording failed"); Close(); }
+            if (UseMp4 && await StartMp4()) return;
+            StartAvi();
         };
         _timer.Tick += (_, _) =>
         {
@@ -83,27 +90,122 @@ public sealed class CaptureSessionWindow : Window
         Closed += (_, _) =>
         {
             _timer.Stop();
+            if (_recorder is not null) { _recorder.Dispose(); _finished = true; return; }
             bool finalized = true;
             try { _writer?.Dispose(); }
             catch (Exception ex) { finalized = false; System.Windows.MessageBox.Show("Could not finalize recording: " + ex.Message + "\nRecovery file retained: " + _temporaryVideo); }
-            if (video) {
+            if (video && _writer is not null) {
                 Completed = _frames > 0;
-                if (_frames > 0 && finalized) SaveRecording();
+                if (_frames > 0 && finalized) SaveRecording(_temporaryVideo!, "Motion JPEG video|*.avi", ".avi");
             }
             _finished = true;
         };
     }
-    private static string RecoveryFolder => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vibershot", "Recordings");
-    private void UpdateStatus() => _status.Text = $"{(_paused ? "Paused" : "Recording")} • {_frames / 10.0:F1}s • 10 fps • No audio\nRecovery file: {_temporaryVideo}";
-    private void SaveRecording()
+    private bool UseMp4 => _videoSettings.Format == VideoFormat.Mp4;
+    private FrameRate FrameRateSetting => FrameRate.TryParse(_videoSettings.FrameRate, out var rate) ? rate : FrameRate.Fps30;
+    private static string RecoveryFolder => RecorderSettings.DefaultRecordingsFolder;
+
+    /// <summary>Starts the ffmpeg recorder; false (with a status explaining why) means fall back to AVI.</summary>
+    private async Task<bool> StartMp4()
+    {
+        if (!FfmpegLocator.IsAvailable) { _downgradeNote = "ffmpeg not found (run tools\\get-ffmpeg.ps1)"; return false; }
+        var settings = new RecorderSettings
+        {
+            Region = new PixelRect(_region.X, _region.Y, _region.Width, _region.Height),
+            FrameRate = FrameRateSetting,
+            Quality = VideoSettings.ClampQuality(_videoSettings.Quality),
+            PreferHardwareEncoder = _videoSettings.PreferHardwareEncoder,
+            ShowCursor = _videoSettings.ShowCursor,
+        };
+        var recorder = new RecorderSession(settings);
+        recorder.StatusChanged += (_, status) => Dispatcher.BeginInvoke(() => { _recorderStatus = status; UpdateStatus(); });
+        _busy = true; _pause.IsEnabled = false; _finish.IsEnabled = false;
+        try
+        {
+            await recorder.StartAsync();
+            _recorder = recorder; _temporaryVideo = recorder.Status.CurrentFile; VideoPath = _temporaryVideo;
+            return true;
+        }
+        catch (Exception ex) when (ex is RecorderStartException or FfmpegNotFoundException)
+        {
+            recorder.Dispose();
+            _downgradeNote = ex.Message.Replace(Environment.NewLine, " ");
+            return false;
+        }
+        finally { _busy = false; _pause.IsEnabled = true; _finish.IsEnabled = true; }
+    }
+    private void StartAvi()
+    {
+        _subtitle.Text = "Region video • AVI 10 fps • No audio";
+        try { Directory.CreateDirectory(RecoveryFolder); _temporaryVideo = Path.Combine(RecoveryFolder, $"recording_{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}.avi"); VideoPath = _temporaryVideo; _writer = new VideoWriter(_temporaryVideo, _region.Width, _region.Height); UpdateStatus(); _timer.Start(); }
+        catch (Exception ex) { System.Windows.MessageBox.Show(this, ex.Message, "Recording failed"); Close(); }
+    }
+    private async Task TogglePause()
+    {
+        if (_recorder is null)
+        {
+            _paused = !_paused; _pause.Content = _paused ? "Resume" : "Pause"; if (_paused) _timer.Stop(); else _timer.Start(); UpdateStatus();
+            return;
+        }
+        if (_busy) return;
+        _busy = true; _pause.IsEnabled = false; _finish.IsEnabled = false;
+        try
+        {
+            if (_recorder.State == RecorderState.Recording) { await _recorder.PauseAsync(); _pause.Content = "Resume"; }
+            else if (_recorder.State == RecorderState.Paused) { await _recorder.ResumeAsync(); _pause.Content = "Pause"; }
+        }
+        catch (Exception ex) { _status.Text = "Resume failed: " + ex.Message; }
+        finally { _busy = false; _pause.IsEnabled = true; _finish.IsEnabled = true; }
+    }
+    private async Task Finish()
+    {
+        if (_busy || _finished) return;
+        if (_recorder is null) { Completed = true; Close(); return; }
+        _busy = true; _pause.IsEnabled = false; _finish.IsEnabled = false;
+        string? final = null;
+        try { final = await _recorder.StopAsync(); }
+        catch (Exception ex) { System.Windows.MessageBox.Show(this, "Could not finalize recording: " + ex.Message + "\nSegments retained in: " + RecoveryFolder, "Recording"); }
+        finally { _busy = false; }
+        Completed = final is not null;
+        if (final is not null) { _temporaryVideo = final; VideoPath = final; SaveRecording(final, "MP4 video|*.mp4", ".mp4"); }
+        else VideoPath = null;
+        Close();
+    }
+    private void UpdateStatus()
+    {
+        if (_recorder is null && _recorderStatus is null)
+        {
+            string note = _downgradeNote is null ? "" : $"MP4 recording unavailable: {_downgradeNote} • Recording AVI at 10 fps instead.\n";
+            _status.Text = $"{note}{(_paused ? "Paused" : "Recording")} • {_frames / 10.0:F1}s • 10 fps • No audio\nRecovery file: {_temporaryVideo}";
+            return;
+        }
+        var s = _recorderStatus!;
+        string state = s.State switch
+        {
+            RecorderState.Starting => "Starting",
+            RecorderState.Recording => "Recording",
+            RecorderState.Paused => "Paused",
+            RecorderState.Finalizing => "Finalizing",
+            RecorderState.Stopped => "Stopped",
+            RecorderState.Failed => "Failed",
+            _ => "Idle",
+        };
+        string size = s.Bytes >= 1_048_576 ? $"{s.Bytes / 1_048_576.0:F1} MB" : $"{s.Bytes / 1024.0:F0} KB";
+        string line = $"{state} • {s.Elapsed:m\\:ss} • {s.Fps:F1} fps • {s.Frames} frames • {size}";
+        if (!string.IsNullOrEmpty(s.Encoder)) line += $" • {s.Encoder} via {s.Grabber}";
+        if (s.Message is not null) line += "\n" + s.Message;
+        if (s.CurrentFile is not null) line += "\nRecovery file: " + s.CurrentFile;
+        _status.Text = line;
+    }
+    private void SaveRecording(string source, string filter, string extension)
     {
         try {
-            var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Save recording (Cancel keeps recovery copy)", Filter = "Motion JPEG video|*.avi", FileName = $"recording_{DateTime.Now:yyyyMMdd_HHmmss}.avi", AddExtension = true, DefaultExt = ".avi" };
+            var dialog = new Microsoft.Win32.SaveFileDialog { Title = "Save recording (Cancel keeps recovery copy)", Filter = filter, FileName = $"recording_{DateTime.Now:yyyyMMdd_HHmmss}{extension}", AddExtension = true, DefaultExt = extension };
             if (dialog.ShowDialog() == true) {
-                if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(_temporaryVideo!), StringComparison.OrdinalIgnoreCase)) File.Copy(_temporaryVideo!, dialog.FileName, true);
+                if (!string.Equals(Path.GetFullPath(dialog.FileName), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase)) File.Copy(source, dialog.FileName, true);
                 VideoPath = dialog.FileName;
-            } else System.Windows.MessageBox.Show("Recording kept at:\n" + _temporaryVideo, "Recording retained");
-        } catch (Exception ex) { System.Windows.MessageBox.Show("Save failed: " + ex.Message + "\nRecovery copy retained: " + _temporaryVideo); }
+            } else System.Windows.MessageBox.Show("Recording kept at:\n" + source, "Recording retained");
+        } catch (Exception ex) { System.Windows.MessageBox.Show("Save failed: " + ex.Message + "\nRecovery copy retained: " + source); }
     }
     private void PlaceControls()
     {

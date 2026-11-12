@@ -60,6 +60,10 @@ public sealed class AppConfig
     // Image editor defaults; missing in older configs, so it falls back to EditorSettings defaults.
     public EditorSettings Editor { get; set; } = new();
 
+    // Recording settings; missing from legacy configs, so the setter keeps a null out.
+    private VideoSettings _video = new();
+    public VideoSettings Video { get => _video; set => _video = value ?? new VideoSettings(); }
+
     private static string ConfigPath =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
