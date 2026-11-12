@@ -135,7 +135,12 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
         try { await _index.RescanAsync(); }
         catch (Exception ex) { ShowStatus("Scan failed: " + ex.Message); return; }
         if (_index.Items.Count == 0) ShowStatus("No captures yet. Capture region to add the first one.");
-        else UpdateCountLabel();
+        else
+        {
+            int folders = _index.Folders.Count(Directory.Exists);
+            ShowStatus($"{_index.Items.Count} item{(_index.Items.Count == 1 ? "" : "s")} in {folders} folder{(folders == 1 ? "" : "s")} · {_config.OutputFolder}");
+            UpdateCountLabel();
+        }
     }
 
     // ----- View -----
@@ -168,6 +173,7 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
             UpdateCounts();
             UpdateTags();
             UpdateCountLabel();
+            if (_detailItem is not null && Tiles.SelectedItems.Contains(_detailItem)) UpdateDetail(_detailItem);
             bool empty = _view.Count == 0;
             EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
             if (empty)

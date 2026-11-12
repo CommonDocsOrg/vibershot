@@ -163,7 +163,7 @@
    <Border Grid.Column="1" Style="{StaticResource Group}" Padding="14,12,14,10" Margin="0">
     <Grid>
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <StackPanel x:Name="Toolbar" Orientation="Horizontal" Margin="0,0,0,8">
+     <WrapPanel x:Name="Toolbar" Margin="0,0,0,8">
       <Button Style="{StaticResource ToolButton}" Click="Open_Click" ToolTip="Open (Enter)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8A7;"/><TextBlock Text="Open"/></StackPanel></Button>
       <Button Style="{StaticResource ToolButton}" Click="CopyImage_Click" ToolTip="Copy image to the clipboard (Ctrl+Shift+C)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8C8;"/><TextBlock Text="Copy image"/></StackPanel></Button>
       <Button Style="{StaticResource ToolButton}" Click="CopyFile_Click" ToolTip="Copy the file (Ctrl+C)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8C9;"/><TextBlock Text="Copy file"/></StackPanel></Button>
@@ -173,7 +173,7 @@
       <Button Style="{StaticResource ToolButton}" Click="Delete_Click" ToolTip="Move to the Recycle Bin (Delete)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE74D;"/><TextBlock Text="Delete"/></StackPanel></Button>
       <Button Style="{StaticResource ToolButton}" Click="ShowInFolder_Click" ToolTip="Show in folder"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE838;"/><TextBlock Text="Show in folder"/></StackPanel></Button>
       <Button Style="{StaticResource ToolButton}" Click="OpenOriginal_Click" ToolTip="Open with the default app"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8E5;"/><TextBlock Text="Open original"/></StackPanel></Button>
-     </StackPanel>
+     </WrapPanel>
      <Popup x:Name="TagPopup" PlacementTarget="{Binding ElementName=TagButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" VerticalOffset="4">
       <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="10" Padding="14" Width="260">
        <Border.Effect><DropShadowEffect Color="#14181C" BlurRadius="24" ShadowDepth="6" Opacity="0.16"/></Border.Effect>
@@ -195,11 +195,12 @@
        ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True"
        VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.IsVirtualizingWhenGrouping="True" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="1" VirtualizingPanel.CacheLengthUnit="Page"
        SelectionChanged="Tiles_SelectionChanged" PreviewMouseLeftButtonDown="Tiles_PreviewMouseLeftButtonDown" PreviewMouseMove="Tiles_PreviewMouseMove" PreviewMouseLeftButtonUp="Tiles_PreviewMouseLeftButtonUp" MouseDoubleClick="Tiles_MouseDoubleClick" KeyDown="Tiles_KeyDown" AutomationProperties.Name="Captures">
-       <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+       <!-- Groups stack vertically (virtualized); the tiles inside each group wrap. -->
+       <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
        <ListBox.GroupStyle>
         <GroupStyle>
          <GroupStyle.HeaderTemplate><DataTemplate><TextBlock Text="{Binding Name}" Style="{StaticResource SectionLabel}" Margin="8,14,0,6"/></DataTemplate></GroupStyle.HeaderTemplate>
-         <GroupStyle.Panel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></GroupStyle.Panel>
+         <GroupStyle.Panel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></GroupStyle.Panel>
         </GroupStyle>
        </ListBox.GroupStyle>
        <ListBox.ContextMenu>

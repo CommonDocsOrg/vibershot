@@ -27,5 +27,6 @@ public sealed class GallerySettings
     public double? WindowWidth { get; set; }
     public double? WindowHeight { get; set; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public string ProjectsFolder => Path.Combine(LibraryRoot, "Projects");
 }
