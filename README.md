@@ -15,9 +15,11 @@ Vibershot is a small, fast capture tool. Press a key, pick what you want on scre
 - **One key, any part of the screen.** Print Screen or Ctrl+Shift+S opens the capture tool over whatever you are looking at.
 - **Smart selection.** Hover and Vibershot outlines the window, panel or page content under the cursor. Click to take it, or drag your own region.
 - **Still or moving.** The same selection becomes a screenshot, an MP4 recording or a stitched scrolling capture.
-- **Edit without losing anything.** Arrows, shapes, text, crops and layers stay editable in the Vibershot project format.
+- **Exact sizes when you need them.** Pick 720p, 1080p, 1440p, square or a custom frame and place it with a click.
+- **Edit without losing anything.** Arrows, shapes, text, callouts, stamps, crops and layers stay editable in the Vibershot project format.
+- **Hide what is private.** Blur or pixelate part of a picture; the hidden pixels are really gone from the export.
 - **A home for every capture.** The gallery keeps everything, with search, tags and favourites.
-- **Lightweight.** A native Windows app that sits in the tray and does nothing until you ask it to.
+- **Lightweight.** A native Windows app with a dark theme that sits in the tray and does nothing until you ask it to.
 
 ## Capture any region
 
@@ -29,6 +31,10 @@ Once you have a selection, choose what happens next: save a screenshot, record t
 
 ![Pick a screenshot, video or scrolling photo from the selection](docs/images/capture-chooser.png)
 
+Need an exact size? The **Size** bar at the top of the capture tool swaps the free selection for a fixed frame: 720p, 1080p, 1440p, square, or a custom width and height that Vibershot remembers. The frame follows the pointer; click to place it, and click again elsewhere to move it.
+
+![A fixed 1280 × 720 frame placed over two windows](docs/images/region-size.png)
+
 After a capture, Vibershot does what you have told it to: save to the library, copy to the clipboard, open the editor, open the gallery, or just show a small preview with **Copy**, **Save as…** and **Edit**. Presets switch between "quick copy", "save to library", "save and edit" and "save and review" in one click.
 
 ## Record video
@@ -39,15 +45,24 @@ Choose **Take video** and the selected region is recorded as an H.264 MP4 at the
 
 ## Annotate in the editor
 
-Captures open in a layered editor. Draw arrows, rectangles, ellipses and lines, add text, callouts and speech bubbles, drop in stamps, place other images, crop, and move anything later. Blur or pixelate anything private with a brush or a box. Start from a blank canvas, add space around a picture, or scale it. Items live on layers that can be hidden, locked, reordered and faded. Marquee-select pixels to lift, move, copy or clear them. Undo and redo cover every step.
+Captures open in a layered editor. Every command is in the menu bar, the common ones sit on the action rail, and each tool is a labelled row on the left that opens its own options when you pick it.
 
-![Annotating a capture with arrows, shapes and text](docs/images/editor.png)
+![Annotating a capture with a callout, a shape, a stamp and a pixelated strip](docs/images/editor.png)
+
+- **Arrows, shapes and text.** Arrows with sharp or rounded heads, rectangles, ellipses, lines and text, each with stroke, fill, opacity and drop shadow. Every slider has a number box beside it for values past the slider's range.
+- **Callouts.** A label with one or more arrows, or a speech, oval or thought bubble. Drag from the thing you are pointing at to where the note should sit, then type.
+- **Stamps.** Ticks, crosses, pointers, stars, warnings and more in a searchable grid. Click to place one or drag to size it.
+- **Blur and pixelate.** Paint with a brush or drag a box over anything that should not be readable, or blur a marquee selection.
+- **Canvas and size.** Start from a blank canvas, add or trim space on any side, scale the whole picture, or crop without throwing pixels away.
+- **Layers.** Items live on layers that can be hidden, locked, reordered and faded. Marquee-select pixels to lift, move, copy or clear them.
+
+Nothing is final: anything you add can be selected, moved and restyled later, and undo and redo cover every step.
 
 Save as a **Vibershot project** (`.vibeshot`) to keep text, shapes and layers editable, or **Export** a flat PNG, JPEG or WebP with a live preview of the compression result. **Copy image** puts the finished picture on the clipboard for pasting anywhere.
 
 ## Find it again in the gallery
 
-Every capture saved to the library shows up in the gallery, grouped by day, with the app and window it came from. Filter by images, videos, projects or favourites, search by file name, app, window title or tag, and sort by date, name or size. Rename, tag, favourite, copy or delete from the keyboard. Drag tiles out to other apps, or drop files in to import them. The gallery can stay open as a home base: **Capture region** in its header starts a new capture and shows the result selected.
+Every capture saved to the library shows up in the gallery, grouped by day, with the app and window it came from. Filter by images, videos, projects or favourites, search by file name, app, window title or tag, and sort by date, name or size. Rename, tag, favourite, copy or delete from the keyboard. Drag tiles out to other apps, or drop files in to import them. Drag the dividers to resize the side rail and the details pane; a wider pane shows a larger preview. The gallery can stay open as a home base: **Capture region** in its header starts a new capture and shows the result selected.
 
 ![The gallery with search, tags and a details pane](docs/images/gallery.png)
 
@@ -74,6 +89,18 @@ Requires Windows 11 (Windows 10 version 2004 or later also works).
 | Open the editor | Set in Settings → Hotkeys |
 
 Every shortcut can be changed in Settings. If you would rather keep Print Screen for Windows, turn the takeover off there.
+
+In the editor, one letter picks each tool:
+
+| Tool | Key | Tool | Key |
+|---|---|---|---|
+| Select | V | Text | T |
+| Marquee | M | Callout | O |
+| Crop | C | Stamp | K |
+| Arrow | A | Blur | B |
+| Shape | S | Image | I |
+
+Ctrl+N opens a new canvas, Ctrl+S saves the project, Ctrl+E exports an image and Ctrl+0 shows the picture at actual size.
 
 ## Build from source
 
