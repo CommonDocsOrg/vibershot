@@ -476,7 +476,7 @@ static class EditorChecks {
   var galleryPreview=ThumbnailCache.LoadProjectPreview(projectPath,30);Check(galleryPreview!=null&&galleryPreview.PixelWidth==30&&galleryPreview.PixelHeight==25,"Gallery scales the project preview");
   var wideDoc=Vibershot.Editing.DocumentOps.FromImage(image,assets) with{Size=new Size(2000,500)};Check(Vibershot.Editing.ProjectFile.RenderPreview(wideDoc,assets).PixelWidth==Vibershot.Editing.ProjectFile.PreviewEdge,"Preview is capped at the preview edge");
   using(var zip=System.IO.Compression.ZipFile.OpenRead(projectPath))Check(zip.GetEntry("preview.png")!=null&&zip.GetEntry("document.json")!=null,"Project zip entries");
-  var noPreview=Path.Combine(AppContext.BaseDirectory,"nopreview.vibeshot");using(var zip=System.IO.Compression.ZipFile.Open(noPreview,System.IO.Compression.ZipArchiveMode.Create)){using var e=new StreamWriter(zip.CreateEntry("document.json").Open());e.Write(Vibershot.Editing.DocumentJson.Serialize(project));}
+  var noPreview=Path.Combine(AppContext.BaseDirectory,"nopreview.vibeshot");File.Delete(noPreview);using(var zip=System.IO.Compression.ZipFile.Open(noPreview,System.IO.Compression.ZipArchiveMode.Create)){using var e=new StreamWriter(zip.CreateEntry("document.json").Open());e.Write(Vibershot.Editing.DocumentJson.Serialize(project));}
   Check(Vibershot.Editing.ProjectFile.ReadPreview(noPreview)==null&&ThumbnailCache.LoadProjectPreview(noPreview,30)==null,"Projects without a preview return null");
 
   // Flatten honours the crop and renders items; a tall document renders in bands.
