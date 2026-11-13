@@ -493,5 +493,100 @@ static class EditorChecks {
   byte[] firstRow=new byte[16];tallFlat.CopyPixels(new Int32Rect(0,0,4,1),firstRow,16,0);Check(firstRow[3]==0,"Banded flatten first row should be transparent");
   var itemsFlat=Vibershot.Editing.DocumentRenderer.FlattenItems(new[]{rect},assets);Check(itemsFlat.PixelWidth==48&&itemsFlat.PixelHeight==38,"FlattenItems size should be the item bounds plus margin");
   var measured=Vibershot.Editing.DocumentRenderer.MeasureText(text);Check(measured.Width>8&&measured.Height>20,"MeasureText");
+
+  // Editor depth: callouts, stamps, arrow heads, canvas resize and scale, blur patches.
+  {
+   var E=typeof(Vibershot.Editing.DocumentOps);
+   var callout=new Vibershot.Editing.CalloutItem{Bounds=new Rect(100,100,200,60),Text="Label",Kind=Vibershot.Editing.CalloutKind.Speech,Background=Colors.White,Stroke=Colors.Red,StrokeWidth=3,Targets=[new Point(40,260),new Point(420,90)]};
+   var stamp=new Vibershot.Editing.StampItem{Bounds=new Rect(10,10,48,48),StampId="smiley",Fill=Colors.Lime};
+   var roundArrow=(Vibershot.Editing.ArrowItem)new Vibershot.Editing.ArrowItem{Stroke=Colors.Black,StrokeWidth=4,HeadSize=20,HeadRoundness=0.8}.WithPoints(new Point(10,10),new Point(90,60));
+   var json2=Vibershot.Editing.ItemClipboard.Serialize(new Vibershot.Editing.Item[]{callout,stamp,roundArrow});
+   var back2=Vibershot.Editing.ItemClipboard.Deserialize(json2);
+   Check(back2.Count==3&&back2[0] is Vibershot.Editing.CalloutItem bc&&bc.Kind==Vibershot.Editing.CalloutKind.Speech&&bc.Targets.Count==2&&bc.Targets[1]==new Point(420,90)&&bc.Text=="Label","Callout round trip: "+json2);
+   Check(back2[1] is Vibershot.Editing.StampItem bs&&bs.StampId=="smiley"&&bs.Fill==Colors.Lime&&back2[2] is Vibershot.Editing.ArrowItem ba&&ba.HeadRoundness==0.8,"Stamp and arrow roundness round trip");
+   Check(json2.Contains("\"type\": \"callout\"")&&json2.Contains("\"type\": \"stamp\""),"Callout and stamp discriminators");
+   var plainText=Vibershot.Editing.ItemClipboard.Deserialize(Vibershot.Editing.ItemClipboard.Serialize(new Vibershot.Editing.Item[]{new Vibershot.Editing.TextItem{Text="t"}}));
+   Check(plainText[0].GetType()==typeof(Vibershot.Editing.TextItem),"A text item must not come back as a callout");
+   Check(Vibershot.Editing.ItemClipboard.Deserialize("[{\"type\":\"arrow\",\"Bounds\":[0,0,10,10]}]")[0] is Vibershot.Editing.ArrowItem old&&old.HeadRoundness==0.25,"Arrows saved before roundness existed load with the default");
+
+   var cdoc=Vibershot.Editing.DocumentOps.AddItems(Vibershot.Editing.DocumentOps.Blank(new Size(500,300),Colors.White),new Vibershot.Editing.Item[]{callout,stamp});
+   var movedAll=(Vibershot.Editing.CalloutItem)Vibershot.Editing.DocumentOps.FindItem(Vibershot.Editing.DocumentOps.MoveItems(cdoc,new[]{callout.Id},new Vector(10,5)),callout.Id)!;
+   Check(movedAll.Bounds==new Rect(110,105,200,60)&&movedAll.Targets[0]==new Point(50,265),"Moving a callout takes its pointers along");
+   var pinned=(Vibershot.Editing.CalloutItem)Vibershot.Editing.DocumentOps.FindItem(Vibershot.Editing.DocumentOps.MoveItems(cdoc,new[]{callout.Id},new Vector(10,5),pinTargets:true),callout.Id)!;
+   Check(pinned.Bounds==new Rect(110,105,200,60)&&pinned.Targets[0]==new Point(40,260),"Pinned move leaves the pointers");
+   var vb=Vibershot.Editing.DocumentOps.VisualBounds(callout);Check(vb.Left==40&&vb.Bottom==260&&vb.Right==420&&vb.Top==90,"Callout visual bounds include its targets: "+vb);
+   var clone=(Vibershot.Editing.CalloutItem)Vibershot.Editing.DocumentOps.Clone(new Vibershot.Editing.Item[]{callout},new Vector(10,10))[0];
+   Check(clone.Id!=callout.Id&&clone.Targets[0]==new Point(50,270),"Clone offsets pointers");
+
+   var cropDoc=Vibershot.Editing.DocumentOps.SetCrop(cdoc,new Rect(50,40,300,200));
+   var grown=Vibershot.Editing.DocumentOps.ResizeCanvas(cropDoc,20,10,30,40);
+   var gc=(Vibershot.Editing.CalloutItem)Vibershot.Editing.DocumentOps.FindItem(grown,callout.Id)!;
+   Check(grown.Size==new Size(550,350)&&gc.Bounds==new Rect(120,110,200,60)&&gc.Targets[1]==new Point(440,100)&&grown.CropRect==new Rect(70,50,300,200)&&cropDoc.Size==new Size(500,300),"ResizeCanvas shifts items, pointers and crop");
+   var trimmed=Vibershot.Editing.DocumentOps.ResizeCanvas(cdoc,-100,0,0,-50);
+   Check(trimmed.Size==new Size(400,250)&&Vibershot.Editing.DocumentOps.FindItem(trimmed,stamp.Id)!.Bounds==new Rect(-90,10,48,48),"Trimming keeps items, shifted");
+   Check(ReferenceEquals(Vibershot.Editing.DocumentOps.ResizeCanvas(cdoc,0,0,0,0),cdoc),"ResizeCanvas with no change returns the input");
+   var toCrop=Vibershot.Editing.DocumentOps.TrimToCrop(cropDoc);
+   Check(toCrop.Size==new Size(300,200)&&toCrop.CropRect==null&&Vibershot.Editing.DocumentOps.FindItem(toCrop,callout.Id)!.Bounds==new Rect(50,60,200,60),"TrimToCrop makes the crop the canvas");
+   var doubled=Vibershot.Editing.DocumentOps.Scale(Vibershot.Editing.DocumentOps.AddItem(cropDoc,roundArrow),new Size(1000,600));
+   var dc2=(Vibershot.Editing.CalloutItem)Vibershot.Editing.DocumentOps.FindItem(doubled,callout.Id)!;var da=(Vibershot.Editing.ArrowItem)Vibershot.Editing.DocumentOps.FindItem(doubled,roundArrow.Id)!;
+   Check(doubled.Size==new Size(1000,600)&&dc2.Bounds==new Rect(200,200,400,120)&&dc2.FontSize==36&&dc2.StrokeWidth==6&&dc2.Targets[0]==new Point(80,520)&&da.HeadSize==40&&da.StrokeWidth==8&&da.Head==new Point(180,120)&&doubled.CropRect==new Rect(100,80,600,400),"Scale doubles geometry, strokes, fonts and crop");
+   Check(Vibershot.Editing.DocumentOps.IsValidCanvas(3840,2160)&&!Vibershot.Editing.DocumentOps.IsValidCanvas(0,10)&&!Vibershot.Editing.DocumentOps.IsValidCanvas(40000,10)&&!Vibershot.Editing.DocumentOps.IsValidCanvas(20000,20000),"Canvas limits");
+
+   // Rendering: every callout kind draws a body and reaches towards its target; stamps and round arrow heads draw.
+   byte[] Px(BitmapSource b,int x,int y){var px=new byte[4];b.CopyPixels(new Int32Rect(x,y,1,1),px,4,0);return px;}
+   foreach(var kind in Enum.GetValues<Vibershot.Editing.CalloutKind>())
+   {
+    var c=callout with{Kind=kind,Targets=[new Point(40,260)]};
+    var flat2=Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=new Size(500,300),Layers=[new Vibershot.Editing.Layer{Items=[c]}]},assets);
+    Check(Px(flat2,200,130)[3]==255,kind+" callout body is filled");
+    // Somewhere along the line from the box to the target there is ink (arrow, tail or thought bubbles).
+    bool ink=false;for(double t=0.55;t<0.98;t+=0.01){int x=(int)(200+(40-200)*t),y=(int)(130+(260-130)*t);if(Px(flat2,x,y)[3]>0){ink=true;break;}}
+    Check(ink,kind+" callout points at its target");
+    Check(Px(flat2,480,280)[3]==0,kind+" callout leaves the far corner clear");
+    var size=Vibershot.Editing.DocumentRenderer.MeasureText(c);var area=Vibershot.Editing.DocumentRenderer.TextArea(c);
+    Check(size.Width>10&&area.Width>0&&area.Width<=c.Bounds.Width&&c.Bounds.Contains(area),kind+" text area sits inside the body");
+   }
+   var rotatedCallout=callout with{Rotation=30,Kind=Vibershot.Editing.CalloutKind.Label};
+   Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=new Size(500,300),Layers=[new Vibershot.Editing.Layer{Items=[rotatedCallout,callout with{Shadow=true,Kind=Vibershot.Editing.CalloutKind.Thought}]}]},assets);
+   Check(Vibershot.Editing.StampLibrary.All.Count>=10&&Vibershot.Editing.StampLibrary.All.Select(d=>d.Id).Distinct().Count()==Vibershot.Editing.StampLibrary.All.Count,"Stamp ids are unique");
+   Check(Vibershot.Editing.StampLibrary.Search("mouse").Any(d=>d.Id=="pointer")&&Vibershot.Editing.StampLibrary.Search("home").Single().Id=="house"&&Vibershot.Editing.StampLibrary.Search("smile").Any(d=>d.Id=="smiley")&&!Vibershot.Editing.StampLibrary.Search("zzzz").Any()&&Vibershot.Editing.StampLibrary.Search("").Count()==Vibershot.Editing.StampLibrary.All.Count,"Stamp search");
+   foreach(var def in Vibershot.Editing.StampLibrary.All)
+   {
+    var sflat=Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=new Size(96,96),Layers=[new Vibershot.Editing.Layer{Items=[new Vibershot.Editing.StampItem{StampId=def.Id,Bounds=new Rect(8,8,80,80),Shadow=true}]}]},assets);
+    var sp=new byte[96*96*4];sflat.CopyPixels(sp,96*4,0);int opaque=0;for(int i=3;i<sp.Length;i+=4)if(sp[i]>0)opaque++;
+    Check(opaque>150,"Stamp '"+def.Id+"' draws something");
+   }
+   var sharp=Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=new Size(100,70),Layers=[new Vibershot.Editing.Layer{Items=[roundArrow with{HeadRoundness=0}]}]},assets);
+   var blunt=Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=new Size(100,70),Layers=[new Vibershot.Editing.Layer{Items=[roundArrow with{HeadRoundness=1}]}]},assets);
+   int Ink(BitmapSource b){var px=new byte[b.PixelWidth*b.PixelHeight*4];b.CopyPixels(px,b.PixelWidth*4,0);int n=0;for(int i=3;i<px.Length;i+=4)if(px[i]>127)n++;return n;}
+   Check(Px(sharp,88,58)[3]>0&&Px(blunt,88,58)[3]>0&&Ink(blunt)<Ink(sharp)*0.9,"Sharp and rounded heads both touch the tip; the rounded one is a smaller shape");
+
+   // Blur and pixelate patches.
+   var flatBefore=Vibershot.Editing.DocumentRenderer.Flatten(doc,assets);
+   var patch=Vibershot.Editing.PixelOps.ObscurePatch(doc,assets,new Rect(10,10,40,30),Vibershot.Editing.ObscureMode.Blur,6,0)!;
+   var patchBitmap=assets.Get(patch.AssetId)!;
+   Check(patch.Bounds==new Rect(10,10,40,30)&&patchBitmap.PixelWidth==40&&patchBitmap.PixelHeight==30,"Blur patch covers the region");
+   var before=new byte[40*30*4];flatBefore.CopyPixels(new Int32Rect(10,10,40,30),before,160,0);var after=new byte[40*30*4];patchBitmap.CopyPixels(after,160,0);
+   long diff=0;for(int i=0;i<before.Length;i++)diff+=Math.Abs(before[i]-after[i]);Check(diff>before.Length*5&&after[3]==255,"Blur changes the pixels and keeps them opaque");
+   long Rough(byte[] px){long r=0;for(int y=0;y<30;y++)for(int x=1;x<40;x++)r+=Math.Abs(px[(y*40+x)*4]-px[(y*40+x-1)*4]);return r;}
+   Check(Rough(after)*4<Rough(before),"Blurred pixels are much smoother than the source");
+   var blocks=Vibershot.Editing.PixelOps.ObscurePatch(doc,assets,new Rect(10,10,40,30),Vibershot.Editing.ObscureMode.Pixelate,10,0)!;
+   var bp=new byte[40*30*4];assets.Get(blocks.AssetId)!.CopyPixels(bp,160,0);
+   Check(bp[0]==bp[(9*40+9)*4]&&bp[1]==bp[(9*40+9)*4+1]&&bp[(15*40+25)*4]==bp[(11*40+21)*4],"Pixelate fills each block with one colour");
+   var masked=Vibershot.Editing.PixelOps.ObscurePatch(doc,assets,new Rect(10,10,40,30),Vibershot.Editing.ObscureMode.Blur,6,0,new EllipseGeometry(new Point(30,25),10,10))!;
+   var mp=new byte[40*30*4];assets.Get(masked.AssetId)!.CopyPixels(mp,160,0);
+   Check(mp[3]==0&&mp[(15*40+20)*4+3]==255,"A masked patch is transparent outside the mask");
+   Check(Vibershot.Editing.PixelOps.ObscurePatch(doc,assets,new Rect(500,500,10,10),Vibershot.Editing.ObscureMode.Blur,6,0)==null,"A region off the canvas makes no patch");
+   var flatGrey=new byte[20*20*4];Array.Fill(flatGrey,(byte)120);Vibershot.Editing.PixelOps.BoxBlur(flatGrey,20,20,5,4);Check(flatGrey.All(v=>v==120),"Blurring a flat colour leaves it unchanged");
+   var topOnly=Vibershot.Editing.DocumentOps.AddItem(doc,new Vibershot.Editing.RectItem{Bounds=new Rect(0,0,120,100),Fill=Colors.Black});
+   var under=new byte[4];assets.Get(Vibershot.Editing.PixelOps.ObscurePatch(topOnly,assets,new Rect(10,10,40,30),Vibershot.Editing.ObscureMode.Pixelate,40,0)!.AssetId)!.CopyPixels(new Int32Rect(5,5,1,1),under,4,0);
+   var over=new byte[4];assets.Get(Vibershot.Editing.PixelOps.ObscurePatch(topOnly,assets,new Rect(10,10,40,30),Vibershot.Editing.ObscureMode.Pixelate,40,1)!.AssetId)!.CopyPixels(new Int32Rect(5,5,1,1),over,4,0);
+   Check(under[0]+under[1]+under[2]>0&&over[0]+over[1]+over[2]==0,"A patch only sees its own layer and the ones below");
+
+   // Settings added with these features.
+   var es=new EditorSettings();Check(es.ActualSizeShortcut=="Ctrl+0"&&es.FitShortcut=="","Ctrl+0 is actual size and fit has no shortcut by default");
+   Check(new AppConfig().CustomRegionPixels()==(1280,720)&&new AppConfig{CustomRegionSize="1600 x 900"}.CustomRegionPixels()==(1600,900)&&new AppConfig{CustomRegionSize="junk"}.CustomRegionPixels()==(1280,720),"Custom region size parsing");
+   var gs=new GallerySettings();Check(gs.RailWidth==200&&gs.DetailWidth==330,"Gallery pane width defaults");
+  }
  }
 }

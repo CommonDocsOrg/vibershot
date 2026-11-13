@@ -19,6 +19,8 @@ public enum TextAlign { Left, Center, Right }
 [JsonDerivedType(typeof(LineItem), "line")]
 [JsonDerivedType(typeof(ArrowItem), "arrow")]
 [JsonDerivedType(typeof(TextItem), "text")]
+[JsonDerivedType(typeof(CalloutItem), "callout")]
+[JsonDerivedType(typeof(StampItem), "stamp")]
 public abstract record Item
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -89,9 +91,12 @@ public record LineItem : Item
 public sealed record ArrowItem : LineItem
 {
     public double HeadSize { get; init; } = 14;
+
+    /// <summary>How rounded the head's three corners are: 0 is a sharp triangle, 1 rounds it into a blob.</summary>
+    public double HeadRoundness { get; init; } = 0.25;
 }
 
-public sealed record TextItem : Item
+public record TextItem : Item
 {
     public string Text { get; init; } = "";
     public string FontFamily { get; init; } = "Segoe UI";
@@ -104,6 +109,33 @@ public sealed record TextItem : Item
     public TextAlign Alignment { get; init; } = TextAlign.Left;
     public Color? Background { get; init; }
     public double Padding { get; init; } = 6;
+}
+
+public enum CalloutKind { Label, Speech, Oval, Thought }
+
+/// <summary>
+/// A text box with a body shape and pointers. <see cref="TextItem.Background"/> fills the body and
+/// <see cref="Item.Stroke"/> outlines it. Each entry of <see cref="Targets"/> is a point in document
+/// space the callout points at: a <see cref="CalloutKind.Label"/> draws an arrow to it, the speech
+/// and thought kinds grow a tail towards it. Targets do not rotate with the body.
+/// </summary>
+public sealed record CalloutItem : TextItem
+{
+    [JsonConverter(typeof(JsonStringEnumConverter<CalloutKind>))]
+    public CalloutKind Kind { get; init; } = CalloutKind.Label;
+    public ImmutableList<Point> Targets { get; init; } = ImmutableList<Point>.Empty;
+    public double CornerRadius { get; init; } = 8;
+    public double HeadSize { get; init; } = 12;
+    public double HeadRoundness { get; init; } = 0.25;
+}
+
+/// <summary>
+/// A vector drawing from the <see cref="StampLibrary"/>, stretched over <see cref="Item.Bounds"/>.
+/// <see cref="Item.Fill"/> overrides the stamp's main colour and <see cref="Item.Stroke"/> its line colour.
+/// </summary>
+public sealed record StampItem : Item
+{
+    public string StampId { get; init; } = "";
 }
 
 public sealed record Layer

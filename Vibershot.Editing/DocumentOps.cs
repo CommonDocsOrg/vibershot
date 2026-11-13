@@ -142,8 +142,16 @@ public static class DocumentOps
 
     public static ImageDocument ReplaceItem(ImageDocument doc, Item item) => UpdateItems(doc, [item.Id], _ => item);
 
-    public static ImageDocument MoveItems(ImageDocument doc, IEnumerable<Guid> ids, Vector delta) =>
-        UpdateItems(doc, ids, item => item with { Bounds = Rect.Offset(item.Bounds, delta) });
+    /// <summary>Moves items; callout pointers travel with their box unless <paramref name="pinTargets"/> keeps them where they point.</summary>
+    public static ImageDocument MoveItems(ImageDocument doc, IEnumerable<Guid> ids, Vector delta, bool pinTargets = false) =>
+        UpdateItems(doc, ids, item => pinTargets ? item with { Bounds = Rect.Offset(item.Bounds, delta) } : Offset(item, delta));
+
+    /// <summary>The item shifted by <paramref name="delta"/>, including the points a callout aims at.</summary>
+    public static Item Offset(Item item, Vector delta)
+    {
+        var moved = item with { Bounds = Rect.Offset(item.Bounds, delta) };
+        return moved is CalloutItem { Targets.Count: > 0 } callout ? callout with { Targets = callout.Targets.ConvertAll(p => p + delta) } : moved;
+    }
 
     public static ImageDocument SetBounds(ImageDocument doc, Guid id, Rect bounds) =>
         UpdateItems(doc, [id], item => item with { Bounds = bounds });
@@ -186,9 +194,11 @@ public static class DocumentOps
     /// <summary>Axis-aligned bounds of an item after rotation.</summary>
     public static Rect VisualBounds(Item item)
     {
-        if (item.Rotation == 0) return item.Bounds;
-        var transform = new RotateTransform(item.Rotation, item.Center.X, item.Center.Y);
-        return transform.TransformBounds(item.Bounds);
+        var bounds = item.Bounds;
+        if (item.Rotation != 0) bounds = new RotateTransform(item.Rotation, item.Center.X, item.Center.Y).TransformBounds(bounds);
+        if (item is CalloutItem callout)
+            foreach (var target in callout.Targets) bounds.Union(target);
+        return bounds;
     }
 
     /// <summary>Union of the visual bounds of several items, or an empty rect when there are none.</summary>
@@ -201,5 +211,71 @@ public static class DocumentOps
 
     /// <summary>Copies of the items with fresh ids (for paste or duplicate), shifted by <paramref name="offset"/>.</summary>
     public static ImmutableList<Item> Clone(IEnumerable<Item> items, Vector offset) =>
-        items.Select(item => item with { Id = Guid.NewGuid(), Bounds = Rect.Offset(item.Bounds, offset) }).ToImmutableList();
+        items.Select(item => Offset(item, offset) with { Id = Guid.NewGuid() }).ToImmutableList();
+
+    /// <summary>Longest canvas side and largest canvas area a document may have; keeps a flatten within memory.</summary>
+    public const int MaxCanvasSide = 30000;
+    public const long MaxCanvasPixels = 120_000_000;
+
+    /// <summary>True when a canvas of this size can be created and exported.</summary>
+    public static bool IsValidCanvas(double width, double height) =>
+        width >= 1 && height >= 1 && width <= MaxCanvasSide && height <= MaxCanvasSide && width * height <= MaxCanvasPixels;
+
+    /// <summary>
+    /// Grows (positive) or trims (negative) the canvas on each side. Items keep their place in the
+    /// picture, so everything shifts by the amount added on the left and top; nothing is deleted when
+    /// the canvas shrinks. New space shows the canvas colour.
+    /// </summary>
+    public static ImageDocument ResizeCanvas(ImageDocument doc, double left, double top, double right, double bottom)
+    {
+        double width = Math.Max(1, Math.Round(doc.Size.Width + left + right));
+        double height = Math.Max(1, Math.Round(doc.Size.Height + top + bottom));
+        var shift = new Vector(Math.Round(left), Math.Round(top));
+        if (shift == default && width == doc.Size.Width && height == doc.Size.Height) return doc;
+        var resized = doc with
+        {
+            Size = new Size(width, height),
+            Layers = shift == default ? doc.Layers : doc.Layers.ConvertAll(layer => layer with { Items = layer.Items.ConvertAll(item => Offset(item, shift)) }),
+        };
+        return SetCrop(resized, doc.CropRect is { } crop ? Rect.Offset(crop, shift) : null);
+    }
+
+    /// <summary>Makes the crop permanent: the canvas becomes the cropped rectangle.</summary>
+    public static ImageDocument TrimToCrop(ImageDocument doc)
+    {
+        if (doc.CropRect is not { } crop) return doc;
+        return ResizeCanvas(doc with { CropRect = null }, -crop.X, -crop.Y, crop.Right - doc.Size.Width, crop.Bottom - doc.Size.Height);
+    }
+
+    /// <summary>
+    /// Scales the whole document to a new canvas size: positions, sizes, stroke widths, fonts and
+    /// corner radii all follow, so the picture looks the same at the new resolution. Bitmaps are not
+    /// resampled here; they are drawn at their new size from the original pixels.
+    /// </summary>
+    public static ImageDocument Scale(ImageDocument doc, Size size)
+    {
+        double width = Math.Max(1, Math.Round(size.Width)), height = Math.Max(1, Math.Round(size.Height));
+        if (width == doc.Size.Width && height == doc.Size.Height) return doc;
+        double sx = width / doc.Size.Width, sy = height / doc.Size.Height;
+        double s = Math.Sqrt(sx * sy);
+        Rect R(Rect r) => new(r.X * sx, r.Y * sy, r.Width * sx, r.Height * sy);
+        Item ScaleItem(Item item)
+        {
+            item = item with { Bounds = R(item.Bounds), StrokeWidth = item.StrokeWidth * s };
+            return item switch
+            {
+                RectItem rect => rect with { CornerRadius = rect.CornerRadius * s },
+                ArrowItem arrow => arrow with { HeadSize = arrow.HeadSize * s },
+                CalloutItem callout => callout with
+                {
+                    FontSize = callout.FontSize * s, Padding = callout.Padding * s, CornerRadius = callout.CornerRadius * s, HeadSize = callout.HeadSize * s,
+                    Targets = callout.Targets.ConvertAll(p => new Point(p.X * sx, p.Y * sy)),
+                },
+                TextItem text => text with { FontSize = text.FontSize * s, Padding = text.Padding * s },
+                _ => item,
+            };
+        }
+        var scaled = doc with { Size = new Size(width, height), CropRect = null, Layers = doc.Layers.ConvertAll(layer => layer with { Items = layer.Items.ConvertAll(ScaleItem) }) };
+        return SetCrop(scaled, doc.CropRect is { } crop ? R(crop) : null);
+    }
 }
