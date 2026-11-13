@@ -139,15 +139,18 @@ public sealed class ExportVideoWindow : Window
         try { _config.Save(); } catch (Exception) { }
 
         string partial = output + ".exporting.mp4";
+        // Text, shapes and captions are drawn into pictures here for ffmpeg to lay over the video.
+        string graphics = Path.Combine(Path.GetTempPath(), "Vibershot", "export-" + Guid.NewGuid().ToString("N"));
         var cancel = _running = new CancellationTokenSource();
         SetBusy(true);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
             _status.Text = "Finding an encoder…";
+            _progress.Value = 0;
             var encoder = await EncoderProbe.ResolveAsync(_runner, _config.Video.PreferHardwareEncoder, cancel.Token);
             if (encoder == null) { _status.Text = "No H.264 encoder works on this PC."; return; }
-            var plan = TimelineOps.ToPlan(_project, null, width, height) with { FrameRate = rate };
+            var plan = TimelineOps.ToPlan(_project, null, width, height, graphics) with { FrameRate = rate };
             long totalFrames = Math.Max(1, (long)Math.Round(plan.Duration * rate.Value));
             var clock = Stopwatch.StartNew();
             var progress = new Progress<FfmpegProgress>(p =>
@@ -175,6 +178,7 @@ public sealed class ExportVideoWindow : Window
         {
             _running = null;
             SetBusy(false);
+            try { if (Directory.Exists(graphics)) Directory.Delete(graphics, true); } catch (Exception) { }
         }
     }
 

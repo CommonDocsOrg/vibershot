@@ -72,7 +72,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "startup"; Description: "Start {#AppName} when I sign in to Windows (runs in the tray)"; GroupDescription: "Startup:"
-Name: "fileassoc"; Description: "Open .vibeshot project files with {#AppName}"; GroupDescription: "File types:"
+Name: "fileassoc"; Description: "Open .vibeshot and .vibevideo project files with {#AppName}"; GroupDescription: "File types:"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
@@ -91,6 +91,11 @@ Root: HKA; Subkey: "Software\Classes\.vibeshot"; ValueType: string; ValueName: "
 Root: HKA; Subkey: "Software\Classes\Vibershot.Project"; ValueType: string; ValueName: ""; ValueData: "Vibershot project"; Flags: uninsdeletekey; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\Vibershot.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\Vibershot.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" --edit ""%1"""; Tasks: fileassoc
+; .vibevideo (video editor projects) opens the same way: --edit routes it to the video editor.
+Root: HKA; Subkey: "Software\Classes\.vibevideo"; ValueType: string; ValueName: ""; ValueData: "Vibershot.VideoProject"; Flags: uninsdeletevalue; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\Vibershot.VideoProject"; ValueType: string; ValueName: ""; ValueData: "Vibershot video project"; Flags: uninsdeletekey; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\Vibershot.VideoProject\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"",0"; Tasks: fileassoc
+Root: HKA; Subkey: "Software\Classes\Vibershot.VideoProject\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" --edit ""%1"""; Tasks: fileassoc
 
 [Run]
 ; Interactive install: the finish page offers to launch.

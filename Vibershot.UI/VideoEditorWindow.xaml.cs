@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
@@ -62,6 +63,18 @@ public partial class VideoEditorWindow : Window
         Preview.ClipPicked += id => Timeline.Select(id is Guid picked ? TimelineOps.WithLinked(Project, new[] { picked }) : new HashSet<Guid>());
         Preview.SourceDropped += OnSourceDroppedOnPicture;
         Preview.CropModeChanged += () => CropButton.IsChecked = Preview.CropMode;
+        Preview.ElementDropped += (key, at) => AddElement(key, at, null, _playhead);
+        Preview.TextEditRequested += BeginInlineEdit;
+        Timeline.ElementDropped += (key, trackId, frame) => AddElement(key, new Point(Project.Width / 2.0, Project.Height / 2.0), trackId, frame);
+        Timeline.CaptionRequested += AddCaptionAt;
+        FontSizeBox.Committed += value => StyleText(text => text with { FontSize = value }, style => style with { FontSize = value });
+        StrokeWidthBox.Committed += value => StyleGraphic(item => item with { StrokeWidth = value });
+        TextColour.ValueChanged += colour => { if (!_updatingPanel && colour is { } c) StyleText(text => text with { Color = c }, style => style with { Color = c }); };
+        BackColour.ValueChanged += colour => { if (!_updatingPanel) StyleText(text => text with { Background = colour }, style => style with { Background = colour }); };
+        StrokeColour.ValueChanged += colour => { if (!_updatingPanel) StyleGraphic(item => item with { Stroke = colour, StrokeWidth = colour != null && item.StrokeWidth <= 0 ? Math.Max(2, Math.Round(Project.Height / 180.0)) : item.StrokeWidth }); };
+        FillColour.ValueChanged += colour => { if (!_updatingPanel) StyleGraphic(item => item is TextItem ? item : item with { Fill = colour }); };
+        foreach (var box in new[] { FontSizeBox, StrokeWidthBox }) box.ReturnFocusTo = Timeline;
+        BuildElements();
         PlaceX.Committed += value => Place(p => p with { X = value });
         PlaceY.Committed += value => Place(p => p with { Y = value });
         PlaceW.Committed += value => Place(p => p with { Width = value });
@@ -124,7 +137,8 @@ public partial class VideoEditorWindow : Window
             _bin.Add(item);
             LoadAssets(item);
         }
-        BinLabel.Text = _bin.Count == 0 ? "PROJECT MEDIA" : $"PROJECT MEDIA · {_bin.Count}";
+        BinLabel.Text = _bin.Count == 0 ? "Media" : $"Media · {_bin.Count}";
+        if (InlineWords.Visibility == Visibility.Visible) PositionInlineEdit();
         if (_playhead > project.Duration) _playhead = project.Duration;
         Timeline.Playhead = _playhead;
         UndoButton.IsEnabled = _history.CanUndo; RedoButton.IsEnabled = _history.CanRedo;
@@ -579,7 +593,8 @@ public partial class VideoEditorWindow : Window
         _updatingPanel = true;
         try
         {
-            Preview.Selected = selected.Select(pair => pair.Clip).OfType<VisualClip>().FirstOrDefault()?.Id;
+            Preview.Selected = selected.Select(pair => pair.Clip).FirstOrDefault(clip => clip is GraphicClip || clip is ImageClip || clip is VideoClip)?.Id;
+            if (InlineWords.Visibility == Visibility.Visible && (SelectedGraphic is not { Item: TextItem })) EndInlineEdit();
             if (selected.Count == 0)
             {
                 ClipPanel.Visibility = Visibility.Collapsed; ProjectPanel.Visibility = Visibility.Visible;
@@ -592,16 +607,59 @@ public partial class VideoEditorWindow : Window
                 return;
             }
             ClipPanel.Visibility = Visibility.Visible; ProjectPanel.Visibility = Visibility.Collapsed;
-            var primary = selected.FirstOrDefault(pair => pair.Clip is VisualClip, selected[0]);
+            var primary = selected.FirstOrDefault(pair => pair.Clip is not AudioClip, selected[0]);
             var sound = selected.Select(pair => pair.Clip).OfType<AudioClip>().FirstOrDefault();
-            PropTitle.Text = project.Source(primary.Clip.SourceId)?.Name ?? "Missing media";
-            string kind = primary.Clip is VideoClip ? "Video clip" : primary.Clip is ImageClip ? "Picture" : "Audio clip";
+            PropTitle.Text = TimelineView.NameOf(project, primary.Clip);
+            string kind = primary.Clip switch { VideoClip => "Video clip", ImageClip => "Picture", GraphicClip { Item: CalloutItem } => "Callout", GraphicClip { Item: TextItem } => "Text", GraphicClip => "Graphic", CaptionClip => "Caption", _ => "Audio clip" };
             string linked = primary.Clip.LinkId == null ? "" : primary.Clip is VideoClip ? " · linked audio" : " · linked video";
             PropSubtitle.Text = selected.Count > 2 ? $"{selected.Count} clips selected" : $"{kind} on {primary.Track.Name}{linked}";
             ClipStartValue.Text = Timecode(primary.Clip.Start);
             ClipLengthValue.Text = Timecode(primary.Clip.Duration);
             ClipSourceValue.Text = Timecode(project.Frames(primary.Clip.SourceIn));
-            PicturePanel.Visibility = primary.Clip is VisualClip ? Visibility.Visible : Visibility.Collapsed;
+            var graphicItem = (primary.Clip as GraphicClip)?.Item;
+            var captionItem = primary.Clip as CaptionClip;
+            var words = graphicItem as TextItem;
+            // Words: a text or callout graphic shows its own style, a caption its track's.
+            WordsPanel.Visibility = words != null || captionItem != null ? Visibility.Visible : Visibility.Collapsed;
+            if (words != null || captionItem != null)
+            {
+                var style = captionItem != null ? TimelineOps.CaptionStyleOf(project, primary.Track) : null;
+                string text = words?.Text ?? captionItem!.Text;
+                if (WordsBox.Text.Replace("\r\n", "\n") != text) WordsBox.Text = text;
+                WordsLabel.Text = captionItem != null ? "CAPTION" : "TEXT";
+                FontSizeBox.Show(words?.FontSize ?? style!.FontSize);
+                BoldButton.IsChecked = words?.Bold ?? style!.Bold;
+                ItalicButton.IsChecked = words?.Italic ?? false;
+                ItalicButton.Visibility = AlignBox.Visibility = words != null ? Visibility.Visible : Visibility.Collapsed;
+                AlignBox.SelectedIndex = words == null ? 1 : words.Alignment == TextAlign.Left ? 0 : words.Alignment == TextAlign.Right ? 2 : 1;
+                TextColour.Value = words?.Color ?? style!.Color;
+                BackColour.Value = words != null ? words.Background : style!.Background;
+                CaptionTopCheck.Visibility = CaptionNote.Visibility = captionItem != null ? Visibility.Visible : Visibility.Collapsed;
+                CaptionTopCheck.IsChecked = style?.AtTop ?? false;
+            }
+            // Line and fill: shapes, arrows, lines and a callout's outline. Stamps keep their own colours unless given one.
+            ShapePanel.Visibility = graphicItem != null && (graphicItem is not TextItem || graphicItem is CalloutItem) ? Visibility.Visible : Visibility.Collapsed;
+            if (graphicItem != null)
+            {
+                StrokeColour.Value = graphicItem.Stroke;
+                StrokeWidthBox.Show(graphicItem.StrokeWidth);
+                FillColour.Value = graphicItem.Fill;
+                FillLabel.Visibility = FillColour.Visibility = graphicItem is RectItem || graphicItem is EllipseItem || graphicItem is StampItem ? Visibility.Visible : Visibility.Collapsed;
+            }
+            bool isPicture = primary.Clip is VideoClip || primary.Clip is ImageClip;
+            PicturePanel.Visibility = isPicture || graphicItem != null ? Visibility.Visible : Visibility.Collapsed;
+            PictureButtons.Visibility = isPicture ? Visibility.Visible : Visibility.Collapsed;
+            PictureLabel.Text = isPicture ? "PICTURE" : "POSITION";
+            PictureHint.Text = isPicture
+                ? "Drag the picture in the preview to move it, its handles to resize or turn it. Shift frees the shape on a corner and snaps the turn to 15°."
+                : graphicItem is TextItem ? "Drag it in the preview to move it; a corner scales the letters, a side changes where lines wrap. Double-click it to type in place."
+                : "Drag it in the preview to move it, its handles to resize or turn it.";
+            if (graphicItem != null)
+            {
+                PlaceX.Show(graphicItem.Bounds.X); PlaceY.Show(graphicItem.Bounds.Y); PlaceW.Show(graphicItem.Bounds.Width); PlaceH.Show(graphicItem.Bounds.Height); PlaceRotation.Show(graphicItem.Rotation);
+                OpacitySlider.Value = Math.Round(graphicItem.Opacity * 100);
+                OpacityValue.Text = $"{Math.Round(graphicItem.Opacity * 100)}%";
+            }
             if (primary.Clip is VisualClip picture)
             {
                 var p = TimelineOps.PlacementOf(project, picture);
@@ -626,15 +684,278 @@ public partial class VideoEditorWindow : Window
     /// <summary>Changes the selected picture's placement, starting from the one it shows now.</summary>
     private void Place(Func<Placement, Placement> change, string? key = null)
     {
-        if (SelectedPicture is not { } clip) return;
-        _history.Push(TimelineOps.SetPlacement(Project, clip.Id, change(TimelineOps.PlacementOf(Project, clip))), key);
+        if (SelectedPicture is { } clip) { _history.Push(TimelineOps.SetPlacement(Project, clip.Id, change(TimelineOps.PlacementOf(Project, clip))), key); return; }
+        if (SelectedGraphic is not { } graphic) return;
+        // A graphic keeps its box in its item; the same numbers are read and written through a placement.
+        var was = graphic.Item;
+        var box = change(new Placement { X = was.Bounds.X, Y = was.Bounds.Y, Width = was.Bounds.Width, Height = was.Bounds.Height, Rotation = was.Rotation, Opacity = was.Opacity });
+        _history.Push(TimelineOps.UpdateItem(Project, graphic.Id, item =>
+        {
+            var shift = new Vector(box.X - was.Bounds.X, box.Y - was.Bounds.Y);
+            Item moved = item with { Bounds = new Rect(box.X, box.Y, Math.Max(0, box.Width), Math.Max(0, box.Height)), Rotation = box.Rotation, Opacity = Math.Clamp(box.Opacity, 0, 1) };
+            return moved is CalloutItem callout ? callout with { Targets = callout.Targets.Select(target => target + shift).ToImmutableList() } : moved;
+        }), key);
+    }
+
+    private GraphicClip? SelectedGraphic => Project.AllClips.OfType<GraphicClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+
+    private (Vibershot.Editing.Video.Track Track, CaptionClip Clip)? SelectedCaption
+    {
+        get
+        {
+            foreach (var track in Project.Tracks)
+                if (track.Clips.OfType<CaptionClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id)) is { } clip) return (track, clip);
+            return null;
+        }
+    }
+
+    // ---- Elements, text and captions ----
+
+    private void LeftTab_Changed(object sender, RoutedEventArgs e)
+    {
+        if (ElementsScroll == null || LeftHint == null) return;
+        bool elements = ElementsTab.IsChecked == true;
+        Bin.Visibility = elements ? Visibility.Collapsed : Visibility.Visible;
+        ElementsScroll.Visibility = elements ? Visibility.Visible : Visibility.Collapsed;
+        LeftHint.Text = elements
+            ? "Drag an element onto the picture or the timeline, or double-click it to put it in the middle at the playhead."
+            : "Drag a file onto the timeline, or onto the picture to lay it over what is there. Double-click adds a video after the last clip and a still on top at the playhead.";
+    }
+
+    /// <summary>Fills the Elements tab: one tile per palette entry, grouped, each draggable and double-clickable.</summary>
+    private void BuildElements()
+    {
+        foreach (var group in VideoElements.All.GroupBy(element => element.Group))
+        {
+            ElementsHost.Children.Add(new TextBlock { Text = group.Key.ToUpperInvariant(), Style = (Style)FindResource("PanelLabel"), Margin = new Thickness(0, ElementsHost.Children.Count == 0 ? 0 : 10, 0, 8) });
+            var wrap = new WrapPanel();
+            foreach (var element in group)
+            {
+                var tile = new Border
+                {
+                    Width = 74, Height = 54, Margin = new Thickness(0, 0, 6, 6), CornerRadius = new CornerRadius(7), Background = (Brush)FindResource("Well"), BorderBrush = (Brush)FindResource("Rule"), BorderThickness = new Thickness(1),
+                    Cursor = Cursors.Hand, ToolTip = element.Name, Tag = element.Key, Padding = new Thickness(3),
+                    Child = new Image { Source = VideoElements.Thumbnail(element), Stretch = Stretch.Uniform },
+                };
+                System.Windows.Automation.AutomationProperties.SetName(tile, element.Name);
+                Point down = default;
+                tile.MouseLeftButtonDown += (_, e) =>
+                {
+                    down = e.GetPosition(tile);
+                    if (e.ClickCount == 2) AddElement(element.Key, new Point(Project.Width / 2.0, Project.Height / 2.0), null, _playhead);
+                };
+                tile.MouseMove += (_, e) =>
+                {
+                    if (e.LeftButton != MouseButtonState.Pressed) return;
+                    var p = e.GetPosition(tile);
+                    if (Math.Abs(p.X - down.X) < 5 && Math.Abs(p.Y - down.Y) < 5) return;
+                    DragDrop.DoDragDrop(tile, new DataObject(VideoPreview.ElementFormat, element.Key), DragDropEffects.Copy);
+                };
+                wrap.Children.Add(tile);
+            }
+            ElementsHost.Children.Add(wrap);
+        }
+    }
+
+    /// <summary>Puts a palette element on the canvas at a point, for five seconds from a frame, and selects it. Text is ready to type over.</summary>
+    public void AddElement(string key, Point canvas, Guid? trackId, long frame)
+    {
+        if (VideoElements.Create(Project, key, canvas) is not { } item) return;
+        _history.Push(TimelineOps.InsertGraphic(Project, item, trackId, frame, out var clipId));
+        Timeline.Select(new[] { clipId });
+        if (frame != _playhead && (_playhead < frame || _playhead >= frame + Project.Frames(TimelineOps.ImageSeconds))) Seek(frame);
+        if (item is TextItem) FocusWords();
+    }
+
+    private void FocusWords()
+    {
+        // After the panel has been rebuilt for the new selection.
+        Dispatcher.BeginInvoke(() => { if (WordsPanel.Visibility == Visibility.Visible) { WordsBox.Focus(); WordsBox.SelectAll(); } }, DispatcherPriority.Input);
+    }
+
+    private void AddCaption_Click(object sender, RoutedEventArgs e) => AddCaptionAt(null, _playhead);
+    private void AddCaptionTrack_Click(object sender, RoutedEventArgs e) => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Caption, out _));
+
+    private void AddCaptionAt(Guid? trackId, long frame)
+    {
+        var project = TimelineOps.AddCaption(Project, trackId, frame, "Caption", out var clipId);
+        if (clipId == Guid.Empty)
+        {
+            // A caption is already here: select it so typing changes it.
+            var existing = Project.Tracks.Where(track => track.Kind == TrackKind.Caption && (trackId == null || track.Id == trackId))
+                .SelectMany(track => track.Clips).FirstOrDefault(clip => clip.Start <= frame && frame < clip.End);
+            if (existing == null) { ShowStatus("That caption track is locked."); return; }
+            Timeline.Select(new[] { existing.Id });
+        }
+        else
+        {
+            _history.Push(project);
+            Timeline.Select(new[] { clipId });
+        }
+        if (frame != _playhead) Seek(frame);
+        FocusWords();
+    }
+
+    /// <summary>Typing in the words box (or in place over the picture) rewrites the selected text graphic or caption.</summary>
+    private void Words_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (_updatingPanel) return;
+        string words = ((TextBox)sender).Text.Replace("\r\n", "\n");
+        if (SelectedGraphic is { Item: TextItem } graphic)
+        {
+            _history.Push(TimelineOps.UpdateItem(Project, graphic.Id, item => item is TextItem text ? Refit(text with { Text = words }) : item), "words:" + graphic.Id);
+        }
+        else if (SelectedCaption is var (_, caption))
+        {
+            _history.Push(TimelineOps.Update(Project, caption.Id, clip => clip is CaptionClip c ? c with { Text = words } : clip), "words:" + caption.Id);
+        }
+    }
+
+    /// <summary>
+    /// Resizes a text box for its words: it widens about its centre until a line fits (up to nine
+    /// tenths of the canvas) and is exactly as tall as the wrapped text needs.
+    /// </summary>
+    private Item Refit(TextItem text)
+    {
+        double natural = DocumentRenderer.MeasureText(text with { Bounds = default }).Width;
+        double width = Math.Max(text.Bounds.Width, Math.Min(natural, Project.Width * 0.9));
+        double left = text.Bounds.X - (width - text.Bounds.Width) / 2;
+        var sized = text with { Bounds = new Rect(Math.Round(left), text.Bounds.Y, Math.Round(width), text.Bounds.Height) };
+        return sized with { Bounds = new Rect(sized.Bounds.X, sized.Bounds.Y, sized.Bounds.Width, DocumentRenderer.MeasureText(sized).Height) };
+    }
+
+    private void Words_KeyDown(object sender, KeyEventArgs e)
+    {
+        // Esc, or Ctrl+Enter, hands the keyboard back to the timeline; plain Enter is a new line.
+        if (e.Key == Key.Escape || (e.Key == Key.Enter && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))) { EndInlineEdit(); Timeline.Focus(); e.Handled = true; }
+    }
+
+    /// <summary>Changes the selected text graphic, or the style of the selected caption's whole track.</summary>
+    private void StyleText(Func<TextItem, TextItem> graphic, Func<CaptionStyle, CaptionStyle> captions)
+    {
+        if (_updatingPanel) return;
+        if (SelectedGraphic is { Item: TextItem } clip) _history.Push(TimelineOps.UpdateItem(Project, clip.Id, item => item is TextItem text ? Refit(graphic(text)) : item));
+        else if (SelectedCaption is var (track, _)) _history.Push(TimelineOps.SetTrack(Project, track with { CaptionStyle = captions(TimelineOps.CaptionStyleOf(Project, track)) }));
+    }
+
+    private void StyleGraphic(Func<Item, Item> change)
+    {
+        if (_updatingPanel || SelectedGraphic is not { } clip) return;
+        _history.Push(TimelineOps.UpdateItem(Project, clip.Id, change));
+    }
+
+    private void TextStyle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_updatingPanel || BoldButton == null || AlignBox == null) return;
+        bool bold = BoldButton.IsChecked == true, italic = ItalicButton.IsChecked == true;
+        var align = AlignBox.SelectedIndex switch { 0 => TextAlign.Left, 2 => TextAlign.Right, _ => TextAlign.Center };
+        StyleText(text => text with { Bold = bold, Italic = italic, Alignment = align }, style => style with { Bold = bold });
+    }
+
+    private void CaptionTop_Click(object sender, RoutedEventArgs e)
+    {
+        bool top = CaptionTopCheck.IsChecked == true;
+        StyleText(text => text, style => style with { AtTop = top });
+    }
+
+    /// <summary>Shows a text box exactly over a text graphic so its words can be typed where they appear.</summary>
+    private void BeginInlineEdit(Guid clipId)
+    {
+        if (TimelineOps.Find(Project, clipId) is not var (_, clip) || clip is not GraphicClip { Item: TextItem text }) return;
+        Timeline.Select(new[] { clipId });
+        _updatingPanel = true;
+        InlineWords.Text = text.Text;
+        _updatingPanel = false;
+        InlineWords.Visibility = Visibility.Visible;
+        PositionInlineEdit();
+        InlineWords.Focus();
+        InlineWords.SelectAll();
+    }
+
+    /// <summary>Keeps the in-place box on its graphic, matching its letters, as the text or the window changes.</summary>
+    private void PositionInlineEdit()
+    {
+        if (SelectedGraphic is not { Item: TextItem text }) { EndInlineEdit(); return; }
+        var screen = Preview.ScreenRect(text.Bounds);
+        double zoom = screen.Width / Math.Max(1, text.Bounds.Width);
+        // A few pixels wider than the graphic: a text box measures a hair wider than the renderer,
+        // and without the slack the last word of a full line drops to the next one while typing.
+        InlineWords.Margin = new Thickness(screen.X - 8, screen.Y, 0, 0);
+        InlineWords.Width = Math.Max(40, screen.Width + 16);
+        InlineWords.MinHeight = Math.Max(20, screen.Height);
+        InlineWords.FontFamily = new FontFamily(text.FontFamily);
+        InlineWords.FontSize = Math.Max(6, text.FontSize * zoom);
+        InlineWords.FontWeight = text.Bold ? FontWeights.Bold : FontWeights.Normal;
+        InlineWords.FontStyle = text.Italic ? FontStyles.Italic : FontStyles.Normal;
+        // The box overhangs the graphic by 8 px each side; the padding takes that back, less the
+        // border, the two pixels a text box keeps beside its words, and four of slack per side.
+        double pad = text.Padding * zoom;
+        // The side the words start from keeps its exact place; the spare width goes to the other
+        // side (to both, for centred words), so a full line never scrolls out of the box.
+        double near = Math.Max(0, pad + 1), far = Math.Max(0, pad - 12), top = Math.Max(0, pad - 1);
+        InlineWords.Padding = text.Alignment switch
+        {
+            TextAlign.Left => new Thickness(near, top, far, top),
+            TextAlign.Right => new Thickness(far, top, near, top),
+            _ => new Thickness(Math.Max(0, pad - 5), top, Math.Max(0, pad - 5), top),
+        };
+        // Wrap only where the graphic itself wraps: a text box measures a touch wider than the
+        // renderer, and would otherwise drop the last word of a line that just fits.
+        InlineWords.TextWrapping = DocumentRenderer.MeasureText(text with { Bounds = default }).Width > text.Bounds.Width + 0.5 ? TextWrapping.Wrap : TextWrapping.NoWrap;
+        InlineWords.TextAlignment = text.Alignment switch { TextAlign.Center => TextAlignment.Center, TextAlign.Right => TextAlignment.Right, _ => TextAlignment.Left };
+        // Opaque, so the drawn words underneath do not show through as a double image.
+        var back = text.Background is { A: > 0 } b ? Color.FromRgb(b.R, b.G, b.B) : Color.FromRgb(0x20, 0x22, 0x2B);
+        InlineWords.Background = new SolidColorBrush(back);
+        InlineWords.Foreground = new SolidColorBrush(Color.FromRgb(text.Color.R, text.Color.G, text.Color.B));
+        InlineWords.CaretBrush = InlineWords.Foreground;
+    }
+
+    private void EndInlineEdit()
+    {
+        if (InlineWords.Visibility != Visibility.Visible) return;
+        InlineWords.Visibility = Visibility.Collapsed;
+        _history.BreakCoalescing();
+    }
+
+    private void InlineWords_LostFocus(object sender, KeyboardFocusChangedEventArgs e) => EndInlineEdit();
+
+    private void ImportCaptions_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog { Title = "Import captions", Filter = "SubRip subtitles (*.srt)|*.srt|All files (*.*)|*.*" };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var cues = Srt.Parse(File.ReadAllText(dialog.FileName));
+            if (cues.Count == 0) { ShowStatus($"{Path.GetFileName(dialog.FileName)} has no captions that could be read.", failed: true); return; }
+            _history.Push(TimelineOps.ImportCaptions(Project, cues, out var trackId));
+            int placed = Project.Tracks.First(track => track.Id == trackId).Clips.Count;
+            ShowStatus($"Imported {placed} caption{(placed == 1 ? "" : "s")} onto a new caption track.", ok: true);
+        }
+        catch (Exception ex) { ShowStatus("Could not import the captions: " + ex.Message, failed: true); }
+    }
+
+    private void ExportCaptions_Click(object sender, RoutedEventArgs e)
+    {
+        var cues = TimelineOps.CaptionCues(Project);
+        if (cues.Count == 0) { ShowStatus("There are no captions to export."); return; }
+        var dialog = new SaveFileDialog { Title = "Export captions", Filter = "SubRip subtitles (*.srt)|*.srt", FileName = DocumentName + ".srt", AddExtension = true };
+        try { if (_path != null) dialog.InitialDirectory = Path.GetDirectoryName(_path); } catch (Exception) { }
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            File.WriteAllText(dialog.FileName, Srt.Write(cues), new System.Text.UTF8Encoding(false));
+            ShowStatus($"Exported {cues.Count} caption{(cues.Count == 1 ? "" : "s")} to {dialog.FileName}", ok: true);
+        }
+        catch (Exception ex) { ShowStatus("Could not export the captions: " + ex.Message, failed: true); }
     }
 
     private void Opacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_updatingPanel || SelectedPicture is not { } clip) return;
+        if (_updatingPanel) return;
+        Guid? id = SelectedPicture?.Id ?? SelectedGraphic?.Id;
+        if (id == null) return;
         double opacity = Math.Round(e.NewValue) / 100;
-        Place(p => p with { Opacity = opacity }, "opacity:" + clip.Id);
+        Place(p => p with { Opacity = opacity }, "opacity:" + id);
     }
 
     private void Fit_Click(object sender, RoutedEventArgs e)
@@ -791,7 +1112,7 @@ public partial class VideoEditorWindow : Window
     private void Shortcuts_Click(object sender, RoutedEventArgs e) => MessageBox.Show(this,
         "Space\tPlay / pause\nLeft / Right or , / .\tStep one frame (Shift: one second)\nHome / End\tStart / end\nJ / K / L\tBack one second / pause / play\n\n" +
         "V / C\tSelect tool / Razor tool\nS or Ctrl+K\tSplit at the playhead\nDelete\tDelete the selection\nShift+Delete\tRipple delete\nN\tSnap on / off (hold Alt while dragging to snap off)\n\n" +
-        "Drag a picture in the preview\tMove it (Shift: one axis, Alt: no snapping)\nDouble-click a picture\tCrop it (Enter or Esc to finish)\n\n+ / -\tZoom the timeline\n\\\tFit the timeline\nCtrl + wheel\tZoom at the pointer\n\nCtrl+Z / Ctrl+Y\tUndo / redo\nCtrl+S\tSave project\nCtrl+I\tImport media\nCtrl+E\tExport MP4",
+        "T\tAdd a caption at the playhead\nDouble-click text in the preview\tType in place (Esc to finish)\nDrag a picture in the preview\tMove it (Shift: one axis, Alt: no snapping)\nDouble-click a picture\tCrop it (Enter or Esc to finish)\n\n+ / -\tZoom the timeline\n\\\tFit the timeline\nCtrl + wheel\tZoom at the pointer\n\nCtrl+Z / Ctrl+Y\tUndo / redo\nCtrl+S\tSave project\nCtrl+I\tImport media\nCtrl+E\tExport MP4",
         "Keyboard shortcuts");
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -828,6 +1149,7 @@ public partial class VideoEditorWindow : Window
                 case Key.Escape: if (Preview.CropMode) Preview.CropMode = false; else SetTool(TimelineTool.Select); break;
                 case Key.Enter when Preview.CropMode: Preview.CropMode = false; break;
                 case Key.S: Split_Click(this, e); break;
+                case Key.T: AddCaptionAt(null, _playhead); break;
                 case Key.N: SnapButton.IsChecked = !(SnapButton.IsChecked == true); Timeline.Snap = Preview.Snap = SnapButton.IsChecked == true; break;
                 case Key.Delete: DeleteSelection(shift); break;
                 case Key.Left when !slider: case Key.OemComma: Pause(); Seek(_playhead - (shift ? second : 1)); break;

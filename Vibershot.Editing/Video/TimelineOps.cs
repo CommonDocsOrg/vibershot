@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Globalization;
+using System.Windows;
 using Vibershot.Media;
 
 namespace Vibershot.Editing.Video;
@@ -72,18 +73,20 @@ public static class TimelineOps
     public static VideoProject AddTrack(VideoProject project, TrackKind kind, out Guid trackId)
     {
         int count = project.Tracks.Count(track => track.Kind == kind);
-        var added = new Track { Name = (kind == TrackKind.Visual ? "V" : "A") + (count + 1).ToString(CultureInfo.InvariantCulture), Kind = kind };
+        var added = new Track { Name = (kind == TrackKind.Visual ? "V" : kind == TrackKind.Caption ? "C" : "A") + (count + 1).ToString(CultureInfo.InvariantCulture), Kind = kind };
         trackId = added.Id;
         int lastOfKind = project.Tracks.FindLastIndex(track => track.Kind == kind);
-        int index = lastOfKind >= 0 ? lastOfKind + 1 : kind == TrackKind.Visual ? 0 : project.Tracks.Count;
+        // Stored order is visual layers, then caption tracks, then audio lanes.
+        int firstAudio = project.Tracks.FindIndex(track => track.Kind == TrackKind.Audio);
+        int index = lastOfKind >= 0 ? lastOfKind + 1 : kind == TrackKind.Visual ? 0 : kind == TrackKind.Caption && firstAudio >= 0 ? firstAudio : project.Tracks.Count;
         return project with { Tracks = project.Tracks.Insert(index, added) };
     }
 
-    /// <summary>Removes a track and its clips. The last track of a kind stays.</summary>
+    /// <summary>Removes a track and its clips. The last video and the last audio track stay; caption tracks can all go.</summary>
     public static VideoProject RemoveTrack(VideoProject project, Guid trackId)
     {
         var track = project.Tracks.FirstOrDefault(candidate => candidate.Id == trackId);
-        if (track == null || project.Tracks.Count(candidate => candidate.Kind == track.Kind) <= 1) return project;
+        if (track == null || (track.Kind != TrackKind.Caption && project.Tracks.Count(candidate => candidate.Kind == track.Kind) <= 1)) return project;
         return project with { Tracks = project.Tracks.Remove(track) };
     }
 
@@ -91,8 +94,14 @@ public static class TimelineOps
     private static long SourceFrames(VideoProject project, MediaSource source, double sourceIn) =>
         source.IsImage ? long.MaxValue / 4 : Math.Max(1, (long)Math.Floor((source.Duration - sourceIn) * project.Rate.Value + 1e-6));
 
-    /// <summary>How long a still picture stays on screen when it is first placed.</summary>
+    /// <summary>How long a still picture or a graphic stays on screen when it is first placed.</summary>
     public const double ImageSeconds = 5;
+
+    /// <summary>How long a new caption lasts.</summary>
+    public const double CaptionSeconds = 3;
+
+    /// <summary>True for clips with no source length: stills, graphics and captions can be any length.</summary>
+    public static bool Unbounded(Clip clip) => clip is ImageClip or GraphicClip or CaptionClip;
 
     /// <summary>Places a source at the end of the bottom video track.</summary>
     public static VideoProject Append(VideoProject project, MediaSource source)
@@ -195,6 +204,126 @@ public static class TimelineOps
     public static VideoProject SetPlacement(VideoProject project, Guid clipId, Placement? placement) =>
         Update(project, clipId, clip => clip is VisualClip visual ? visual with { Placement = placement } : clip);
 
+    /// <summary>
+    /// Places a graphic (text, callout, shape, arrow, stamp) for five seconds from
+    /// <paramref name="start"/>: on the given visual track when it is free there, otherwise above
+    /// everything showing during its span.
+    /// </summary>
+    public static VideoProject InsertGraphic(VideoProject project, Item item, Guid? trackId, long start, out Guid clipId)
+    {
+        start = Math.Max(0, start);
+        long duration = Math.Max(1, project.Frames(ImageSeconds));
+        var clip = new GraphicClip { Item = item, Start = start, Duration = duration };
+        clipId = clip.Id;
+        var chosen = project.Tracks.FirstOrDefault(track => track.Id == trackId && track.Kind == TrackKind.Visual && !track.Locked && IsFree(track, start, duration));
+        if (chosen == null)
+        {
+            var visual = project.Tracks.Where(track => track.Kind == TrackKind.Visual).ToList();
+            int highestBusy = visual.FindLastIndex(track => !IsFree(track, start, duration));
+            chosen = visual.Skip(highestBusy + 1).FirstOrDefault(track => !track.Locked);
+        }
+        if (chosen == null)
+        {
+            project = AddTrack(project, TrackKind.Visual, out var added);
+            chosen = project.Tracks.First(track => track.Id == added);
+        }
+        return SetTrack(project, WithClips(chosen, chosen.Clips.Add(clip)));
+    }
+
+    /// <summary>Changes the item a graphic clip draws. The function must keep the kind of item sensible for its caller.</summary>
+    public static VideoProject UpdateItem(VideoProject project, Guid clipId, Func<Item, Item> change) =>
+        Update(project, clipId, clip => clip is GraphicClip graphic ? graphic with { Item = change(graphic.Item) } : clip);
+
+    /// <summary>
+    /// Adds a caption at <paramref name="start"/> on the given caption track, the first one, or a
+    /// new one. It lasts three seconds or until the next caption, whichever is shorter. Nothing
+    /// changes (and <paramref name="clipId"/> is empty) when a caption already covers that frame.
+    /// </summary>
+    public static VideoProject AddCaption(VideoProject project, Guid? trackId, long start, string text, out Guid clipId)
+    {
+        clipId = Guid.Empty;
+        start = Math.Max(0, start);
+        var track = project.Tracks.FirstOrDefault(candidate => candidate.Id == trackId && candidate.Kind == TrackKind.Caption)
+            ?? project.Tracks.FirstOrDefault(candidate => candidate.Kind == TrackKind.Caption);
+        if (track == null)
+        {
+            project = AddTrack(project, TrackKind.Caption, out var added);
+            track = project.Tracks.First(candidate => candidate.Id == added);
+        }
+        if (track.Locked || track.Clips.Any(clip => clip.Start <= start && start < clip.End)) return project;
+        long next = track.Clips.Where(clip => clip.Start > start).Select(clip => clip.Start).DefaultIfEmpty(long.MaxValue).Min();
+        long duration = Math.Min(Math.Max(1, project.Frames(CaptionSeconds)), next - start);
+        var caption = new CaptionClip { Start = start, Duration = duration, Text = text };
+        clipId = caption.Id;
+        return SetTrack(project, WithClips(track, track.Clips.Add(caption)));
+    }
+
+    /// <summary>Puts subtitle cues on a new caption track. Cues that overlap the one before start where it ends.</summary>
+    public static VideoProject ImportCaptions(VideoProject project, IEnumerable<SrtCue> cues, out Guid trackId)
+    {
+        project = AddTrack(project, TrackKind.Caption, out trackId);
+        var id = trackId;
+        var track = project.Tracks.First(candidate => candidate.Id == id);
+        var clips = new List<Clip>();
+        long previousEnd = 0;
+        foreach (var cue in cues.OrderBy(cue => cue.Start))
+        {
+            long start = Math.Max(previousEnd, project.Frames(cue.Start)), end = project.Frames(cue.End);
+            if (end <= start || string.IsNullOrWhiteSpace(cue.Text)) continue;
+            clips.Add(new CaptionClip { Start = start, Duration = end - start, Text = cue.Text });
+            previousEnd = end;
+        }
+        return SetTrack(project, WithClips(track, clips));
+    }
+
+    /// <summary>Every caption on the visible caption tracks as subtitle cues, in time order.</summary>
+    public static List<SrtCue> CaptionCues(VideoProject project) =>
+        project.Tracks.Where(track => track.Kind == TrackKind.Caption && !track.Hidden)
+            .SelectMany(track => track.Clips.OfType<CaptionClip>())
+            .Where(clip => !string.IsNullOrWhiteSpace(clip.Text))
+            .OrderBy(clip => clip.Start)
+            .Select(clip => new SrtCue(project.Seconds(clip.Start), project.Seconds(clip.End), clip.Text)).ToList();
+
+    /// <summary>A caption track's style: its own, or the default with a font sized to the canvas.</summary>
+    public static CaptionStyle CaptionStyleOf(VideoProject project, Track track) =>
+        track.CaptionStyle ?? new CaptionStyle { FontSize = Math.Max(12, Math.Round(project.Height * 0.05)) };
+
+    /// <summary>
+    /// The text box a caption is drawn as: centred, at most four fifths of the canvas wide, a
+    /// twentieth of the canvas height in from the bottom (or the top).
+    /// </summary>
+    public static TextItem CaptionItem(VideoProject project, Track track, CaptionClip clip)
+    {
+        var style = CaptionStyleOf(project, track);
+        var item = new TextItem
+        {
+            Id = clip.Id, Text = clip.Text, FontFamily = style.FontFamily, FontSize = style.FontSize, Bold = style.Bold, Color = style.Color,
+            Background = style.Background, Alignment = TextAlign.Center, Padding = Math.Round(style.FontSize * 0.3),
+            Bounds = new Rect(0, 0, Math.Round(project.Width * 0.8), 10),
+        };
+        var size = DocumentRenderer.MeasureText(item);
+        double width = Math.Min(size.Width, project.Width * 0.8), margin = Math.Round(project.Height * 0.05);
+        // Measure again at the final width: a narrower box can wrap differently.
+        double height = DocumentRenderer.MeasureText(item with { Bounds = new Rect(0, 0, width, 10) }).Height;
+        return item with { Bounds = new Rect(Math.Round((project.Width - width) / 2), style.AtTop ? margin : project.Height - margin - height, width, height) };
+    }
+
+    /// <summary>
+    /// Everything drawn at a frame, bottom first: the picture or graphic on each visible layer,
+    /// then the captions, which always sit on top.
+    /// </summary>
+    public static List<(Track Track, Clip Clip)> DrawnAt(VideoProject project, long frame)
+    {
+        var result = new List<(Track, Clip)>();
+        foreach (var kind in new[] { TrackKind.Visual, TrackKind.Caption })
+            foreach (var track in project.Tracks)
+            {
+                if (track.Kind != kind || track.Hidden) continue;
+                if (track.Clips.FirstOrDefault(clip => clip.Start <= frame && frame < clip.End) is { } clip) result.Add((track, clip));
+            }
+        return result;
+    }
+
     private static VideoProject Place(VideoProject project, Clip clip, TrackKind kind, Guid? preferred)
     {
         var target = project.Tracks.FirstOrDefault(track => track.Id == preferred && track.Kind == kind && IsFree(track, clip.Start, clip.Duration))
@@ -273,14 +402,14 @@ public static class TimelineOps
             foreach (var clip in track.Clips.Where(clip => group.Contains(clip.Id)))
             {
                 long previousEnd = track.Clips.Where(other => other.End <= clip.Start && !group.Contains(other.Id)).Select(other => other.End).DefaultIfEmpty(0).Max();
-                long sourceRoom = clip is ImageClip ? long.MaxValue / 4 : (long)Math.Floor(clip.SourceIn * project.Rate.Value + 1e-6);
+                long sourceRoom = Unbounded(clip) ? long.MaxValue / 4 : (long)Math.Floor(clip.SourceIn * project.Rate.Value + 1e-6);
                 min = Math.Max(min, Math.Max(previousEnd - clip.Start, -sourceRoom));
                 max = Math.Min(max, clip.Duration - 1);
             }
         }
         delta = Math.Clamp(delta, min, Math.Max(min, max));
         if (delta == 0) return project;
-        return Map(project, group, clip => clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = clip is ImageClip ? 0 : Math.Max(0, clip.SourceIn + project.Seconds(delta)) });
+        return Map(project, group, clip => clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = Unbounded(clip) ? 0 : Math.Max(0, clip.SourceIn + project.Seconds(delta)) });
     }
 
     /// <summary>Drags a clip's right edge to <paramref name="newEnd"/>, clamped to its source, its neighbours and one frame of length.</summary>
@@ -294,7 +423,7 @@ public static class TimelineOps
             foreach (var clip in track.Clips.Where(clip => group.Contains(clip.Id)))
             {
                 long nextStart = track.Clips.Where(other => other.Start >= clip.End && !group.Contains(other.Id)).Select(other => other.Start).DefaultIfEmpty(long.MaxValue).Min();
-                long available = project.Source(clip.SourceId) is { } source ? SourceFrames(project, source, clip.SourceIn) : clip.Duration;
+                long available = Unbounded(clip) ? long.MaxValue / 4 : project.Source(clip.SourceId) is { } source ? SourceFrames(project, source, clip.SourceIn) : clip.Duration;
                 max = Math.Min(max, Math.Min(nextStart - clip.End, available - clip.Duration));
                 min = Math.Max(min, 1 - clip.Duration);
             }
@@ -336,7 +465,7 @@ public static class TimelineOps
                 }
                 long leftLength = frame - clip.Start;
                 result.Add(clip with { Duration = leftLength });
-                result.Add(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = clip is ImageClip ? 0 : clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink });
+                result.Add(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = Unbounded(clip) ? 0 : clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink });
             }
             return WithClips(track, result);
         }).ToImmutableList();
@@ -395,7 +524,7 @@ public static class TimelineOps
     /// Flattens the project for ffmpeg. <paramref name="resolvePath"/> can swap a source for a
     /// stand-in (a proxy); by default the linked original is used.
     /// </summary>
-    public static ExportPlan ToPlan(VideoProject project, Func<MediaSource, string>? resolvePath = null, int? width = null, int? height = null)
+    public static ExportPlan ToPlan(VideoProject project, Func<MediaSource, string>? resolvePath = null, int? width = null, int? height = null, string? graphicsFolder = null)
     {
         string PathOf(MediaSource source) => resolvePath?.Invoke(source) ?? source.Path;
         int outWidth = width ?? project.Width, outHeight = height ?? project.Height;
@@ -403,10 +532,21 @@ public static class TimelineOps
         double sx = (double)outWidth / project.Width, sy = (double)outHeight / project.Height;
         var video = new List<ExportVideoClip>();
         var audio = new List<ExportAudioClip>();
+        var overlays = new List<ExportOverlayStream>();
         foreach (var track in project.Tracks)
         {
+            // Graphics and captions are drawn by WPF into PNGs, so they need somewhere to go; a
+            // plan made without a folder (the audio mix, a dry run) leaves them out.
+            if (graphicsFolder != null && track.Kind == TrackKind.Caption && !track.Hidden
+                && GraphicExport.Captions(project, track, sx, sy, graphicsFolder) is { } stream) overlays.Add(stream);
             foreach (var clip in track.Clips)
             {
+                if (clip is GraphicClip graphic)
+                {
+                    if (graphicsFolder != null && track.Kind == TrackKind.Visual && !track.Hidden
+                        && GraphicExport.Graphic(project, graphic, sx, sy, graphicsFolder) is { } drawn) video.Add(drawn);
+                    continue;
+                }
                 if (project.Source(clip.SourceId) is not { } source) continue;
                 if (clip is VisualClip visual && track.Kind == TrackKind.Visual && !track.Hidden)
                 {
@@ -432,6 +572,7 @@ public static class TimelineOps
             Duration = project.Seconds(project.Duration),
             Background = $"0x{c.R:X2}{c.G:X2}{c.B:X2}",
             Video = video,
+            Overlays = overlays,
             Audio = audio,
         };
     }
