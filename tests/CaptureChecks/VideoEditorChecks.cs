@@ -4,6 +4,10 @@ using System.IO;
 using System.Linq;
 using Vibershot.Editing.Video;
 using Vibershot.Media;
+using Vibershot.UI;
+using System.Windows;
+using System.Windows.Input;
+using Vibershot.Editing;
 
 /// <summary>Checks for the video editor: timeline edits, the project file, ffmpeg arguments and a real layered export.</summary>
 static class VideoEditorChecks
@@ -134,7 +138,78 @@ static class VideoEditorChecks
         hidden = TimelineOps.SetTrack(hidden, hidden.Tracks[2] with { Muted = true });
         Check(TimelineOps.ToPlan(hidden).Video.Count == 1 && TimelineOps.ToPlan(hidden).Audio.Count == 0, "hidden and muted tracks left out");
         Check(TimelineOps.ToPlan(layered, s => s.Path + ".proxy").Video[0].Path.EndsWith(".proxy") && TimelineOps.ToPlan(layered, s => s.Path + ".proxy").Audio[0].Path == a.Path, "proxy swap applies to pictures only");
-        Console.WriteLine("PASS: video editor timeline edits, project file and relink, frame reader/proxy/export/audio mix arguments.");
+        TimelineGestures();
+        Console.WriteLine("PASS: video editor timeline edits and mouse gestures, project file and relink, frame reader/proxy/export/audio mix arguments.");
+    }
+
+    /// <summary>Drives the timeline control through its pointer methods: the same code the mouse reaches.</summary>
+    static void TimelineGestures()
+    {
+        var a = Source(@"C:\media\a.mp4", 10); var b = Source(@"C:\media\b.mp4", 4, audio: false);
+        var history = new History<VideoProject>(TimelineOps.Append(TimelineOps.ForSource(a), b));
+        var view = new TimelineView { History = history };
+        view.Measure(new Size(1440, 300)); view.Arrange(new Rect(0, 0, 1440, 300));
+        view.SetZoom(100); view.ScrollX = 0;
+        // 100 px per second at 30 fps: clip A covers x 148..1148, clip B 1148..1548. V1 is the lane at y 24..76, A1 at 76..116.
+        const double h = TimelineView.HeaderWidth; const double v1 = 50, a1 = 96;
+        var clipA = history.Current.Tracks[0].Clips[0]; var clipB = history.Current.Tracks[0].Clips[1];
+        long moved = -1; view.PlayheadMoved += frame => moved = frame;
+
+        // Ruler click parks the playhead; it snaps to a clip edge when close.
+        Check(view.PointerDown(new Point(h + 250, 10)), "ruler press starts a scrub"); view.PointerUp();
+        Check(moved == 75 && view.Playhead == 75, "ruler click at 2.5 s is frame 75, got " + moved);
+        view.PointerDown(new Point(h + 1003, 10)); view.PointerUp();
+        Check(view.Playhead == 300, "playhead snaps to the cut between clips, got " + view.Playhead);
+        view.PointerDown(new Point(h + 250, 10)); view.PointerUp();
+
+        // Click selects a clip with its linked sound; a drag moves both and is one undo step.
+        view.PointerDown(new Point(h + 400, v1)); view.PointerUp();
+        Check(view.Selection.Count == 2 && view.Selection.Contains(clipA.Id), "click selects the clip and its linked audio");
+        int depth = history.UndoDepth;
+        view.PointerDown(new Point(h + 1200, v1));
+        for (int x = 1210; x <= 1400; x += 10) view.PointerMove(new Point(h + x, v1));
+        view.PointerUp();
+        var movedB = TimelineOps.Find(history.Current, clipB.Id)!.Value.Clip;
+        Check(movedB.Start == 360 && history.UndoDepth == depth + 1, $"dragging B 200 px right moves it 60 frames in one step, got {movedB.Start}");
+        history.Undo();
+        Check(TimelineOps.Find(history.Current, clipB.Id)!.Value.Clip.Start == 300, "undo puts the clip back");
+
+        // Dragging onto A is refused: B lands flush after it instead of overlapping.
+        view.PointerDown(new Point(h + 1200, v1)); view.PointerMove(new Point(h + 900, v1)); view.PointerMove(new Point(h + 700, v1)); view.PointerUp();
+        Check(TimelineOps.Find(history.Current, clipB.Id)!.Value.Clip.Start == 300 && history.Current.Tracks[0].Clips.Count == 2, "a clip cannot be dropped on top of another on the same layer");
+
+        // Dragging above the top video lane makes a new layer and puts the clip there.
+        view.PointerDown(new Point(h + 1200, v1)); view.PointerMove(new Point(h + 1100, 30)); view.PointerMove(new Point(h + 700, 8)); view.PointerUp();
+        var layered = history.Current;
+        var onTop = TimelineOps.Find(layered, clipB.Id)!.Value;
+        Check(layered.Tracks.Count(t => t.Kind == TrackKind.Visual) == 2 && onTop.Track.Name == "V2" && onTop.Clip.Start == 150, $"dragged to a new upper layer at 5 s, got {onTop.Track.Name} {onTop.Clip.Start}");
+        // V2 is now the top lane (y 24..76) and V1 sits under it (76..128): drag B back down onto V1 after A.
+        view.PointerDown(new Point(h + 600, 50)); view.PointerMove(new Point(h + 900, 90)); view.PointerMove(new Point(h + 1104, 100)); view.PointerUp();
+        var back = TimelineOps.Find(history.Current, clipB.Id)!.Value;
+        Check(back.Track.Name == "V1" && back.Clip.Start == 300, $"dragged back down to V1, snapped after A, got {back.Track.Name} {back.Clip.Start}");
+
+        // Trim A from its right edge: picture and linked sound shorten together.
+        view.PointerDown(new Point(h + 997, 100)); view.PointerMove(new Point(h + 900, 100)); view.PointerMove(new Point(h + 800, 100)); view.PointerUp();
+        var trimmedA = TimelineOps.Find(history.Current, clipA.Id)!.Value.Clip;
+        var soundA = history.Current.AllClips.OfType<AudioClip>().Single();
+        Check(trimmedA.Duration == 240 && soundA.Duration == 240, $"right trim to 8 s, got {trimmedA.Duration} and {soundA.Duration}");
+        // Trim A from its left edge by one second.
+        view.PointerDown(new Point(h + 3, 100)); view.PointerMove(new Point(h + 50, 100)); view.PointerMove(new Point(h + 100, 100)); view.PointerUp();
+        trimmedA = TimelineOps.Find(history.Current, clipA.Id)!.Value.Clip;
+        Check(trimmedA.Start == 30 && trimmedA.Duration == 210 && Math.Abs(trimmedA.SourceIn - 1) < 1e-9, $"left trim by 1 s, got start {trimmedA.Start} length {trimmedA.Duration}");
+
+        // Razor: one click cuts the clip (and its sound) under the pointer.
+        view.Tool = TimelineTool.Razor;
+        Check(!view.PointerDown(new Point(h + 500, 100)), "a razor click is not a drag");
+        Check(history.Current.Tracks[0].Clips.Count == 3 && history.Current.Tracks[0].Clips[1].Start == 150 && history.Current.AllClips.OfType<AudioClip>().Count() == 2, "razor cut at 5 s splits picture and sound");
+        view.Tool = TimelineTool.Select;
+
+        // Ctrl+click adds to the selection; the header toggle hides a layer.
+        view.PointerDown(new Point(h + 200, 100)); view.PointerUp();
+        view.PointerDown(new Point(h + 1100, 100), ModifierKeys.Control);
+        Check(view.Selection.Count == 3, "ctrl+click extends the selection, got " + view.Selection.Count);
+        view.PointerDown(new Point(h - 22, 50));
+        Check(history.Current.Tracks.First(t => t.Name == "V2").Hidden, "eye toggle hides the layer");
     }
 
     /// <summary>Renders a real two-layer project and checks the result frame by frame.</summary>

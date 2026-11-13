@@ -97,6 +97,10 @@ public sealed class AppConfig
     private VideoSettings _video = new();
     public VideoSettings Video { get => _video; set => _video = value ?? new VideoSettings(); }
 
+    // Video editor preview and export preferences; missing in older configs, so defaults apply.
+    private VideoEditorSettings _videoEditor = new();
+    public VideoEditorSettings VideoEditor { get => _videoEditor; set => _videoEditor = value ?? new VideoEditorSettings(); }
+
     // Gallery library, thumbnails and window placement. Missing in legacy configs: defaults apply.
     private GallerySettings _gallery = new();
     private bool _galleryRead;

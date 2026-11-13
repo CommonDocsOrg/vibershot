@@ -60,8 +60,11 @@ Nothing is final: anything you add can be selected, moved and restyled later, an
 
 Save as a **Vibershot project** (`.vibeshot`) to keep text, shapes and layers editable, or **Export** a flat PNG, JPEG or WebP with a live preview of the compression result. **Copy image** puts the finished picture on the clipboard for pasting anywhere.
 
-## Find it again in the gallery
+## Edit recordings
 
+Open an MP4 from the gallery to cut it up on a layered timeline: trim either end of a clip, split at the playhead or with the razor, drag clips along the timeline and between layers, and stack one video over another. Projects save as `.vibevideo` files that link to your original MP4s, and **Export MP4** renders the result at up to 4K. Large files preview from low-resolution proxies so scrubbing stays quick; the export always uses the originals.
+
+## Find it again in the gallery
 Every capture saved to the library shows up in the gallery, grouped by day, with the app and window it came from. Filter by images, videos, projects or favourites, search by file name, app, window title or tag, and sort by date, name or size. Rename, tag, favourite, copy or delete from the keyboard. Drag tiles out to other apps, or drop files in to import them. Drag the dividers to resize the side rail and the details pane; a wider pane shows a larger preview. The gallery can stay open as a home base: **Capture region** in its header starts a new capture and shows the result selected.
 
 ![The gallery with search, tags and a details pane](docs/images/gallery.png)
