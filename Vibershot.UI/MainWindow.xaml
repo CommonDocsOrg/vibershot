@@ -1,7 +1,7 @@
 <Window x:Class="Vibershot.UI.MainWindow"
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Style="{StaticResource {x:Type Window}}" Title="Vibershot" Width="452" SizeToContent="Height"
+ Style="{StaticResource {x:Type Window}}" Title="Vibershot" Width="476" SizeToContent="Height"
  WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="CanMinimize"
  Topmost="True" WindowStartupLocation="CenterScreen" Foreground="{StaticResource Ink}">
  <Window.Resources>
@@ -10,15 +10,22 @@
   <Style x:Key="FocusRing6" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
    <Rectangle RadiusX="6" RadiusY="6" Stroke="{StaticResource Accent}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
-  <Style x:Key="FocusRing10" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
-   <Rectangle RadiusX="10" RadiusY="10" Stroke="{StaticResource Accent}" StrokeThickness="2" SnapsToDevicePixels="True"/>
+  <Style x:Key="FocusRing12" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
+   <Rectangle RadiusX="12" RadiusY="12" Stroke="{StaticResource Accent}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
-  <Style x:Key="FocusRing12Ink" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
-   <Rectangle RadiusX="12" RadiusY="12" Stroke="{StaticResource Ink}" StrokeThickness="2" SnapsToDevicePixels="True"/>
+  <Style x:Key="FocusRing14Ink" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
+   <Rectangle RadiusX="14" RadiusY="14" Stroke="{StaticResource Ink}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
   <Style x:Key="FocusRing4" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
    <Rectangle RadiusX="4" RadiusY="4" Stroke="{StaticResource Accent}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
+  <!-- The accent as a gradient: purple into Dracula pink, used on the hero and the top hairline. -->
+  <LinearGradientBrush x:Key="HeroFill" StartPoint="0,0" EndPoint="1,1">
+   <GradientStop Color="#BD93F9" Offset="0"/><GradientStop Color="#C98BEC" Offset="0.6"/><GradientStop Color="#E383D9" Offset="1"/>
+  </LinearGradientBrush>
+  <LinearGradientBrush x:Key="Hairline" StartPoint="0,0" EndPoint="1,0">
+   <GradientStop Color="#00BD93F9" Offset="0"/><GradientStop Color="#BD93F9" Offset="0.3"/><GradientStop Color="#FF79C6" Offset="0.7"/><GradientStop Color="#00FF79C6" Offset="1"/>
+  </LinearGradientBrush>
   <!-- Header chrome: 30px icon-only buttons with a quiet hover fill. -->
   <Style x:Key="ChromeButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
    <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing6}"/>
@@ -37,33 +44,34 @@
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
-  <!-- Secondary actions: borderless rows separated by space, filled only on hover. -->
-  <Style x:Key="RowButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-   <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
-   <Setter Property="Padding" Value="14,12"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-   <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing10}"/>
+  <!-- Secondary actions: three tiles on the darker well, lifting to a purple edge on hover. -->
+  <Style x:Key="Tile" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+   <Setter Property="Background" Value="{StaticResource Well}"/><Setter Property="BorderBrush" Value="{StaticResource PaperEdge}"/>
+   <Setter Property="Padding" Value="12,12,12,13"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+   <Setter Property="VerticalContentAlignment" Value="Top"/>
+   <Setter Property="FocusVisualStyle" Value="{StaticResource FocusRing12}"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-    <Border x:Name="Shell" Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}">
-     <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+    <Border x:Name="Shell" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="{TemplateBinding Padding}">
+     <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Top"/>
     </Border>
     <ControlTemplate.Triggers>
-     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Rule}"/></Trigger>
-     <Trigger Property="IsEnabled" Value="False"><Setter Property="Cursor" Value="Arrow"/></Trigger>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource AccentEdge}"/></Trigger>
+     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentSoft}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+     <Trigger Property="IsEnabled" Value="False"><Setter Property="Cursor" Value="Arrow"/><Setter TargetName="Shell" Property="Opacity" Value="0.5"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
-  <Style x:Key="RowIcon" TargetType="Border">
-   <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/><Setter Property="CornerRadius" Value="9"/>
-   <Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="Margin" Value="0,0,14,0"/>
+  <Style x:Key="TileIcon" TargetType="Border">
+   <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="CornerRadius" Value="9"/>
+   <Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="HorizontalAlignment" Value="Left"/>
   </Style>
-  <Style x:Key="RowGlyph" TargetType="TextBlock">
+  <Style x:Key="TileGlyph" TargetType="TextBlock">
    <Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="15"/>
    <Setter Property="Foreground" Value="{StaticResource Accent}"/>
    <Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/>
   </Style>
-  <Style x:Key="RowTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="13.5"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/></Style>
-  <Style x:Key="RowHint" TargetType="TextBlock"><Setter Property="FontSize" Value="11.5"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Margin" Value="0,2,0,0"/></Style>
+  <Style x:Key="TileTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Margin" Value="0,12,0,0"/></Style>
+  <Style x:Key="TileHint" TargetType="TextBlock"><Setter Property="FontSize" Value="11"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Margin" Value="0,3,0,0"/><Setter Property="TextWrapping" Value="Wrap"/><Setter Property="LineHeight" Value="15"/></Style>
   <Style x:Key="Chip" TargetType="Border">
    <Setter Property="BorderBrush" Value="{StaticResource Rule}"/><Setter Property="BorderThickness" Value="1"/>
    <Setter Property="CornerRadius" Value="5"/><Setter Property="Padding" Value="6,3"/><Setter Property="VerticalAlignment" Value="Center"/>
@@ -74,9 +82,12 @@
   </Style>
  </Window.Resources>
  <Border Margin="16" CornerRadius="16" Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1">
-  <Border.Effect><DropShadowEffect Color="#14181C" BlurRadius="40" ShadowDepth="10" Opacity="0.22"/></Border.Effect>
+  <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="40" ShadowDepth="10" Opacity="0.55"/></Border.Effect>
   <Grid>
-   <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
+   <!-- Signature hairline: a purple-to-pink gradient fading out at both ends, hugging the top edge. -->
+   <Border Height="2" VerticalAlignment="Top" Margin="40,0" Background="{StaticResource Hairline}" IsHitTestVisible="False"/>
 
    <!-- Header: wordmark on the left, window chrome on the right. Empty space drags the window. -->
    <Grid Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown" Margin="22,0,14,0" ToolTip="Drag to move">
@@ -84,78 +95,87 @@
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
      <Image Source="/Assets/logo.png" Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
      <TextBlock Text="Vibershot" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"/>
-     <TextBlock x:Name="VersionLabel" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource Ink3}" Margin="6,1,0,0" VerticalAlignment="Center"/>
+     <Border Background="{StaticResource Well}" BorderBrush="{StaticResource Rule}" BorderThickness="1" CornerRadius="4" Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center">
+      <TextBlock x:Name="VersionLabel" FontFamily="{StaticResource MonoFont}" FontSize="9.5" Foreground="{StaticResource Ink3}" VerticalAlignment="Center"/>
+     </Border>
     </StackPanel>
     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-     <!-- Glyph, color and fill change with state: a grey upright pin when off, a tilted orange pin on a soft orange fill when on. -->
-    <Button x:Name="PinButton" Style="{StaticResource ChromeButton}" Content="&#xE840;" Foreground="{StaticResource Accent}" Background="{StaticResource AccentSoft}" Click="Pin_Click" AutomationProperties.Name="Turn off always on top" ToolTip="Always on top · On"/>
+     <!-- Glyph, color and fill change with state: a grey upright pin when off, a tilted purple pin on a soft purple fill when on. -->
+     <Button x:Name="PinButton" Style="{StaticResource ChromeButton}" Content="&#xE840;" Foreground="{StaticResource Accent}" Background="{StaticResource AccentSoft}" Click="Pin_Click" AutomationProperties.Name="Turn off always on top" ToolTip="Always on top · On"/>
      <Button Style="{StaticResource ChromeButton}" Content="&#xE713;" Click="SettingsButton_Click" AutomationProperties.Name="Settings" ToolTip="Settings"/>
      <Button Style="{StaticResource ChromeButton}" Content="&#xE921;" Click="Minimize_Click" AutomationProperties.Name="Minimize" ToolTip="Minimize"/>
      <Button Style="{StaticResource ChromeButton}" Content="&#xE8BB;" Click="Close_Click" AutomationProperties.Name="Close Vibershot" ToolTip="Close Vibershot"/>
     </StackPanel>
    </Grid>
 
-   <!-- Primary action: the only place the accent appears at full strength. -->
-   <Button x:Name="CaptureButton" Grid.Row="1" Click="CaptureButton_Click" AutomationProperties.Name="Capture region" Margin="20,4,20,0" Padding="0" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ToolTip="Select part of your screen" FocusVisualStyle="{StaticResource FocusRing12Ink}">
+   <!-- Hero: the one place the accent appears at full strength. A purple glow sits behind the gradient block. -->
+   <Button x:Name="CaptureButton" Grid.Row="1" Click="CaptureButton_Click" AutomationProperties.Name="Capture region" Margin="20,4,20,0" Padding="0" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ToolTip="Select part of your screen" FocusVisualStyle="{StaticResource FocusRing14Ink}">
     <Button.Template><ControlTemplate TargetType="Button">
-     <Border x:Name="Shell" CornerRadius="12" Background="{StaticResource Accent}" BorderThickness="0" Padding="18,20">
-      <ContentPresenter/>
-     </Border>
+     <Grid>
+      <Border x:Name="Glow" CornerRadius="14" Background="{StaticResource Accent}" Margin="6,8,6,2" Opacity="0.7">
+       <Border.Effect><DropShadowEffect Color="#BD93F9" BlurRadius="30" ShadowDepth="0" Opacity="0.45"/></Border.Effect>
+      </Border>
+      <Border x:Name="Shell" CornerRadius="14" Background="{StaticResource HeroFill}" BorderThickness="0" Padding="18,20">
+       <ContentPresenter/>
+      </Border>
+      <Border x:Name="Sheen" CornerRadius="14" Background="#FFFFFF" Opacity="0" IsHitTestVisible="False"/>
+     </Grid>
      <ControlTemplate.Triggers>
-      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentDeep}"/></Trigger>
-      <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Opacity" Value="0.85"/></Trigger>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Sheen" Property="Opacity" Value="0.1"/><Setter TargetName="Glow" Property="Opacity" Value="1"/></Trigger>
+      <Trigger Property="IsPressed" Value="True"><Setter TargetName="Sheen" Property="Opacity" Value="0"/><Setter TargetName="Shell" Property="Opacity" Value="0.88"/></Trigger>
      </ControlTemplate.Triggers>
     </ControlTemplate></Button.Template>
     <Grid TextElement.Foreground="{StaticResource AccentInk}">
      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <Border Width="40" Height="40" CornerRadius="10" Background="#2EFFFFFF" Margin="0,0,12,0">
+     <Border Width="42" Height="42" CornerRadius="11" Background="#30000000" Margin="0,0,14,0">
       <Path Data="M1,8 L1,1 L8,1 M14,1 L21,1 L21,8 M21,14 L21,21 L14,21 M8,21 L1,21 L1,14 M7,7 L15,7 L15,15 L7,15 Z" Stroke="{StaticResource AccentInk}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center"/>
      </Border>
      <StackPanel Grid.Column="1" VerticalAlignment="Center">
       <!-- Foreground is set explicitly: the implicit TextBlock style in App.xaml would otherwise force Ink here. -->
-      <TextBlock Text="Capture region" FontSize="16" FontWeight="Bold" Foreground="{StaticResource AccentInk}"/>
-      <TextBlock Text="Drag to select any part of the screen" FontSize="11.5" FontWeight="SemiBold" Opacity="0.85" Margin="0,3,0,0" Foreground="{StaticResource AccentInk}"/>
+      <TextBlock Text="Capture region" FontSize="17" FontWeight="Bold" Foreground="{StaticResource AccentInk}"/>
+      <TextBlock Text="Drag to pick any area" FontSize="11.5" FontWeight="SemiBold" Opacity="0.8" Margin="0,3,0,0" Foreground="{StaticResource AccentInk}" TextTrimming="CharacterEllipsis"/>
      </StackPanel>
-     <Border x:Name="RegionChip" Grid.Column="2" Background="#2E000000" CornerRadius="5" Padding="7,4" VerticalAlignment="Center" Margin="10,0,0,0">
-      <TextBlock x:Name="RegionChipText" Text="Ctrl+Shift+S" FontFamily="{StaticResource MonoFont}" FontSize="10.5" FontWeight="Normal" Foreground="{StaticResource AccentInk}"/>
+     <Border x:Name="RegionChip" Grid.Column="2" Background="#30000000" CornerRadius="6" Padding="8,4" VerticalAlignment="Center" Margin="10,0,0,0">
+      <TextBlock x:Name="RegionChipText" Text="Ctrl+Shift+S" FontFamily="{StaticResource MonoFont}" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource AccentInk}"/>
      </Border>
     </Grid>
    </Button>
 
-   <TextBlock Grid.Row="2" Text="MORE" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource Ink3}" Margin="24,18,24,6"/>
-
-   <!-- Secondary actions. Gallery and Editor are placeholders until their windows exist. -->
-   <StackPanel Grid.Row="3" Margin="20,0">
-    <Button Style="{StaticResource RowButton}" Click="Fullscreen_Click" AutomationProperties.Name="Full desktop" ToolTip="Capture every monitor at once">
-     <Grid>
-      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Border Style="{StaticResource RowIcon}"><TextBlock Style="{StaticResource RowGlyph}" Text="&#xE7F4;"/></Border>
-      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Style="{StaticResource RowTitle}" Text="Full desktop"/><TextBlock Style="{StaticResource RowHint}" Text="Every monitor, saved instantly"/></StackPanel>
-      <Border x:Name="FullDesktopChip" Grid.Column="2" Style="{StaticResource Chip}" Visibility="Collapsed"><TextBlock x:Name="FullDesktopChipText" Style="{StaticResource ChipText}" Text="PrtScn"/></Border>
-     </Grid>
+   <!-- Secondary actions as three equal tiles. -->
+   <Grid Grid.Row="2" Margin="20,14,20,0">
+    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <Button Style="{StaticResource Tile}" Click="Fullscreen_Click" AutomationProperties.Name="Full desktop" ToolTip="Capture every monitor at once">
+     <StackPanel>
+      <Grid>
+       <Border Style="{StaticResource TileIcon}"><TextBlock Style="{StaticResource TileGlyph}" Text="&#xE7F4;"/></Border>
+       <Border x:Name="FullDesktopChip" Style="{StaticResource Chip}" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed"><TextBlock x:Name="FullDesktopChipText" Style="{StaticResource ChipText}" Text="PrtScn"/></Border>
+      </Grid>
+      <TextBlock Style="{StaticResource TileTitle}" Text="Full desktop"/>
+      <TextBlock Style="{StaticResource TileHint}" Text="Every monitor, saved instantly"/>
+     </StackPanel>
     </Button>
-    <Button Style="{StaticResource RowButton}" Margin="0,6,0,0" Click="Gallery_Click" AutomationProperties.Name="Gallery" ToolTip="Browse, search and manage everything you have captured">
-     <Grid>
-      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Border Style="{StaticResource RowIcon}"><TextBlock Style="{StaticResource RowGlyph}" Text="&#xEB9F;"/></Border>
-      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Style="{StaticResource RowTitle}" Text="Gallery"/><TextBlock Style="{StaticResource RowHint}" Text="Browse recent captures"/></StackPanel>
-     </Grid>
+    <Button Grid.Column="2" Style="{StaticResource Tile}" Click="Gallery_Click" AutomationProperties.Name="Gallery" ToolTip="Browse, search and manage everything you have captured">
+     <StackPanel>
+      <Border Style="{StaticResource TileIcon}"><TextBlock Style="{StaticResource TileGlyph}" Text="&#xEB9F;"/></Border>
+      <TextBlock Style="{StaticResource TileTitle}" Text="Gallery"/>
+      <TextBlock Style="{StaticResource TileHint}" Text="Browse recent captures"/>
+     </StackPanel>
     </Button>
-    <Button Style="{StaticResource RowButton}" Margin="0,6,0,0" Click="Editor_Click" AutomationProperties.Name="Editor" ToolTip="Open the clipboard image, or a blank canvas, in the editor">
-     <Grid>
-      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <Border Style="{StaticResource RowIcon}"><TextBlock Style="{StaticResource RowGlyph}" Text="&#xE70F;"/></Border>
-      <StackPanel Grid.Column="1" VerticalAlignment="Center"><TextBlock Style="{StaticResource RowTitle}" Text="Editor"/><TextBlock Style="{StaticResource RowHint}" Text="Annotate, crop and export"/></StackPanel>
-     </Grid>
+    <Button Grid.Column="4" Style="{StaticResource Tile}" Click="Editor_Click" AutomationProperties.Name="Editor" ToolTip="Open the clipboard image, or a blank canvas, in the editor">
+     <StackPanel>
+      <Border Style="{StaticResource TileIcon}"><TextBlock Style="{StaticResource TileGlyph}" Text="&#xE70F;"/></Border>
+      <TextBlock Style="{StaticResource TileTitle}" Text="Editor"/>
+      <TextBlock Style="{StaticResource TileHint}" Text="Annotate, crop and export"/>
+     </StackPanel>
     </Button>
-   </StackPanel>
+   </Grid>
 
    <!-- Footer: status on the left, output folder on the right. No rule above it. -->
-   <Grid Grid.Row="4" Margin="22,16,22,18">
+   <Grid Grid.Row="3" Margin="22,16,22,18">
     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
      <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="{StaticResource Ink3}" Margin="0,1,7,0" VerticalAlignment="Center"/>
-     <TextBlock x:Name="StatusLabel" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="300" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+     <TextBlock x:Name="StatusLabel" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
     </StackPanel>
     <Button Grid.Column="1" Click="OpenFolder_Click" AutomationProperties.Name="Open captures folder" ToolTip="Open the folder where captures are saved" Background="Transparent" Foreground="{StaticResource Ink}" BorderThickness="0" Padding="4,2" Margin="10,0,-4,0" FocusVisualStyle="{StaticResource FocusRing4}">
      <Button.Template><ControlTemplate TargetType="Button">

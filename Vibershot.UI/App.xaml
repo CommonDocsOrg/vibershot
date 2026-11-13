@@ -3,23 +3,25 @@
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  ShutdownMode="OnExplicitShutdown">
  <Application.Resources>
-  <!-- Palette: white paper on a cool-gray well, ink for hierarchy, one plum accent. See STYLE_GUIDE.md. -->
-  <SolidColorBrush x:Key="Paper" Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="PaperEdge" Color="#D0D6DE"/>
-  <SolidColorBrush x:Key="Rule" Color="#E0E4EA"/>
-  <SolidColorBrush x:Key="Hover" Color="#F2F4F7"/>
-  <SolidColorBrush x:Key="Well" Color="#F2F4F7"/>
-  <SolidColorBrush x:Key="Ink" Color="#1C2026"/>
-  <SolidColorBrush x:Key="Ink2" Color="#5B636D"/>
-  <SolidColorBrush x:Key="Ink3" Color="#9AA2AB"/>
-  <SolidColorBrush x:Key="Accent" Color="#7A3E8F"/>
-  <SolidColorBrush x:Key="AccentDeep" Color="#5B2D6B"/>
-  <SolidColorBrush x:Key="AccentSoft" Color="#F3EAF6"/>
-  <SolidColorBrush x:Key="AccentInk" Color="#FFFFFF"/>
-  <SolidColorBrush x:Key="AccentEdge" Color="#E6D6EC"/>
-  <SolidColorBrush x:Key="AccentWash" Color="#FBF7FC"/>
-  <SolidColorBrush x:Key="Ok" Color="#1F9D6A"/>
-  <SolidColorBrush x:Key="Danger" Color="#D64545"/>
+  <!-- Palette: Dracula. Dark slate surfaces, off-white ink, one purple accent with dark ink on it. See STYLE_GUIDE.md. -->
+  <SolidColorBrush x:Key="Paper" Color="#282A36"/>
+  <SolidColorBrush x:Key="PaperEdge" Color="#44475A"/>
+  <SolidColorBrush x:Key="Rule" Color="#3C3F52"/>
+  <SolidColorBrush x:Key="Hover" Color="#343746"/>
+  <SolidColorBrush x:Key="Well" Color="#21222C"/>
+  <SolidColorBrush x:Key="Ink" Color="#F8F8F2"/>
+  <SolidColorBrush x:Key="Ink2" Color="#B3B8CF"/>
+  <SolidColorBrush x:Key="Ink3" Color="#6272A4"/>
+  <SolidColorBrush x:Key="Accent" Color="#BD93F9"/>
+  <SolidColorBrush x:Key="AccentDeep" Color="#CBA8FF"/>
+  <SolidColorBrush x:Key="AccentSoft" Color="#3F3A5E"/>
+  <SolidColorBrush x:Key="AccentInk" Color="#1E1F29"/>
+  <SolidColorBrush x:Key="AccentEdge" Color="#5C4F88"/>
+  <SolidColorBrush x:Key="AccentWash" Color="#2E2D42"/>
+  <SolidColorBrush x:Key="Ok" Color="#50FA7B"/>
+  <SolidColorBrush x:Key="Danger" Color="#FF5555"/>
+  <Color x:Key="AccentColor">#BD93F9</Color>
+  <Color x:Key="ShadowColor">#000000</Color>
   <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
 
   <Style TargetType="Window">
@@ -141,7 +143,7 @@
      <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" IsHitTestVisible="False" Margin="12,10,32,10"/>
      <Popup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom" AllowsTransparency="True" Focusable="False" VerticalOffset="4">
       <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="8" Padding="4" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
-       <Border.Effect><DropShadowEffect Color="#14181C" BlurRadius="24" ShadowDepth="6" Opacity="0.16"/></Border.Effect>
+       <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="6" Opacity="0.45"/></Border.Effect>
        <ScrollViewer><ItemsPresenter/></ScrollViewer>
       </Border>
      </Popup>
@@ -167,6 +169,38 @@
      </Track>
     </Grid>
    </ControlTemplate></Setter.Value></Setter>
+  </Style>
+
+  <!-- Scrollbar: a thin rounded thumb on a transparent track, no arrows. Accent while dragging. -->
+  <ControlTemplate x:Key="ScrollThumb" TargetType="Thumb">
+   <Border x:Name="Knob" Background="{StaticResource PaperEdge}" CornerRadius="3" Margin="2"/>
+   <ControlTemplate.Triggers>
+    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Knob" Property="Background" Value="{StaticResource Ink3}"/></Trigger>
+    <Trigger Property="IsDragging" Value="True"><Setter TargetName="Knob" Property="Background" Value="{DynamicResource Accent}"/></Trigger>
+   </ControlTemplate.Triggers>
+  </ControlTemplate>
+  <ControlTemplate x:Key="ScrollPage" TargetType="RepeatButton"><Border Background="Transparent"/></ControlTemplate>
+  <Style TargetType="ScrollBar">
+   <Setter Property="Background" Value="Transparent"/><Setter Property="Width" Value="10"/><Setter Property="MinWidth" Value="10"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+    <Track x:Name="PART_Track" IsDirectionReversed="True">
+     <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Focusable="False" Template="{StaticResource ScrollPage}"/></Track.DecreaseRepeatButton>
+     <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Focusable="False" Template="{StaticResource ScrollPage}"/></Track.IncreaseRepeatButton>
+     <Track.Thumb><Thumb Template="{StaticResource ScrollThumb}"/></Track.Thumb>
+    </Track>
+   </ControlTemplate></Setter.Value></Setter>
+   <Style.Triggers>
+    <Trigger Property="Orientation" Value="Horizontal">
+     <Setter Property="Width" Value="Auto"/><Setter Property="MinWidth" Value="0"/><Setter Property="Height" Value="10"/><Setter Property="MinHeight" Value="10"/>
+     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+      <Track x:Name="PART_Track">
+       <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageLeftCommand" Focusable="False" Template="{StaticResource ScrollPage}"/></Track.DecreaseRepeatButton>
+       <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageRightCommand" Focusable="False" Template="{StaticResource ScrollPage}"/></Track.IncreaseRepeatButton>
+       <Track.Thumb><Thumb Template="{StaticResource ScrollThumb}"/></Track.Thumb>
+      </Track>
+     </ControlTemplate></Setter.Value></Setter>
+    </Trigger>
+   </Style.Triggers>
   </Style>
 
   <!-- Settings group card and its label. -->
@@ -259,9 +293,10 @@
    <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource Accent}"/><Setter Property="TextDecorations" Value="Underline"/></Trigger></Style.Triggers>
   </Style>
 
-  <!-- Pale yellow notice for a problem Windows must fix (Print Screen held by Snipping Tool). -->
+  <!-- Dim yellow notice for a problem Windows must fix (Print Screen held by Snipping Tool). Text uses WarningInk. -->
+  <SolidColorBrush x:Key="WarningInk" Color="#F1FA8C"/>
   <Style x:Key="WarningBox" TargetType="Border">
-   <Setter Property="Background" Value="#FFF8E6"/><Setter Property="BorderBrush" Value="#E8C15A"/><Setter Property="BorderThickness" Value="1"/>
+   <Setter Property="Background" Value="#3A3A2B"/><Setter Property="BorderBrush" Value="#6E6E45"/><Setter Property="BorderThickness" Value="1"/>
    <Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="14,10"/><Setter Property="Margin" Value="0,14,0,0"/>
   </Style>
  </Application.Resources>

@@ -21,8 +21,8 @@ public sealed class EditorCanvas : FrameworkElement
     private readonly Dictionary<Guid, (Item Item, DrawingVisual Visual)> _visuals = new();
     private readonly Dictionary<DrawingVisual, Guid> _ids = new();
     private readonly HashSet<Guid> _locked = new();
-    private readonly Pen _edgePen = new(new SolidColorBrush(Color.FromRgb(0xD0, 0xD6, 0xDE)), 1);
-    private readonly Brush _cropDim = new SolidColorBrush(Color.FromArgb(0xB0, 0xFB, 0xFB, 0xFC));
+    private readonly Pen _edgePen = new(new SolidColorBrush(Color.FromRgb(0x44, 0x47, 0x5A)), 1);
+    private readonly Brush _cropDim = new SolidColorBrush(Color.FromArgb(0xB0, 0x21, 0x22, 0x2C));
     private ImageDocument? _doc;
     private AssetStore? _assets;
     private Guid? _hidden;

@@ -1249,14 +1249,14 @@ public partial class EditorWindow : Window
         var paper = (Brush)FindResource("Paper");
         var outline = new Pen(accent, 1);
         var dashed = new Pen((Brush)FindResource("Ink2"), 1) { DashStyle = DashStyles.Dash };
-        var accentColor = accent is SolidColorBrush solid ? solid.Color : Color.FromRgb(0x7A, 0x3E, 0x8F);
+        var accentColor = accent is SolidColorBrush solid ? solid.Color : Color.FromRgb(0xBD, 0x93, 0xF9);
         var tint = new SolidColorBrush(Color.FromArgb(0x30, accentColor.R, accentColor.G, accentColor.B));
 
         if (_tool == Tool.Crop && _cropDraft is Rect crop)
         {
             var canvas = Surface.ToScreen(new Rect(Doc.Size));
             var screen = Surface.ToScreen(crop);
-            dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(0xB0, 0xFB, 0xFB, 0xFC)), null, new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(canvas), new RectangleGeometry(screen)));
+            dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(0xB0, 0x21, 0x22, 0x2C)), null, new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(canvas), new RectangleGeometry(screen)));
             dc.DrawRectangle(null, new Pen(accent, 1.5), screen);
             foreach (var (_, point) in RectHandles(screen)) DrawHandle(dc, point, paper, accent);
             DrawLabel(dc, $"{crop.Width:0} × {crop.Height:0}", new Point(screen.Right, screen.Bottom + 8));

@@ -4,9 +4,9 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 
 ## Principles
 
-- **Solid, not glass.** Opaque surfaces with a 1px edge and a real drop shadow. No gradients, transparency effects or radial glows.
-- **Ink does the hierarchy.** Near-black type on paper white carries structure through size and weight. Color is not used to rank text.
-- **One accent, used once.** Plum appears at full strength on exactly one element per window: the primary action. Everywhere else it is a pale tint or a hover color.
+- **Solid, not glass.** Opaque surfaces with a 1px edge and a real drop shadow. No transparency effects. The only gradient and glow in the app are on the launcher's hero button.
+- **Ink does the hierarchy.** Off-white type on dark slate carries structure through size and weight. Color is not used to rank text.
+- **One accent, used once.** Dracula purple appears at full strength on exactly one element per window: the primary action. Everywhere else it is a dim tint or a hover color. Text on the accent is dark, never white.
 - **Space instead of rules.** Separate groups with padding and gaps, not dividers. Rows show a fill only on hover.
 - **Monospace for data.** Keyboard shortcuts, version tags and filenames use the mono font so they scan as data, not prose.
 - **Placeholders look like placeholders.** Features that are not wired up yet are disabled, drawn in muted ink, and carry a `SOON` chip instead of a shortcut.
@@ -15,26 +15,27 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 
 | Token | Hex | Use |
 | --- | --- | --- |
-| `Paper` | `#FFFFFF` | Window and panel surface |
-| `PaperEdge` | `#D0D6DE` | 1px outer border of a window |
-| `Rule` | `#E0E4EA` | Chip borders, pressed row fill, chrome hover |
-| `Hover` | `#F2F4F7` | Row hover fill, disabled icon tile |
-| `Well` | `#F2F4F7` | Page background behind grouped cards (Settings) |
-| `Ink` | `#1C2026` | Primary text, wordmark, icon tile for the logo |
-| `Ink2` | `#5B636D` | Secondary text, hints, chrome icons, pin off state |
-| `Ink3` | `#9AA2AB` | Section labels, chips, version tag, neutral status |
-| `Accent` | `#7A3E8F` | Primary action fill, pin on state, row icons, focus ring, selection chrome |
-| `AccentDeep` | `#5B2D6B` | Primary action hover |
-| `AccentSoft` | `#F3EAF6` | Tint behind row icons, active rows and tiles |
-| `AccentInk` | `#FFFFFF` | Text and glyphs on an accent fill |
-| `AccentEdge` | `#E6D6EC` | Border of an accent-tinted panel (the editor's tool accordion) |
-| `AccentWash` | `#FBF7FC` | Fill of an accent-tinted panel |
-| `Ok` | `#1F9D6A` | Status dot after a save or copy |
-| `Danger` | `#D64545` | Status dot after a failure |
+| `Paper` | `#282A36` | Window and panel surface (Dracula background) |
+| `PaperEdge` | `#44475A` | 1px outer border of a window, scrollbar thumb |
+| `Rule` | `#3C3F52` | Chip borders, pressed row fill, chrome hover |
+| `Hover` | `#343746` | Row hover fill, disabled icon tile |
+| `Well` | `#21222C` | Page background behind grouped cards (Settings), launcher tiles |
+| `Ink` | `#F8F8F2` | Primary text, wordmark |
+| `Ink2` | `#B3B8CF` | Secondary text, hints, chrome icons, pin off state |
+| `Ink3` | `#6272A4` | Section labels, chips, version tag, neutral status (Dracula comment) |
+| `Accent` | `#BD93F9` | Primary action fill, pin on state, row icons, focus ring, selection chrome (Dracula purple) |
+| `AccentDeep` | `#CBA8FF` | Primary action hover (lighter, since the surface is dark) |
+| `AccentSoft` | `#3F3A5E` | Tint behind row icons, active rows and tiles |
+| `AccentInk` | `#1E1F29` | Text and glyphs on an accent fill |
+| `AccentEdge` | `#5C4F88` | Border of an accent-tinted panel (the editor's tool accordion), tile hover edge |
+| `AccentWash` | `#2E2D42` | Fill of an accent-tinted panel |
+| `WarningInk` | `#F1FA8C` | Text inside a `WarningBox` (Dracula yellow) |
+| `Ok` | `#50FA7B` | Status dot after a save or copy (Dracula green) |
+| `Danger` | `#FF5555` | Status dot after a failure (Dracula red) |
 
 Semantic colors (`Ok`, `Danger`) are separate from the accent and never used for decoration.
 
-The shared control templates in `App.xaml` read the accent through `DynamicResource`, so a window could override the four `Accent*` tokens in its own resources if it ever needed a different accent; today every window uses plum.
+The shared control templates in `App.xaml` read the accent through `DynamicResource`, so a window could override the four `Accent*` tokens in its own resources if it ever needed a different accent; today every window uses purple. The launcher adds two local gradient brushes: `HeroFill` (purple into pink, diagonal) for the primary action and `Hairline` (purple to pink, fading out at both ends) for the 2px line at the top of the window.
 
 ## Typography
 
@@ -81,15 +82,19 @@ Base unit is 4px. Use these values and avoid inventing new ones.
 | Chip, shortcut cap | 5 |
 | Logo tile | 4 |
 
-Shadow on a window: color `#14181C`, blur 40, depth 10, opacity 0.22.
+Shadow on a window: black, blur 40, depth 10, opacity 0.55. Popup shadow: black, blur 24, depth 6, opacity 0.45.
 
 ## Components
 
-**Window chrome.** 30×30 icon-only buttons using Segoe Fluent Icons at 13pt, `Ink2`, no border. Hover fills with `Rule`. Order from left: pin, settings, minimize, close. The pin shows `Accent` when on and `Ink2` when off.
+**Window chrome.** 30×30 icon-only buttons using Segoe Fluent Icons at 13pt, `Ink2`, no border. Hover fills with `Rule`. Order from left: pin, settings, minimize, close. The pin shows `Accent` on `AccentSoft` when on and `Ink2` when off. Native-framed windows get a `Paper` caption with `Ink` text through DWM.
 
-**Primary action.** Full-width accent block with a 40px icon tile at 18% white, a bold label, a one-line hint, and the shortcut in a mono chip at 18% black on the right. Only one per window.
+**Primary action (hero).** Full-width `HeroFill` gradient block, radius 14, with a purple glow behind it (`DropShadowEffect` in `Accent`, blur 30, depth 0). Inside: a 42px icon tile at 19% black, a bold 17pt label, a one-line hint, and the shortcut in a bold mono chip at 19% black on the right, all in `AccentInk`. Hover adds a 10% white sheen and brightens the glow. Only one per window.
+
+**Tile.** The launcher's secondary actions are three equal tiles on `Well` with a `PaperEdge` border, radius 12, 12px padding. Each holds a 32px icon tile (`AccentSoft` behind an `Accent` glyph), a bold title and a wrapping hint; an optional chip sits in the top-right corner. Hover lifts to `Hover` with an `AccentEdge` border; press fills `AccentSoft` with an `Accent` border.
 
 **Row.** Borderless button, `Hover` fill on mouse over, `Rule` on press. Layout is icon tile, title plus hint, optional right-aligned chip. Row icons sit on `AccentSoft` in `Accent`. A disabled row uses `Hover` for the tile, `Ink3` for the glyph, `Ink2` for the title and a `SOON` chip.
+
+**Scrollbar.** 10px wide, transparent track, no arrows. The thumb is a `PaperEdge` rounded bar, `Ink3` on hover and `Accent` while dragging.
 
 **Chip.** 1px `Rule` border, radius 5, 6×3 padding, mono text in `Ink3`. Shows a real shortcut only when that shortcut is actually registered (for example the Print Screen chip appears only when Print Screen is set to Full desktop).
 
@@ -99,9 +104,11 @@ Shadow on a window: color `#14181C`, blur 40, depth 10, opacity 0.22.
 
 **Settings group.** Cards use the `Group` style: paper fill, `PaperEdge` border, radius 12, 20px padding, on a `Well` page background. A `GroupLabel` (uppercase, 10.5 bold, `Ink3`) heads each card. Toggles sit on the right of a bold title and a `Hint` line, separated by `Divider` rules. Dividers are allowed inside a card because the rows are settings, not actions.
 
-**Preview well.** Captures sit on a cool light checkerboard (`#E9ECF1` and `#DEE2E8`, 10px squares) inside a `PaperEdge` border so transparent and white images both read.
+**Preview well.** Captures sit on a dark checkerboard (`#2C2E3A` and `#363947`, 10px squares) inside a `PaperEdge` border so transparent, white and dark images all read.
 
-**Overlay chrome.** On the region selector the selection stroke and glow are `Accent`. The hint and the action bar are paper panels with a `PaperEdge` border and a shadow. The first action is the primary button.
+**Overlay chrome.** On the region selector the selection stroke and glow are `Accent`. The hint and the action bar are `Paper` panels with a `PaperEdge` border and a shadow. The first action is the primary button.
+
+**Warning box.** Dim yellow panel (`#3A3A2B` fill, `#6E6E45` border) with `WarningInk` text, for a problem Windows must fix.
 
 **Focus.** Every interactive element shows a 2px `Accent` border when keyboard focused. On the accent primary action the ring is `Ink` instead.
 

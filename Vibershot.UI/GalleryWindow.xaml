@@ -57,8 +57,8 @@
   </Style>
   <DrawingBrush x:Key="Checkerboard" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
    <DrawingBrush.Drawing><DrawingGroup>
-    <GeometryDrawing Brush="#E9ECF1"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
-    <GeometryDrawing Brush="#DEE2E8"><GeometryDrawing.Geometry><GeometryGroup><RectangleGeometry Rect="0,0,10,10"/><RectangleGeometry Rect="10,10,10,10"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#2C2E3A"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#363947"><GeometryDrawing.Geometry><GeometryGroup><RectangleGeometry Rect="0,0,10,10"/><RectangleGeometry Rect="10,10,10,10"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
    </DrawingGroup></DrawingBrush.Drawing>
   </DrawingBrush>
   <Style x:Key="MetaKey" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Margin" Value="0,0,12,6"/></Style>
@@ -176,7 +176,7 @@
      </WrapPanel>
      <Popup x:Name="TagPopup" PlacementTarget="{Binding ElementName=TagButton}" Placement="Bottom" StaysOpen="False" AllowsTransparency="True" VerticalOffset="4">
       <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="10" Padding="14" Width="260">
-       <Border.Effect><DropShadowEffect Color="#14181C" BlurRadius="24" ShadowDepth="6" Opacity="0.16"/></Border.Effect>
+       <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="6" Opacity="0.45"/></Border.Effect>
        <StackPanel>
         <TextBlock Style="{StaticResource SectionLabel}" Text="TAGS" Margin="0,0,0,8"/>
         <TextBox x:Name="NewTagBox" Padding="10,7" KeyDown="NewTagBox_KeyDown" AutomationProperties.Name="New tag" ToolTip="Type a tag and press Enter"/>

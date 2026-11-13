@@ -12,15 +12,16 @@ public enum CaptureAction { Screenshot, Video, Scrolling }
 public sealed class RegionWindow : Window
 {
     private readonly Canvas _canvas = new();
-    // Overlay chrome follows the paper palette: tangerine selection, paper action bar and hint.
-    private static readonly Color AccentColor = Color.FromRgb(0x7A, 0x3E, 0x8F);
+    // Overlay chrome follows the Dracula palette: purple selection, dark slate action bar and hint.
+    private static readonly Color AccentColor = Color.FromRgb(0xBD, 0x93, 0xF9);
+    private static readonly Color PaperColor = Color.FromRgb(0x28, 0x2A, 0x36), EdgeColor = Color.FromRgb(0x44, 0x47, 0x5A);
     private readonly Rectangle _selection = new() { Stroke = new SolidColorBrush(AccentColor), StrokeThickness = 2, IsHitTestVisible = false,
         Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = AccentColor, BlurRadius = 14, ShadowDepth = 0, Opacity = .8 } };
     private readonly System.Windows.Shapes.Path _shade = new() { Fill = new SolidColorBrush(Color.FromArgb(150, 21, 24, 28)), IsHitTestVisible = false };
-    private readonly Border _actions = new() { Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)), BorderBrush = new SolidColorBrush(Color.FromRgb(0xD0, 0xD6, 0xDE)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Visibility = Visibility.Collapsed,
-        Child = new StackPanel { Orientation = Orientation.Horizontal }, Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0x14, 0x18, 0x1C), BlurRadius = 24, ShadowDepth = 6, Opacity = .25 } };
-    private readonly Border _hint = new() { Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF)), BorderBrush = new SolidColorBrush(Color.FromRgb(0xD0, 0xD6, 0xDE)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8), IsHitTestVisible = false,
-        Child = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0x1C, 0x20, 0x26)), FontSize = 12, FontWeight = FontWeights.SemiBold } };
+    private readonly Border _actions = new() { Background = new SolidColorBrush(PaperColor), BorderBrush = new SolidColorBrush(EdgeColor), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Visibility = Visibility.Collapsed,
+        Child = new StackPanel { Orientation = Orientation.Horizontal }, Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, BlurRadius = 24, ShadowDepth = 6, Opacity = .5 } };
+    private readonly Border _hint = new() { Background = new SolidColorBrush(PaperColor), BorderBrush = new SolidColorBrush(EdgeColor), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8), IsHitTestVisible = false,
+        Child = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0xF8, 0xF2)), FontSize = 12, FontWeight = FontWeights.SemiBold } };
     private string HintText { set => ((TextBlock)_hint.Child).Text = value; }
     private UIElementCollection ActionButtons => ((StackPanel)_actions.Child).Children;
     private readonly WindowTargets _targets = new();

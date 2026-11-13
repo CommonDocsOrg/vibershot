@@ -46,7 +46,7 @@ internal static class SettingsHelpers
     /// <summary>The yellow notice shown while Windows holds Print Screen for Snipping Tool, with a link to the setting.</summary>
     public static Border BuildPrintScreenWarning()
     {
-        var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(0x5A, 0x45, 0x0A)) };
+        var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = Brush("WarningInk") };
         text.Inlines.Add("Windows is still holding Print Screen for Snipping Tool. Turn off 'Use the Print screen key to open screen capture' in ");
         var link = new Hyperlink(new Run("Windows Settings › Accessibility › Keyboard"));
         link.Click += (_, _) => OpenWindowsSetting("ms-settings:easeofaccess-keyboard");
