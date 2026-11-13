@@ -3,24 +3,21 @@
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  ShutdownMode="OnExplicitShutdown">
  <Application.Resources>
-  <!-- Paper palette. Every window uses these tokens; see STYLE_GUIDE.md. -->
-  <SolidColorBrush x:Key="Paper" Color="#FBFBFC"/>
-  <SolidColorBrush x:Key="PaperEdge" Color="#C9CDD3"/>
-  <SolidColorBrush x:Key="Rule" Color="#E4E7EB"/>
-  <SolidColorBrush x:Key="Hover" Color="#F1F2F4"/>
-  <SolidColorBrush x:Key="Well" Color="#EEF0F3"/>
-  <SolidColorBrush x:Key="Ink" Color="#15181C"/>
+  <!-- Palette: white paper on a cool-gray well, ink for hierarchy, one plum accent. See STYLE_GUIDE.md. -->
+  <SolidColorBrush x:Key="Paper" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="PaperEdge" Color="#D0D6DE"/>
+  <SolidColorBrush x:Key="Rule" Color="#E0E4EA"/>
+  <SolidColorBrush x:Key="Hover" Color="#F2F4F7"/>
+  <SolidColorBrush x:Key="Well" Color="#F2F4F7"/>
+  <SolidColorBrush x:Key="Ink" Color="#1C2026"/>
   <SolidColorBrush x:Key="Ink2" Color="#5B636D"/>
   <SolidColorBrush x:Key="Ink3" Color="#9AA2AB"/>
-  <SolidColorBrush x:Key="Tangerine" Color="#F0612A"/>
-  <SolidColorBrush x:Key="TangerineDeep" Color="#E2561F"/>
-  <SolidColorBrush x:Key="TangerineSoft" Color="#FDEAE2"/>
-  <SolidColorBrush x:Key="TangerineInk" Color="#FFF5F0"/>
-  <!-- Accent aliases: the shared control templates read these dynamically so one window can swap the accent (the editor uses plum). -->
-  <SolidColorBrush x:Key="Accent" Color="#F0612A"/>
-  <SolidColorBrush x:Key="AccentDeep" Color="#E2561F"/>
-  <SolidColorBrush x:Key="AccentSoft" Color="#FDEAE2"/>
-  <SolidColorBrush x:Key="AccentInk" Color="#FFF5F0"/>
+  <SolidColorBrush x:Key="Accent" Color="#7A3E8F"/>
+  <SolidColorBrush x:Key="AccentDeep" Color="#5B2D6B"/>
+  <SolidColorBrush x:Key="AccentSoft" Color="#F3EAF6"/>
+  <SolidColorBrush x:Key="AccentInk" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="AccentEdge" Color="#E6D6EC"/>
+  <SolidColorBrush x:Key="AccentWash" Color="#FBF7FC"/>
   <SolidColorBrush x:Key="Ok" Color="#1F9D6A"/>
   <SolidColorBrush x:Key="Danger" Color="#D64545"/>
   <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
@@ -58,7 +55,7 @@
     </ControlTemplate></Setter.Value>
    </Setter>
   </Style>
-  <!-- Primary button: the one tangerine element in a window. -->
+  <!-- Primary button: the one accent element in a window. -->
   <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
    <Setter Property="Background" Value="{DynamicResource Accent}"/>
    <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
@@ -157,7 +154,7 @@
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem"><Border x:Name="Item" Padding="{TemplateBinding Padding}" CornerRadius="6" Background="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Item" Property="Background" Value="{StaticResource Hover}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Item" Property="Background" Value="{DynamicResource AccentSoft}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
   </Style>
 
-  <!-- Slider: thin rule with a tangerine fill and a round thumb. -->
+  <!-- Slider: thin rule with an accent fill and a round thumb. -->
   <Style TargetType="Slider">
    <Setter Property="Height" Value="24"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
@@ -231,7 +228,7 @@
    </ControlTemplate></Setter.Value></Setter>
   </Style>
 
-  <!-- Settings navigation item: the selected page sits on the soft tint in tangerine. -->
+  <!-- Settings navigation item: the selected page sits on the soft tint in the accent. -->
   <Style x:Key="NavItem" TargetType="RadioButton">
    <Setter Property="Cursor" Value="Hand"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="13.5"/><Setter Property="FontWeight" Value="SemiBold"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">

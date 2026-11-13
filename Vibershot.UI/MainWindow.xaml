@@ -8,16 +8,16 @@
   <!-- Focus rings are adorners, so WPF only shows them for keyboard navigation (Tab), never after a mouse click
        or when focus returns from a dialog. One per corner radius so the ring hugs the button shape. -->
   <Style x:Key="FocusRing6" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
-   <Rectangle RadiusX="6" RadiusY="6" Stroke="{StaticResource Tangerine}" StrokeThickness="2" SnapsToDevicePixels="True"/>
+   <Rectangle RadiusX="6" RadiusY="6" Stroke="{StaticResource Accent}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
   <Style x:Key="FocusRing10" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
-   <Rectangle RadiusX="10" RadiusY="10" Stroke="{StaticResource Tangerine}" StrokeThickness="2" SnapsToDevicePixels="True"/>
+   <Rectangle RadiusX="10" RadiusY="10" Stroke="{StaticResource Accent}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
   <Style x:Key="FocusRing12Ink" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
    <Rectangle RadiusX="12" RadiusY="12" Stroke="{StaticResource Ink}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
   <Style x:Key="FocusRing4" TargetType="Control"><Setter Property="Template"><Setter.Value><ControlTemplate>
-   <Rectangle RadiusX="4" RadiusY="4" Stroke="{StaticResource Tangerine}" StrokeThickness="2" SnapsToDevicePixels="True"/>
+   <Rectangle RadiusX="4" RadiusY="4" Stroke="{StaticResource Accent}" StrokeThickness="2" SnapsToDevicePixels="True"/>
   </ControlTemplate></Setter.Value></Setter></Style>
   <!-- Header chrome: 30px icon-only buttons with a quiet hover fill. -->
   <Style x:Key="ChromeButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -55,11 +55,11 @@
   </Style>
   <Style x:Key="RowIcon" TargetType="Border">
    <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/><Setter Property="CornerRadius" Value="9"/>
-   <Setter Property="Background" Value="{StaticResource TangerineSoft}"/><Setter Property="Margin" Value="0,0,14,0"/>
+   <Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="Margin" Value="0,0,14,0"/>
   </Style>
   <Style x:Key="RowGlyph" TargetType="TextBlock">
    <Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="15"/>
-   <Setter Property="Foreground" Value="{StaticResource Tangerine}"/>
+   <Setter Property="Foreground" Value="{StaticResource Accent}"/>
    <Setter Property="HorizontalAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/>
   </Style>
   <Style x:Key="RowTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="13.5"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/></Style>
@@ -88,7 +88,7 @@
     </StackPanel>
     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
      <!-- Glyph, color and fill change with state: a grey upright pin when off, a tilted orange pin on a soft orange fill when on. -->
-    <Button x:Name="PinButton" Style="{StaticResource ChromeButton}" Content="&#xE840;" Foreground="{StaticResource Tangerine}" Background="{StaticResource TangerineSoft}" Click="Pin_Click" AutomationProperties.Name="Turn off always on top" ToolTip="Always on top · On"/>
+    <Button x:Name="PinButton" Style="{StaticResource ChromeButton}" Content="&#xE840;" Foreground="{StaticResource Accent}" Background="{StaticResource AccentSoft}" Click="Pin_Click" AutomationProperties.Name="Turn off always on top" ToolTip="Always on top · On"/>
      <Button Style="{StaticResource ChromeButton}" Content="&#xE713;" Click="SettingsButton_Click" AutomationProperties.Name="Settings" ToolTip="Settings"/>
      <Button Style="{StaticResource ChromeButton}" Content="&#xE921;" Click="Minimize_Click" AutomationProperties.Name="Minimize" ToolTip="Minimize"/>
      <Button Style="{StaticResource ChromeButton}" Content="&#xE8BB;" Click="Close_Click" AutomationProperties.Name="Close Vibershot" ToolTip="Close Vibershot"/>
@@ -98,18 +98,18 @@
    <!-- Primary action: the only place the accent appears at full strength. -->
    <Button x:Name="CaptureButton" Grid.Row="1" Click="CaptureButton_Click" AutomationProperties.Name="Capture region" Margin="20,4,20,0" Padding="0" BorderThickness="0" Background="Transparent" HorizontalContentAlignment="Stretch" ToolTip="Select part of your screen" FocusVisualStyle="{StaticResource FocusRing12Ink}">
     <Button.Template><ControlTemplate TargetType="Button">
-     <Border x:Name="Shell" CornerRadius="12" Background="{StaticResource Tangerine}" BorderThickness="0" Padding="18,20">
+     <Border x:Name="Shell" CornerRadius="12" Background="{StaticResource Accent}" BorderThickness="0" Padding="18,20">
       <ContentPresenter/>
      </Border>
      <ControlTemplate.Triggers>
-      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource TangerineDeep}"/></Trigger>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentDeep}"/></Trigger>
       <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Opacity" Value="0.85"/></Trigger>
      </ControlTemplate.Triggers>
     </ControlTemplate></Button.Template>
-    <Grid TextElement.Foreground="{StaticResource TangerineInk}">
+    <Grid TextElement.Foreground="{StaticResource AccentInk}">
      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <Border Width="40" Height="40" CornerRadius="10" Background="#2EFFFFFF" Margin="0,0,12,0">
-      <Path Data="M1,8 L1,1 L8,1 M14,1 L21,1 L21,8 M21,14 L21,21 L14,21 M8,21 L1,21 L1,14 M7,7 L15,7 L15,15 L7,15 Z" Stroke="{StaticResource TangerineInk}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+      <Path Data="M1,8 L1,1 L8,1 M14,1 L21,1 L21,8 M21,14 L21,21 L14,21 M8,21 L1,21 L1,14 M7,7 L15,7 L15,15 L7,15 Z" Stroke="{StaticResource AccentInk}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center"/>
      </Border>
      <StackPanel Grid.Column="1" VerticalAlignment="Center">
       <TextBlock Text="Capture region" FontSize="16" FontWeight="Bold"/>
@@ -160,7 +160,7 @@
      <Button.Template><ControlTemplate TargetType="Button">
       <Border x:Name="Shell" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}"><ContentPresenter/></Border>
       <ControlTemplate.Triggers>
-       <Trigger Property="IsMouseOver" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource Tangerine}"/></Trigger>
+       <Trigger Property="IsMouseOver" Value="True"><Setter Property="TextElement.Foreground" Value="{StaticResource Accent}"/></Trigger>
       </ControlTemplate.Triggers>
      </ControlTemplate></Button.Template>
      <StackPanel Orientation="Horizontal" TextElement.Foreground="{StaticResource Ink}">

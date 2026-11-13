@@ -396,7 +396,7 @@ public partial class SettingsWindow : Window
     {
         StopRecording();
         ShowRowHint(row, null);
-        row.Frame.Background = SettingsHelpers.Brush("TangerineSoft");
+        row.Frame.Background = SettingsHelpers.Brush("AccentSoft");
         row.Caps.Content = row.Recorder;
         row.Recorder.Start();
     }

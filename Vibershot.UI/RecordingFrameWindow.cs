@@ -11,7 +11,7 @@ namespace Vibershot.UI;
 public sealed class RecordingFrameWindow : Window
 {
     private const int Pad = 3; // Physical pixels: 1px dark hairline plus a 2px tangerine stroke.
-    private static readonly Color AccentColor = Color.FromRgb(0xF0, 0x61, 0x2A);
+    private static readonly Color AccentColor = Color.FromRgb(0x7A, 0x3E, 0x8F);
     private readonly Int32Rect _region;
     private readonly Border _edge = new() { BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0x14, 0x18, 0x1C)), CornerRadius = new CornerRadius(3) };
     private readonly Border _stroke = new() { BorderBrush = new SolidColorBrush(AccentColor), CornerRadius = new CornerRadius(2) };

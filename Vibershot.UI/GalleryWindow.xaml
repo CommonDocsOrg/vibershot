@@ -17,7 +17,7 @@
   <Style x:Key="SectionLabel" TargetType="TextBlock">
    <Setter Property="FontSize" Value="10.5"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="{StaticResource Ink3}"/>
   </Style>
-  <!-- Rail rows: borderless, hover fill, tangerine tint when chosen. -->
+  <!-- Rail rows: borderless, hover fill, accent tint when chosen. -->
   <Style x:Key="RailButton" TargetType="RadioButton">
    <Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,0,2"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
@@ -31,8 +31,8 @@
     </Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource Tangerine}"/><Setter Property="FontWeight" Value="Bold"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/><Setter TargetName="Shell" Property="Padding" Value="10,6"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentSoft}"/><Setter TargetName="Glyph" Property="Foreground" Value="{StaticResource Accent}"/><Setter Property="FontWeight" Value="Bold"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/><Setter TargetName="Shell" Property="Padding" Value="10,6"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
@@ -53,12 +53,12 @@
    <Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="FontSize" Value="10.5"/><Setter Property="Foreground" Value="{StaticResource Ink3}"/>
   </Style>
   <Style x:Key="TagChip" TargetType="Border">
-   <Setter Property="Background" Value="{StaticResource TangerineSoft}"/><Setter Property="CornerRadius" Value="5"/><Setter Property="Padding" Value="8,3"/><Setter Property="Margin" Value="0,0,6,6"/>
+   <Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="CornerRadius" Value="5"/><Setter Property="Padding" Value="8,3"/><Setter Property="Margin" Value="0,0,6,6"/>
   </Style>
   <DrawingBrush x:Key="Checkerboard" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
    <DrawingBrush.Drawing><DrawingGroup>
-    <GeometryDrawing Brush="#F3F4F6"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
-    <GeometryDrawing Brush="#E6E8EC"><GeometryDrawing.Geometry><GeometryGroup><RectangleGeometry Rect="0,0,10,10"/><RectangleGeometry Rect="10,10,10,10"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#E9ECF1"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#DEE2E8"><GeometryDrawing.Geometry><GeometryGroup><RectangleGeometry Rect="0,0,10,10"/><RectangleGeometry Rect="10,10,10,10"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
    </DrawingGroup></DrawingBrush.Drawing>
   </DrawingBrush>
   <Style x:Key="MetaKey" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="FontSize" Value="11.5"/><Setter Property="Margin" Value="0,0,12,6"/></Style>
@@ -97,8 +97,8 @@
     </Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsSelected" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/></Trigger>
+     <Trigger Property="IsSelected" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentSoft}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
@@ -222,7 +222,7 @@
       </ListBox>
       <!-- Marquee for drag-selecting over empty space. -->
       <Canvas x:Name="MarqueeLayer" IsHitTestVisible="False">
-       <Rectangle x:Name="Marquee" Stroke="{StaticResource Tangerine}" StrokeThickness="1" Fill="{StaticResource TangerineSoft}" Opacity="0.7" Visibility="Collapsed" RadiusX="3" RadiusY="3"/>
+       <Rectangle x:Name="Marquee" Stroke="{StaticResource Accent}" StrokeThickness="1" Fill="{StaticResource AccentSoft}" Opacity="0.7" Visibility="Collapsed" RadiusX="3" RadiusY="3"/>
       </Canvas>
       <StackPanel x:Name="EmptyState" VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False">
        <TextBlock Text="&#xEB9F;" FontFamily="Segoe Fluent Icons" FontSize="34" Foreground="{StaticResource Ink3}" HorizontalAlignment="Center"/>
@@ -266,8 +266,8 @@
         <ItemsControl.ItemTemplate><DataTemplate>
          <Border Style="{StaticResource TagChip}">
           <StackPanel Orientation="Horizontal">
-           <TextBlock Text="{Binding}" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource Tangerine}" VerticalAlignment="Center"/>
-           <Button Click="RemoveTag_Click" Tag="{Binding}" Content="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="9" Padding="4,2" Margin="6,0,0,0" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Tangerine}" ToolTip="Remove tag" AutomationProperties.Name="Remove tag"/>
+           <TextBlock Text="{Binding}" FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource Accent}" VerticalAlignment="Center"/>
+           <Button Click="RemoveTag_Click" Tag="{Binding}" Content="&#xE711;" FontFamily="Segoe Fluent Icons" FontSize="9" Padding="4,2" Margin="6,0,0,0" Background="Transparent" BorderThickness="0" Foreground="{StaticResource Accent}" ToolTip="Remove tag" AutomationProperties.Name="Remove tag"/>
           </StackPanel>
          </Border>
         </DataTemplate></ItemsControl.ItemTemplate>

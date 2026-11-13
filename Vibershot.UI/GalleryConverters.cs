@@ -50,6 +50,6 @@ public sealed class FavouriteGlyphConverter : IValueConverter
 public sealed class FavouriteBrushConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        Application.Current.FindResource(value is true ? "Tangerine" : "Ink3") as Brush ?? Brushes.Gray;
+        Application.Current.FindResource(value is true ? "Accent" : "Ink3") as Brush ?? Brushes.Gray;
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotSupportedException();
 }

@@ -265,7 +265,7 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
     {
         _detailVisible = visible;
         DetailPane.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        DetailToggle.Background = (Brush)FindResource(visible ? "TangerineSoft" : "Paper");
+        DetailToggle.Background = (Brush)FindResource(visible ? "AccentSoft" : "Paper");
     }
 
     private void Capture_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow();

@@ -61,8 +61,8 @@ public partial class MainWindow : Window
         Topmost = !Topmost;
         // Segoe Fluent Icons: Pinned (tilted) when on, Pin (upright) when off; the soft fill marks the toggle as on.
         PinButton.Content = Topmost ? "" : "";
-        PinButton.Foreground = (Brush)FindResource(Topmost ? "Tangerine" : "Ink2");
-        PinButton.Background = Topmost ? (Brush)FindResource("TangerineSoft") : Brushes.Transparent;
+        PinButton.Foreground = (Brush)FindResource(Topmost ? "Accent" : "Ink2");
+        PinButton.Background = Topmost ? (Brush)FindResource("AccentSoft") : Brushes.Transparent;
         PinButton.ToolTip = Topmost ? "Always on top · On" : "Always on top · Off";
         AutomationProperties.SetName(PinButton, Topmost ? "Turn off always on top" : "Turn on always on top");
     }
