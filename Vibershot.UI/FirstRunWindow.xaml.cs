@@ -46,7 +46,7 @@ public partial class FirstRunWindow : Window
         PsYesRadio.IsChecked = _config.PrintScreen != PrintScreenAction.Off;
         PsNoRadio.IsChecked = _config.PrintScreen == PrintScreenAction.Off;
         HotkeyCaps.Content = Keycaps.Build(_config.Hotkeys.Gesture(HotkeyAction.CaptureRegion));
-        PrintScreenWarningHost.Content = SettingsHelpers.PrintScreenBlocked ? SettingsHelpers.BuildPrintScreenWarning() : null;
+        SettingsHelpers.RefreshPrintScreenWarning(PrintScreenWarningHost);
 
         AfterCaptureText.Text = DescribeAfterCapture(_config.AfterCapture);
     }

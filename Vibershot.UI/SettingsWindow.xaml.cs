@@ -321,7 +321,7 @@ public partial class SettingsWindow : Window
         PsDesktopRadio.IsChecked = _config.PrintScreen == PrintScreenAction.FullDesktop;
         PsAskRadio.IsChecked = _config.PrintScreen != PrintScreenAction.FullDesktop && _config.ShowCaptureActions;
         PsShotRadio.IsChecked = _config.PrintScreen != PrintScreenAction.FullDesktop && !_config.ShowCaptureActions;
-        if (SettingsHelpers.PrintScreenBlocked) PrintScreenWarningHost.Content = SettingsHelpers.BuildPrintScreenWarning();
+        SettingsHelpers.RefreshPrintScreenWarning(PrintScreenWarningHost);
 
         foreach (var action in HotkeySettings.Actions)
         {
