@@ -158,7 +158,8 @@
      <Border Width="18" Height="18" CornerRadius="5" Background="{StaticResource AccentFill}" Margin="4,0,8,0" VerticalAlignment="Center"><Ellipse Width="8" Height="8" Stroke="{StaticResource AccentInk}" StrokeThickness="2"/></Border>
      <Menu x:Name="MenuBar" IsMainMenu="True">
       <MenuItem Header="_File">
-       <MenuItem Header="New from clipboard" InputGestureText="Ctrl+N" Click="NewFromClipboard_Click"/>
+       <MenuItem Header="New canvas…" InputGestureText="Ctrl+N" Click="NewCanvas_Click"/>
+       <MenuItem Header="New from clipboard" InputGestureText="Ctrl+Shift+N" Click="NewFromClipboard_Click"/>
        <MenuItem Header="Open…" InputGestureText="Ctrl+O" Click="Open_Click"/>
        <MenuItem Header="Open gallery" InputGestureText="Ctrl+G" Click="OpenGallery_Click"/>
        <Separator/>
@@ -186,13 +187,16 @@
        <MenuItem Header="Zoom in" InputGestureText="Ctrl++" Click="ZoomIn_Click"/>
        <MenuItem Header="Zoom out" InputGestureText="Ctrl+-" Click="ZoomOut_Click"/>
        <Separator/>
-       <MenuItem Header="Fit to window" InputGestureText="Ctrl+0" Click="Fit_Click"/>
-       <MenuItem Header="Actual size" InputGestureText="Ctrl+1" Click="ActualSize_Click"/>
+       <MenuItem x:Name="ActualSizeMenu" Header="Actual size (1:1)" InputGestureText="Ctrl+0" Click="ActualSize_Click"/>
+       <MenuItem x:Name="FitMenu" Header="Fit to window" Click="Fit_Click"/>
       </MenuItem>
       <MenuItem Header="_Image" SubmenuOpened="ImageMenu_Opened">
        <MenuItem Header="Crop…" InputGestureText="C" Click="CropTool_Click"/>
        <MenuItem x:Name="ApplyCropMenu" Header="Apply crop" InputGestureText="Enter" Click="ApplyCrop_Click"/>
        <MenuItem x:Name="ResetCropMenu" Header="Reset crop" Click="ResetCrop_Click"/>
+       <Separator/>
+       <MenuItem Header="Canvas size…" Click="CanvasSize_Click"/>
+       <MenuItem Header="Image size…" Click="ImageSize_Click"/>
        <Separator/>
        <MenuItem Header="Place image file…" InputGestureText="I" Click="ImageTool_Click"/>
       </MenuItem>
@@ -260,8 +264,8 @@
        <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE71F;" Click="ZoomOut_Click" ToolTip="Zoom out (Ctrl+-)" AutomationProperties.Name="Zoom out"/>
        <TextBlock x:Name="ZoomLabel" Text="100%" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource Ink2}" Width="44" TextAlignment="Center" VerticalAlignment="Center"/>
        <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE8A3;" Click="ZoomIn_Click" ToolTip="Zoom in (Ctrl++)" AutomationProperties.Name="Zoom in"/>
-       <Button Style="{StaticResource RailTextButton}" Height="26" Padding="8,0" FontSize="11" Content="Fit" Click="Fit_Click" ToolTip="Fit the picture in the window (Ctrl+0)"/>
-       <Button Style="{StaticResource RailTextButton}" Height="26" Padding="8,0" FontSize="11" Content="1:1" Click="ActualSize_Click" ToolTip="Show pixels 1:1 (Ctrl+1)"/>
+       <Button Style="{StaticResource RailTextButton}" Height="26" Padding="8,0" FontSize="11" x:Name="FitButton" Content="Fit" Click="Fit_Click" ToolTip="Fit the picture in the window"/>
+       <Button Style="{StaticResource RailTextButton}" Height="26" Padding="8,0" FontSize="11" x:Name="ActualSizeButton" Content="1:1" Click="ActualSize_Click" ToolTip="Show pixels 1:1 (Ctrl+0)"/>
       </StackPanel>
      </Border>
      <Button Content="Export image…" Style="{StaticResource PrimaryButton}" Click="Export_Click" Padding="16,7" Margin="10,0,0,0" FontSize="12.5" ToolTip="Write a flat PNG, JPEG or WebP (Ctrl+E)"/>
@@ -311,6 +315,15 @@
         <ToggleButton Style="{StaticResource ToolRow}" Tag="Text" Click="Tool_Click" ToolTip="Text (T)" AutomationProperties.Name="Text tool">
          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8D2;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Text"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="T"/></Grid>
         </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Callout" Click="Tool_Click" ToolTip="Callout: a label with arrows, or a speech or thought bubble (O; press again to switch)" AutomationProperties.Name="Callout tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE90A;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Callout"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="O"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Stamp" Click="Tool_Click" ToolTip="Stamp: place a ready-made symbol (K)" AutomationProperties.Name="Stamp tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE734;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Stamp"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="K"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Blur" Click="Tool_Click" ToolTip="Blur: paint or box over anything that should not be readable (B)" AutomationProperties.Name="Blur tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE890;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Blur"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="B"/></Grid>
+        </ToggleButton>
         <ToggleButton Style="{StaticResource ToolRow}" Tag="Image" Click="Tool_Click" ToolTip="Place an image file (I)" AutomationProperties.Name="Image tool">
          <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xEB9F;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Image"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="I"/></Grid>
         </ToggleButton>
@@ -326,6 +339,47 @@
             <ToggleButton Style="{StaticResource Segment}" Tag="Line" Content="Line" Click="ShapeKind_Click"/>
            </UniformGrid>
           </Border>
+          <!-- Callout style: also shown while a callout is selected, where it restyles the selection. -->
+          <Border x:Name="CalloutKindRow" Background="{StaticResource Paper}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1" CornerRadius="8" Padding="2" Margin="0,10,0,0" Visibility="Collapsed">
+           <UniformGrid x:Name="CalloutKinds" Columns="4">
+            <ToggleButton Style="{StaticResource Segment}" Tag="Label" Content="Label" Click="CalloutKind_Click" ToolTip="A text box; drag from what it describes to add an arrow"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Speech" Content="Speech" Click="CalloutKind_Click" ToolTip="A rounded speech bubble with a tail"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Oval" Content="Oval" Click="CalloutKind_Click" ToolTip="An oval speech bubble with a tail"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Thought" Content="Thought" Click="CalloutKind_Click" ToolTip="A thought cloud with a trail of bubbles"/>
+           </UniformGrid>
+          </Border>
+          <!-- Stamp picker: search, then click a stamp to make it the one the tool places. -->
+          <StackPanel x:Name="StampRow" Visibility="Collapsed" Margin="0,10,0,0">
+           <Grid>
+            <TextBox x:Name="StampSearch" Padding="28,6,8,6" FontSize="12" TextChanged="StampSearch_Changed" AutomationProperties.Name="Search stamps" ToolTip="Search stamps by name or meaning"/>
+            <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{StaticResource Ink3}" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+            <TextBlock x:Name="StampSearchHint" Text="Search stamps" FontSize="12" Foreground="{StaticResource Ink3}" Margin="30,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+           </Grid>
+           <WrapPanel x:Name="StampGrid" Margin="0,8,-4,0"/>
+           <TextBlock x:Name="StampEmpty" Style="{StaticResource Hint}" Text="No stamp matches that search." Visibility="Collapsed"/>
+          </StackPanel>
+          <!-- Blur and pixelate: shared by the Blur tool (brush or box) and the Marquee tool (the selected pixels). -->
+          <StackPanel x:Name="ObscureRow" Visibility="Collapsed" Margin="0,10,0,0">
+           <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1" CornerRadius="8" Padding="2">
+            <UniformGrid x:Name="ObscureModes" Columns="2">
+             <ToggleButton Style="{StaticResource Segment}" Tag="Blur" Content="Blur" Click="ObscureMode_Click" ToolTip="Smooth the area until it cannot be read"/>
+             <ToggleButton Style="{StaticResource Segment}" Tag="Pixelate" Content="Pixelate" Click="ObscureMode_Click" ToolTip="Replace the area with large blocks"/>
+            </UniformGrid>
+           </Border>
+           <Border x:Name="BlurShapeRow" Background="{StaticResource Paper}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1" CornerRadius="8" Padding="2" Margin="0,6,0,0">
+            <UniformGrid x:Name="BlurShapes" Columns="2">
+             <ToggleButton Style="{StaticResource Segment}" Tag="Brush" Content="Brush" Click="BlurShape_Click" ToolTip="Paint over the area"/>
+             <ToggleButton Style="{StaticResource Segment}" Tag="Box" Content="Box" Click="BlurShape_Click" ToolTip="Drag a rectangle over the area"/>
+            </UniformGrid>
+           </Border>
+           <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Strength"/><local:ValueBox x:Name="BlurStrengthBox" Grid.Column="1" Minimum="1" Maximum="300" AutomationProperties.Name="Blur strength"/></Grid>
+           <Slider x:Name="BlurStrengthSlider" Minimum="2" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="BlurStrength_Changed" AutomationProperties.Name="Blur strength slider"/>
+           <StackPanel x:Name="BrushSizeRow">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Brush size"/><local:ValueBox x:Name="BrushSizeBox" Grid.Column="1" Minimum="2" Maximum="2000" AutomationProperties.Name="Brush size"/></Grid>
+            <Slider x:Name="BrushSizeSlider" Minimum="4" Maximum="200" TickFrequency="2" IsSnapToTickEnabled="True" ValueChanged="BrushSize_Changed" AutomationProperties.Name="Brush size slider"/>
+           </StackPanel>
+           <Button x:Name="ObscureSelectionButton" Style="{StaticResource SmallButton}" Content="Blur selection" Click="ObscureSelection_Click" Margin="0,10,0,0" HorizontalAlignment="Left" ToolTip="Hide the pixels inside the marquee"/>
+          </StackPanel>
           <StackPanel x:Name="CropRow" Visibility="Collapsed">
            <TextBlock x:Name="CropHint" Style="{StaticResource Hint}" Text="Drag over the picture, then press Enter to crop. Esc cancels." TextWrapping="Wrap"/>
            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
@@ -342,20 +396,28 @@
            <StackPanel x:Name="StrokeRow">
             <TextBlock Style="{StaticResource FieldLabel}" Text="Stroke" Margin="0,0,0,6"/>
             <local:ColorStrip x:Name="StrokeStrip" AllowNone="True"/>
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Width"/><TextBlock x:Name="StrokeWidthValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-            <Slider x:Name="StrokeWidthSlider" Minimum="0" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="StrokeWidth_Changed"/>
+            <StackPanel x:Name="StrokeWidthRow">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Width"/><local:ValueBox x:Name="StrokeWidthBox" Grid.Column="1" Minimum="0" Maximum="1000" AutomationProperties.Name="Stroke width" ToolTip="Type any width up to 1000 px"/></Grid>
+            <Slider x:Name="StrokeWidthSlider" Minimum="0" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="StrokeWidth_Changed"/>
+            </StackPanel>
            </StackPanel>
            <StackPanel x:Name="FillRow">
             <TextBlock Style="{StaticResource FieldLabel}" Text="Fill"/>
             <local:ColorStrip x:Name="FillStrip" AllowNone="True"/>
            </StackPanel>
            <StackPanel x:Name="CornerRow">
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Corner radius"/><TextBlock x:Name="CornerValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-            <Slider x:Name="CornerSlider" Minimum="0" Maximum="80" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Corner_Changed"/>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Corner radius"/><local:ValueBox x:Name="CornerBox" Grid.Column="1" Minimum="0" Maximum="5000" AutomationProperties.Name="Corner radius"/></Grid>
+            <Slider x:Name="CornerSlider" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Corner_Changed"/>
            </StackPanel>
            <StackPanel x:Name="HeadRow">
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Arrow head"/><TextBlock x:Name="HeadValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-            <Slider x:Name="HeadSlider" Minimum="4" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Head_Changed"/>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Arrow head"/><local:ValueBox x:Name="HeadBox" Grid.Column="1" Minimum="2" Maximum="2000" AutomationProperties.Name="Arrow head size"/></Grid>
+            <Slider x:Name="HeadSlider" Minimum="4" Maximum="80" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Head_Changed"/>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Head roundness"/><local:ValueBox x:Name="RoundBox" Grid.Column="1" Minimum="0" Maximum="100" Suffix="%" AutomationProperties.Name="Arrow head roundness"/></Grid>
+            <Slider x:Name="RoundSlider" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="Round_Changed" ToolTip="0% is a sharp point; 100% rounds the head right off"/>
+           </StackPanel>
+           <StackPanel x:Name="CalloutArrowRow" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button x:Name="AddPointerButton" Style="{StaticResource SmallButton}" Content="Add arrow" Click="AddPointer_Click" Margin="0,0,6,0" ToolTip="Add another pointer, then drag its tip onto what it should point at"/>
+            <Button x:Name="RemovePointerButton" Style="{StaticResource SmallButton}" Content="Remove arrow" Click="RemovePointer_Click" ToolTip="Remove the newest pointer"/>
            </StackPanel>
            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Opacity"/><TextBlock x:Name="OpacityValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
            <Slider x:Name="OpacitySlider" Minimum="5" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="Opacity_Changed"/>
@@ -365,7 +427,7 @@
             <ComboBox x:Name="FontCombo" SelectionChanged="Font_Changed" AutomationProperties.Name="Font family"/>
             <Grid Margin="0,8,0,0">
              <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
-             <TextBox x:Name="FontSizeBox" Padding="8,6" FontFamily="{StaticResource MonoFont}" FontSize="12" KeyDown="FontSize_KeyDown" LostFocus="FontSize_LostFocus" AutomationProperties.Name="Font size" ToolTip="Font size in pixels"/>
+             <TextBox x:Name="FontSizeBox" Padding="8,6" FontFamily="{StaticResource MonoFont}" FontSize="12" KeyDown="FontSize_KeyDown" LostFocus="FontSize_LostFocus" AutomationProperties.Name="Font size" ToolTip="Font size in pixels (up to 2000)"/>
              <StackPanel Grid.Column="2" Orientation="Horizontal">
               <ToggleButton x:Name="BoldToggle" Style="{StaticResource SmallToggle}" Content="B" FontWeight="Bold" Click="TextStyle_Click" ToolTip="Bold"/>
               <ToggleButton x:Name="ItalicToggle" Style="{StaticResource SmallToggle}" Content="I" FontStyle="Italic" FontFamily="Georgia" Click="TextStyle_Click" ToolTip="Italic"/>
@@ -381,8 +443,8 @@
             <local:ColorStrip x:Name="TextColorStrip"/>
             <TextBlock Style="{StaticResource FieldLabel}" Text="Background"/>
             <local:ColorStrip x:Name="TextBackgroundStrip" AllowNone="True"/>
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Padding"/><TextBlock x:Name="PaddingValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-            <Slider x:Name="PaddingSlider" Minimum="0" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Padding_Changed"/>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Padding"/><local:ValueBox x:Name="PaddingBox" Grid.Column="1" Minimum="0" Maximum="1000" AutomationProperties.Name="Text padding"/></Grid>
+            <Slider x:Name="PaddingSlider" Minimum="0" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Padding_Changed"/>
            </StackPanel>
           </StackPanel>
          </StackPanel>
@@ -393,6 +455,10 @@
        <StackPanel Margin="10,22,10,16">
         <TextBlock Style="{StaticResource PanelLabel}" Text="PICTURE"/>
         <TextBlock x:Name="DocSizeLabel" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Ink2}"/>
+        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+         <Button Style="{StaticResource SmallButton}" Content="Canvas size…" Click="CanvasSize_Click" Margin="0,0,6,0" ToolTip="Add space around the picture, or trim it"/>
+         <Button Style="{StaticResource SmallButton}" Content="Image size…" Click="ImageSize_Click" ToolTip="Scale the whole picture up or down"/>
+        </StackPanel>
         <TextBlock Style="{StaticResource FieldLabel}" Text="Canvas"/>
         <local:ColorStrip x:Name="CanvasStrip" AllowNone="True" ToolTip="Colour under every layer; the crossed swatch keeps the canvas transparent"/>
        </StackPanel>

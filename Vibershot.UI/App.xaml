@@ -37,6 +37,35 @@
   </Style>
   <Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink}"/></Style>
 
+  <!-- Tooltip: a small paper panel. Without this the system's light tooltip shows the app's off-white text on white. -->
+  <Style TargetType="ToolTip">
+   <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="11.5"/>
+   <Setter Property="Padding" Value="9,6"/><Setter Property="HasDropShadow" Value="False"/><Setter Property="MaxWidth" Value="360"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToolTip">
+    <Border Background="{StaticResource Well}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}" Margin="6" SnapsToDevicePixels="True">
+     <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="10" ShadowDepth="2" Opacity="0.4"/></Border.Effect>
+     <ContentPresenter><ContentPresenter.Resources><Style TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="TextWrapping" Value="Wrap"/></Style></ContentPresenter.Resources></ContentPresenter>
+    </Border>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+
+  <!-- Splitter between panes: an invisible gutter with a short grip that lights up on hover and while dragging. -->
+  <Style x:Key="PaneSplitter" TargetType="GridSplitter">
+   <Setter Property="Width" Value="14"/><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="VerticalAlignment" Value="Stretch"/>
+   <Setter Property="Background" Value="Transparent"/><Setter Property="Cursor" Value="SizeWE"/><Setter Property="ResizeBehavior" Value="PreviousAndNext"/><Setter Property="ResizeDirection" Value="Columns"/>
+   <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="GridSplitter">
+    <Border Background="Transparent">
+     <Border x:Name="Grip" Width="4" Height="44" CornerRadius="2" Background="{StaticResource PaperEdge}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="{StaticResource Ink3}"/><Setter TargetName="Grip" Property="Height" Value="64"/></Trigger>
+     <Trigger Property="IsDragging" Value="True"><Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}"/><Setter TargetName="Grip" Property="Height" Value="64"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Grip" Property="Background" Value="{DynamicResource Accent}"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+
   <!-- Secondary button: paper fill, 1px edge, fills on hover. -->
   <Style TargetType="Button">
    <Setter Property="Background" Value="{StaticResource Paper}"/>
@@ -260,6 +289,21 @@
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource Hover}"/></Trigger>
      <Trigger Property="IsChecked" Value="True"><Setter TargetName="Frame" Property="Background" Value="{DynamicResource AccentSoft}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource AccentDeep}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Ink}"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+
+  <!-- Anchor dot: one cell of the 3 × 3 anchor picker in the Canvas size dialog. -->
+  <Style x:Key="AnchorDot" TargetType="ToggleButton">
+   <Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="1"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+    <Border x:Name="Frame" CornerRadius="5" Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1">
+     <Ellipse x:Name="Dot" Width="6" Height="6" Fill="{StaticResource Ink3}"/>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Frame" Property="Background" Value="{DynamicResource AccentFill}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource AccentFill}"/><Setter TargetName="Dot" Property="Fill" Value="{DynamicResource AccentInk}"/><Setter TargetName="Dot" Property="Width" Value="10"/><Setter TargetName="Dot" Property="Height" Value="10"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Ink}"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>

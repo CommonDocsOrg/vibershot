@@ -63,6 +63,15 @@ public sealed class GallerySettings
 
     public bool ShowDetailPane { get; set; } = true;
 
+    /// <summary>Width of the left rail; the splitter beside it changes this.</summary>
+    public double RailWidth { get; set; } = DefaultRailWidth;
+
+    /// <summary>Width of the detail pane; a wider pane shows a larger preview.</summary>
+    public double DetailWidth { get; set; } = DefaultDetailWidth;
+
+    public const double DefaultRailWidth = 200, MinRailWidth = 150, MaxRailWidth = 380;
+    public const double DefaultDetailWidth = 330, MinDetailWidth = 260, MaxDetailWidth = 1100;
+
     /// <summary>Pre-2026-11 switch; now <see cref="AfterCaptureSettings.OpenGallery"/>. Read for migration, never written.</summary>
     [JsonPropertyName("OpenGalleryAfterCapture"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? LegacyOpenGalleryAfterCapture { get; set; }

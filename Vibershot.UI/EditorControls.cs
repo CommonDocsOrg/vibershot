@@ -99,20 +99,108 @@ public sealed class ColorStrip : StackPanel
     }
 }
 
+/// <summary>
+/// A small number box that sits beside a slider: the slider covers the everyday range and the box
+/// takes any value up to <see cref="Maximum"/>, so a 4K picture can have a 100 px line. Enter or
+/// leaving the box commits, Esc reverts, Up and Down step by one (ten with Shift).
+/// </summary>
+public sealed class ValueBox : TextBox
+{
+    private double _value;
+
+    public ValueBox()
+    {
+        SetResourceReference(StyleProperty, typeof(TextBox));
+        Width = 64; Padding = new Thickness(6, 3, 6, 3); FontSize = 11; TextAlignment = TextAlignment.Right;
+        HorizontalAlignment = HorizontalAlignment.Right; VerticalAlignment = VerticalAlignment.Center; Margin = new Thickness(0, 6, 0, 2);
+        FontFamily = (FontFamily)Application.Current.FindResource("MonoFont");
+        GotKeyboardFocus += (_, _) => { Text = Number(_value); SelectAll(); };
+        LostKeyboardFocus += (_, _) => Commit();
+        PreviewMouseLeftButtonDown += (_, e) => { if (!IsKeyboardFocusWithin) { Focus(); e.Handled = true; } };
+        PreviewKeyDown += OnKey;
+    }
+
+    public double Minimum { get; set; }
+    public double Maximum { get; set; } = 1000;
+    public string Suffix { get; set; } = "px";
+    public int Decimals { get; set; }
+
+    /// <summary>Where keyboard focus goes after Enter or Esc (the canvas, so tool shortcuts work again).</summary>
+    public UIElement? ReturnFocusTo { get; set; }
+
+    /// <summary>Raised when the user enters a new value; not raised by <see cref="Show"/>.</summary>
+    public event Action<double>? Committed;
+
+    public double Value => _value;
+
+    /// <summary>Displays a value without raising <see cref="Committed"/>.</summary>
+    public void Show(double value)
+    {
+        _value = value;
+        if (!IsKeyboardFocusWithin) Text = Display(value);
+    }
+
+    private string Number(double value) => Math.Round(value, Decimals).ToString(Decimals > 0 ? "0." + new string('#', Decimals) : "0", System.Globalization.CultureInfo.CurrentCulture);
+    private string Display(double value) => Suffix.Length > 0 ? $"{Number(value)} {Suffix}" : Number(value);
+
+    private void OnKey(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter: Commit(); Leave(); e.Handled = true; break;
+            case Key.Escape: Text = Number(_value); Leave(); e.Handled = true; break;
+            case Key.Up or Key.Down:
+                double step = (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10 : 1) * (e.Key == Key.Up ? 1 : -1);
+                Apply((TryRead(out var current) ? current : _value) + step);
+                Text = Number(_value); SelectAll(); e.Handled = true;
+                break;
+        }
+    }
+
+    private void Leave()
+    {
+        if (ReturnFocusTo != null) ReturnFocusTo.Focus();
+        else Text = Display(_value);
+    }
+
+    private bool TryRead(out double value)
+    {
+        var text = Text.Trim();
+        if (Suffix.Length > 0 && text.EndsWith(Suffix, StringComparison.OrdinalIgnoreCase)) text = text[..^Suffix.Length].Trim();
+        return double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out value)
+            || double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value);
+    }
+
+    private void Commit()
+    {
+        if (TryRead(out var value)) Apply(value);
+        Text = IsKeyboardFocusWithin ? Number(_value) : Display(_value);
+    }
+
+    private void Apply(double value)
+    {
+        value = Math.Round(Math.Clamp(value, Minimum, Maximum), Decimals);
+        if (value == _value) return;
+        _value = value;
+        Committed?.Invoke(value);
+    }
+}
+
 /// <summary>Help → Keyboard shortcuts: the editor's keys in two mono columns.</summary>
 internal static class ShortcutsDialog
 {
     private static readonly (string Keys, string Action)[] Rows =
     [
-        ("V  M  C", "Select, Marquee, Crop tool"), ("A  S  T  I", "Arrow, Shape, Text, Image tool"), ("S again", "Next shape: rectangle, ellipse, line"),
-        ("Space + drag", "Pan"), ("Ctrl + wheel", "Zoom at the pointer"), ("Ctrl+0 / Ctrl+1", "Fit to window / actual size"),
+        ("V  M  C", "Select, Marquee, Crop tool"), ("A  S  T  I", "Arrow, Shape, Text, Image tool"), ("O  K  B", "Callout, Stamp, Blur tool"), ("S / O again", "Next shape or callout style"),
+        ("Space + drag", "Pan"), ("Ctrl + wheel", "Zoom at the pointer"), ("{zoom}", "Actual size (1:1) / fit to window"),
         ("Ctrl+Z / Ctrl+Y", "Undo / redo"), ("Ctrl+C / X / V", "Copy, cut, paste"), ("Ctrl+D", "Duplicate"), ("Delete", "Delete selection or clear pixels"),
         ("Ctrl+A", "Select all"), ("Arrows / Shift+Arrows", "Nudge 1 px / 10 px"), ("Ctrl+] / Ctrl+[", "Bring forward / send backward"), ("Ctrl+Shift+] / [", "Bring to front / send to back"),
         ("Enter / Esc", "Apply crop / cancel"), ("Ctrl+S / Ctrl+Shift+S", "Save project / save as"), ("Ctrl+E", "Export image"), ("Ctrl+Shift+C", "Copy the flattened image"),
-        ("Ctrl+O / Ctrl+N", "Open file / new from clipboard"), ("Ctrl+G", "Open the gallery"), ("Ctrl+W", "Close the editor"),
+        ("Ctrl+O / Ctrl+N", "Open file / new canvas"), ("Ctrl+Shift+N", "New from the clipboard"), ("Ctrl+G", "Open the gallery"), ("Ctrl+W", "Close the editor"),
     ];
 
-    public static void Show(Window owner)
+    /// <param name="zoomKeys">The configured actual-size and fit shortcuts as one cell, for example "Ctrl+0 / not set".</param>
+    public static void Show(Window owner, string zoomKeys)
     {
         var window = new Window
         {
@@ -128,7 +216,7 @@ internal static class ShortcutsDialog
         for (int i = 0; i < Rows.Length; i++)
         {
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var keys = new TextBlock { Text = Rows[i].Keys, FontFamily = mono, FontSize = 12, Margin = new Thickness(0, 0, 18, 7), Foreground = (Brush)Application.Current.FindResource("Ink") };
+            var keys = new TextBlock { Text = Rows[i].Keys == "{zoom}" ? zoomKeys : Rows[i].Keys, FontFamily = mono, FontSize = 12, Margin = new Thickness(0, 0, 18, 7), Foreground = (Brush)Application.Current.FindResource("Ink") };
             var action = new TextBlock { Text = Rows[i].Action, FontSize = 12.5, Margin = new Thickness(0, 0, 0, 7), Foreground = (Brush)Application.Current.FindResource("Ink2") };
             Grid.SetRow(keys, i); Grid.SetRow(action, i); Grid.SetColumn(action, 1);
             grid.Children.Add(keys);

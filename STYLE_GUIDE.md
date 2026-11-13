@@ -98,6 +98,12 @@ Shadow on a window: black, blur 40, depth 10, opacity 0.55. Popup shadow: black,
 
 **Scrollbar.** 10px wide, transparent track, no arrows. The thumb is a `PaperEdge` rounded bar, `Ink3` on hover and `Accent` while dragging.
 
+**Tooltip.** A small `Well` panel with a `PaperEdge` border, radius 6, 9×6 padding and 11.5pt `Ink` text, wrapping at 360px. Defined once in `App.xaml` so no window falls back to the system's light tooltip.
+
+**Splitter.** The 14px gutter between two panes is the `PaneSplitter`: invisible except for a 4×44 `PaperEdge` grip, which lengthens and turns `Ink3` on hover and `Accent` while dragging. Double-click resets the pane.
+
+**Number box.** A 64px mono `ValueBox` sits to the right of a slider's label and shows the value with its unit (`14 px`, `80 %`). The slider is for the common range; the box accepts anything up to its own maximum.
+
 **Chip.** 1px `Rule` border, radius 5, 6×3 padding, mono text in `Ink3`. Shows a real shortcut only when that shortcut is actually registered (for example the Print Screen chip appears only when Print Screen is set to Full desktop).
 
 **Section label.** Uppercase, 10.5 bold, `Ink3`, inset 4px past the content edge.

@@ -136,10 +136,19 @@
   </Grid>
 
   <Grid Grid.Row="1">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+   <!-- Rail, tiles and detail pane; the two gutters between them are splitters (drag to resize, double-click to reset). Widths are remembered. -->
+   <Grid.ColumnDefinitions>
+    <ColumnDefinition x:Name="RailColumn" Width="200" MinWidth="150" MaxWidth="380"/>
+    <ColumnDefinition Width="Auto"/>
+    <ColumnDefinition MinWidth="300"/>
+    <ColumnDefinition Width="Auto"/>
+    <ColumnDefinition x:Name="DetailColumn" Width="330" MinWidth="260" MaxWidth="1100"/>
+   </Grid.ColumnDefinitions>
+   <GridSplitter x:Name="RailSplitter" Grid.Column="1" Style="{StaticResource PaneSplitter}" MouseDoubleClick="RailSplitter_DoubleClick" ToolTip="Drag to resize the sidebar. Double-click to reset." AutomationProperties.Name="Resize sidebar"/>
+   <GridSplitter x:Name="DetailSplitter" Grid.Column="3" Style="{StaticResource PaneSplitter}" MouseDoubleClick="DetailSplitter_DoubleClick" ToolTip="Drag to resize the detail pane and its preview. Double-click to reset." AutomationProperties.Name="Resize detail pane"/>
 
    <!-- Left rail: library filters and tags. -->
-   <Border Style="{StaticResource Group}" Padding="10,16" Margin="0,0,14,0">
+   <Border Style="{StaticResource Group}" Padding="10,16" Margin="0">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
      <StackPanel>
       <TextBlock Style="{StaticResource SectionLabel}" Text="LIBRARY" Margin="12,0,0,8"/>
@@ -160,7 +169,7 @@
    </Border>
 
    <!-- Center: toolbar, the tile grid, a status line. -->
-   <Border Grid.Column="1" Style="{StaticResource Group}" Padding="14,12,14,10" Margin="0">
+   <Border Grid.Column="2" Style="{StaticResource Group}" Padding="14,12,14,10" Margin="0">
     <Grid>
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
      <WrapPanel x:Name="Toolbar" Margin="0,0,0,8">
@@ -238,10 +247,11 @@
    </Border>
 
    <!-- Right: detail pane. -->
-   <Border x:Name="DetailPane" Grid.Column="2" Style="{StaticResource Group}" Width="330" Margin="14,0,0,0" Padding="18">
+   <Border x:Name="DetailPane" Grid.Column="4" Style="{StaticResource Group}" Margin="0" Padding="18" SizeChanged="DetailPane_SizeChanged">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
      <StackPanel>
-      <Border Height="210" CornerRadius="10" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" Background="{StaticResource Checkerboard}" ClipToBounds="True">
+      <!-- The preview grows with the pane: widen the pane for a bigger look at the capture. -->
+      <Border x:Name="DetailPreview" Height="210" CornerRadius="10" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" Background="{StaticResource Checkerboard}" ClipToBounds="True">
        <Image x:Name="DetailImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Margin="8"/>
       </Border>
       <TextBlock x:Name="DetailName" FontSize="14" FontWeight="Bold" TextWrapping="Wrap" Margin="0,14,0,2"/>

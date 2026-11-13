@@ -215,6 +215,13 @@
        </Grid>
       </StackPanel>
      </Border>
+     <Border Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Style="{StaticResource CardTitle}" Text="View shortcuts"/>
+       <TextBlock Style="{StaticResource CardHint}" Text="These work inside the editor. Click Change, then press the keys you want. Esc cancels." Margin="0,3,0,10"/>
+       <StackPanel x:Name="EditorShortcutRows"/>
+      </StackPanel>
+     </Border>
     </StackPanel>
 
     <!-- Video -->

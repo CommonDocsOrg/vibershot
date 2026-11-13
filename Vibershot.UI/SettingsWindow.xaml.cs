@@ -410,6 +410,12 @@ public partial class SettingsWindow : Window
             row.Recorder.Stop();
             ShowGesture(row);
         }
+        foreach (var (recorder, show) in _editorRecorders)
+        {
+            if (!recorder.IsRecording) continue;
+            recorder.Stop();
+            show();
+        }
     }
 
     private void AcceptGesture(HotkeyRow row, HotkeyGesture gesture)
@@ -590,6 +596,73 @@ public partial class SettingsWindow : Window
         StrokeWidthLabel.Text = $"{(int)StrokeWidthSlider.Value} px";
         FontFamilyTextBox.Text = _config.Editor.DefaultFontFamily;
         FontSizeTextBox.Text = _config.Editor.DefaultFontSize.ToString("0.##", CultureInfo.InvariantCulture);
+        _editorKeys["actual"] = _config.Editor.ActualSizeShortcut ?? "";
+        _editorKeys["fit"] = _config.Editor.FitShortcut ?? "";
+        EditorShortcutRows.Children.Add(BuildEditorShortcutRow("actual", "Actual size (1:1 pixels)"));
+        EditorShortcutRows.Children.Add(BuildEditorShortcutRow("fit", "Fit picture to the window"));
+    }
+
+    // Editor view shortcuts work only inside the editor, so they are kept apart from the global hotkeys: no system-wide registration, no conflict probe.
+    private readonly Dictionary<string, string> _editorKeys = new();
+    private readonly List<(HotkeyRecorder Recorder, Action Show)> _editorRecorders = new();
+
+    private FrameworkElement BuildEditorShortcutRow(string id, string label)
+    {
+        var caps = new ContentControl { Focusable = false, VerticalAlignment = VerticalAlignment.Center };
+        var hint = new TextBlock { Foreground = SettingsHelpers.Brush("Danger"), FontSize = 11.5, Margin = new Thickness(0, 4, 0, 0), Visibility = Visibility.Collapsed };
+        var frame = new Border { Padding = new Thickness(10, 8, 10, 8), CornerRadius = new CornerRadius(8), Margin = new Thickness(-10, 0, -10, 2), Background = Brushes.Transparent };
+        var recorder = new HotkeyRecorder();
+        Button change = null!, clear = null!;
+        HotkeyGesture Pending() => HotkeyGesture.TryParse(_editorKeys[id], out var g) ? g : HotkeyGesture.Empty;
+        void Hint(string? message) { hint.Text = message ?? ""; hint.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible; }
+        void Show()
+        {
+            var gesture = Pending();
+            caps.Content = Keycaps.Build(gesture);
+            change.Content = gesture.IsEmpty ? "Set" : "Change";
+            clear.Visibility = gesture.IsEmpty ? Visibility.Collapsed : Visibility.Visible;
+            frame.Background = Brushes.Transparent;
+        }
+        change = SettingsHelpers.LinkButton("Change", "Change shortcut for " + label, (_, _) =>
+        {
+            StopRecording();
+            Hint(null);
+            frame.Background = SettingsHelpers.Brush("AccentSoft");
+            caps.Content = recorder;
+            recorder.Start();
+        });
+        clear = SettingsHelpers.LinkButton("Clear", "Clear shortcut for " + label, (_, _) => { StopRecording(); _editorKeys[id] = ""; Hint(null); Show(); });
+        clear.Margin = new Thickness(8, 0, 0, 0);
+        recorder.Captured += gesture =>
+        {
+            string text = gesture.ToString();
+            if (_editorKeys.Any(other => other.Key != id && string.Equals(other.Value, text, StringComparison.OrdinalIgnoreCase))) { Show(); Hint("Already used by the other view shortcut"); return; }
+            _editorKeys[id] = text;
+            Hint(null);
+            Show();
+        };
+        recorder.Cancelled += Show;
+        recorder.Rejected += message => Hint(message);
+        _editorRecorders.Add((recorder, Show));
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(190) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(new TextBlock { Text = label, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(caps, 1);
+        grid.Children.Add(caps);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        buttons.Children.Add(change);
+        buttons.Children.Add(clear);
+        Grid.SetColumn(buttons, 2);
+        grid.Children.Add(buttons);
+        var stack = new StackPanel();
+        stack.Children.Add(grid);
+        stack.Children.Add(hint);
+        frame.Child = stack;
+        Show();
+        return frame;
     }
 
     private void SelectCanvasBackground(string setting)
@@ -728,8 +801,8 @@ public partial class SettingsWindow : Window
         if (EditorSettings.ParseArgb(SelectedCanvasBackground) is null) return Fail(SettingsPage.Editor, "Enter the canvas colour as #RRGGBB or #AARRGGBB.");
         if (EditorSettings.ParseArgb(StrokeColorTextBox.Text) is null) return Fail(SettingsPage.Editor, "Enter the stroke colour as #RRGGBB or #AARRGGBB.");
         if (string.IsNullOrWhiteSpace(FontFamilyTextBox.Text)) return Fail(SettingsPage.Editor, "Enter a font family for new text.");
-        if (!double.TryParse(FontSizeTextBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var fontSize) || fontSize < 4 || fontSize > 400)
-            return Fail(SettingsPage.Editor, "Enter a font size between 4 and 400.");
+        if (!double.TryParse(FontSizeTextBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var fontSize) || fontSize < 4 || fontSize > 2000)
+            return Fail(SettingsPage.Editor, "Enter a font size between 4 and 2000.");
         if (!TryDays(CleanShotsDays, out _) || !TryDays(CleanVideosDays, out _) || !TryDays(CleanRecoveryDays, out _))
             return Fail(SettingsPage.Gallery, "Clean-up ages must be whole numbers of days from 1 to 3650.");
         foreach (var action in HotkeySettings.Actions)
@@ -775,6 +848,8 @@ public partial class SettingsWindow : Window
         _config.Editor.DefaultStrokeWidth = (int)StrokeWidthSlider.Value;
         _config.Editor.DefaultFontFamily = FontFamilyTextBox.Text.Trim();
         _config.Editor.DefaultFontSize = double.Parse(FontSizeTextBox.Text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture);
+        _config.Editor.ActualSizeShortcut = _editorKeys["actual"];
+        _config.Editor.FitShortcut = _editorKeys["fit"];
 
         _config.Video.Format = SelectedVideoFormat;
         _config.Video.FrameRate = SelectedFrameRate.ToString();

@@ -85,11 +85,10 @@ public sealed class EditorCanvas : FrameworkElement
                     _ids[entry.Visual] = item.Id;
                     RenderItem(entry.Visual, item);
                 }
-                else if (!ReferenceEquals(entry.Item, item))
+                else if (!ReferenceEquals(entry.Item, item) || _hidden == item.Id)
                 {
                     RenderItem(entry.Visual, item);
                 }
-                entry.Visual.Opacity = _hidden == item.Id ? 0 : 1;
                 _visuals[item.Id] = (item, entry.Visual);
                 container.Children.Add(entry.Visual);
             }
@@ -107,14 +106,18 @@ public sealed class EditorCanvas : FrameworkElement
     private void RenderItem(DrawingVisual visual, Item item)
     {
         using var dc = visual.RenderOpen();
+        // The item being typed into keeps its box, bubble and arrows; only its text gives way to the editor on top.
+        if (_hidden == item.Id && item is TextItem text) item = text with { Text = "" };
         DocumentRenderer.RenderItem(dc, item, _assets!, hitTestable: true);
     }
 
-    /// <summary>Hides one item's visual while a text box edits it in place.</summary>
+    /// <summary>Drops one text item's own text while a text box edits it in place; null puts it back.</summary>
     public void SetHidden(Guid? id)
     {
+        var previous = _hidden;
         _hidden = id;
-        foreach (var (itemId, entry) in _visuals) entry.Visual.Opacity = itemId == id ? 0 : 1;
+        foreach (var changed in new[] { previous, id })
+            if (changed is Guid key && _visuals.TryGetValue(key, out var entry)) RenderItem(entry.Visual, entry.Item);
     }
 
     private void RenderBackdrop()
