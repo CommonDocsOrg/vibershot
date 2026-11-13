@@ -53,6 +53,9 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 WizardStyle=modern
 WizardSizePercent=110
+; The app icon on the installer exe and in the wizard header (generated from assets\ in the repo root).
+SetupIconFile=..\..\Vibershot.UI\Assets\vibershot.ico
+WizardSmallImageFile=wizard-small.bmp
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 ChangesAssociations=yes

@@ -1,8 +1,12 @@
+<img src="docs/images/logo.png" alt="Vibershot logo" width="96" align="left" style="margin-right:16px">
+
 # Vibershot
 
 **Screenshots, screen recordings and annotations for Windows 11, without the clutter.**
 
 Vibershot is a small, fast capture tool. Press a key, pick what you want on screen, and it is saved, copied, recorded or opened for editing. Everything you capture lands in a searchable gallery, and nothing you draw on a picture is ever baked in until you export it.
+
+<br clear="all">
 
 ![The Vibershot launcher](docs/images/launcher.png)
 

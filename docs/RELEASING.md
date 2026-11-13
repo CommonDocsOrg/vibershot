@@ -124,4 +124,3 @@ The feed and the installer URL may be local paths, so a build can be tested end 
   to the SHA-256.
 - **Delta updates.** Every update downloads the full installer (about 145 MB, mostly the .NET
   runtime and ffmpeg). Velopack would bring deltas but drops the install-folder and library pages.
-- **An app icon.** `SetupIconFile` and the shortcut icons fall back to the default executable icon.
