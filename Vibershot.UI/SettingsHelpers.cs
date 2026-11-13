@@ -43,18 +43,42 @@ internal static class SettingsHelpers
     public static bool IsAbsolutePath(string? path) =>
         !string.IsNullOrWhiteSpace(path) && Path.IsPathFullyQualified(path) && path.IndexOfAny(Path.GetInvalidPathChars()) < 0;
 
-    /// <summary>The yellow notice shown while Windows holds Print Screen for Snipping Tool, with a link to the setting.</summary>
-    public static Border BuildPrintScreenWarning()
+    /// <summary>Fills <paramref name="host"/> with the Print Screen notice while the key is held elsewhere, and clears it otherwise.</summary>
+    public static void RefreshPrintScreenWarning(ContentControl host) =>
+        host.Content = PrintScreenBlocked ? BuildPrintScreenWarning(host) : null;
+
+    /// <summary>
+    /// The yellow notice shown while something else holds Print Screen. It names the likely
+    /// holder (OneDrive, Snipping Tool, another screenshot tool), says what to change, and has
+    /// a "Check again" link that retries the takeover and updates <paramref name="host"/>.
+    /// </summary>
+    public static Border BuildPrintScreenWarning(ContentControl host)
     {
+        var suspects = Vibershot.Core.PrintScreenConflict.Detect();
+        string names = Vibershot.Core.PrintScreenConflict.Names(suspects);
         var text = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = Brush("WarningInk") };
-        text.Inlines.Add("Windows is still holding Print Screen for Snipping Tool. Turn off 'Use the Print screen key to open screen capture' in ");
-        var link = new Hyperlink(new Run("Windows Settings › Accessibility › Keyboard"));
-        link.Click += (_, _) => OpenWindowsSetting("ms-settings:easeofaccess-keyboard");
-        text.Inlines.Add(link);
-        text.Inlines.Add(", then come back here.");
+        text.Inlines.Add(new Run($"Print Screen is held by {names}, so Vibershot can't use it yet. ") { FontWeight = FontWeights.SemiBold });
+        if (suspects.Count == 0)
+            text.Inlines.Add("Windows doesn't say which app has it. Quit other screenshot tools, or pick a different shortcut under Hotkeys. ");
+        foreach (var suspect in suspects)
+        {
+            text.Inlines.Add((suspects.Count > 1 ? suspect.Name + ": " : "") + suspect.Fix + " ");
+            if (suspect.SettingsUri is not { } uri) continue;
+            var open = new Hyperlink(new Run("Open Windows Settings"));
+            open.Click += (_, _) => OpenWindowsSetting(uri);
+            text.Inlines.Add(open);
+            text.Inlines.Add(" ");
+        }
+        var retry = new Hyperlink(new Run("Check again"));
+        retry.Click += (_, _) =>
+        {
+            (Application.Current as App)?.ApplyPrintScreenSetting();
+            RefreshPrintScreenWarning(host);
+        };
+        text.Inlines.Add(retry);
         var box = new Border { Child = text };
         box.SetResourceReference(FrameworkElement.StyleProperty, "WarningBox");
-        AutomationProperties.SetName(box, "Print Screen is held by Windows");
+        AutomationProperties.SetName(box, $"Print Screen is held by {names}");
         return box;
     }
 

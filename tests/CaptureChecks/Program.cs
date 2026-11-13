@@ -284,6 +284,12 @@ static class SettingsChecks {
   var hk=new HotkeySettings{FullDesktop="Ctrl+Shift+D",OpenGallery="ctrl+shift+d"};
   Check(hk.ConflictFor(HotkeyAction.OpenEditor,HotkeyGesture.Parse("Ctrl+Shift+D"))==HotkeyAction.FullDesktop&&hk.ConflictFor(HotkeyAction.FullDesktop,HotkeyGesture.Parse("Ctrl+Shift+D"))==HotkeyAction.OpenGallery&&hk.ConflictFor(HotkeyAction.OpenEditor,HotkeyGesture.Parse("Ctrl+Shift+E"))==null,"Hotkey conflicts");
   hk[HotkeyAction.RecordVideo]="Ctrl+Shift+R";Check(hk.RecordVideo=="Ctrl+Shift+R"&&hk[HotkeyAction.RecordVideo]=="Ctrl+Shift+R"&&HotkeySettings.Label(HotkeyAction.CaptureRegion)=="Capture region or window","Hotkey indexer");
+  // Print Screen held elsewhere: name the likely holder from the Windows setting and running apps.
+  var sus=PrintScreenConflict.Identify(false,new[]{"explorer","onedrive","OneDrive","Snagit32","SnagitCapture"});
+  Check(sus.Count==2&&sus[0].Name=="OneDrive"&&sus[1].Name=="Snagit"&&PrintScreenConflict.Names(sus)=="OneDrive or Snagit"&&PrintScreenConflict.Describe(sus).StartsWith("Print Screen is held by OneDrive or Snagit. In OneDrive Settings"),"Print Screen suspects from running apps");
+  sus=PrintScreenConflict.Identify(true,new[]{"ShareX"});Check(sus.Count==2&&sus[0]==PrintScreenConflict.WindowsSnipping&&sus[0].SettingsUri!=null&&sus[1].Name=="ShareX","Windows setting is listed first");
+  sus=PrintScreenConflict.Identify(false,new[]{"OneDrive","Greenshot"},altPrintScreenTaken:false);Check(sus.Count==1&&sus[0].Name=="Greenshot","OneDrive is cleared when Alt+Print Screen is free");
+  sus=PrintScreenConflict.Identify(false,new[]{"explorer","notepad"});Check(sus.Count==0&&PrintScreenConflict.Names(sus)=="another app"&&PrintScreenConflict.Describe(sus).Contains("another app"),"Unknown Print Screen holder");
   Check(ImageEncoding.Extension(ImageFormat.Vibeshot)=="vibeshot"&&!ImageEncoding.IsFlat(ImageFormat.Vibeshot)&&ImageEncoding.IsFlat(ImageFormat.Png),"Vibeshot format facts");
   bool threw=false;try{ImageEncoding.Encode(BitmapSource.Create(1,1,96,96,PixelFormats.Bgra32,null,new byte[4],4),ImageFormat.Vibeshot,80,new MemoryStream());}catch(NotSupportedException){threw=true;}Check(threw,"Encoder refuses the project format");
   var dir=Path.Combine(AppContext.BaseDirectory,"nextpath");if(Directory.Exists(dir))Directory.Delete(dir,true);var when=new DateTime(2026,11,12,9,30,15);

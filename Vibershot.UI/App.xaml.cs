@@ -17,6 +17,7 @@ public partial class App : Application
     private Forms.NotifyIcon? _tray;
     private SingleInstance? _instance;
     private bool _capturing, _setupShown, _updateDialogOpen;
+    private string? _printScreenWarning, _printScreenWarningShown;
     public AppConfig Config => _config;
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -45,6 +46,9 @@ public partial class App : Application
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
         _tray = new Forms.NotifyIcon { Icon = LoadTrayIcon(), Text = "Vibershot • running in tray", ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowLauncher();
+        _tray.BalloonTipClicked += (_, _) => ShowLauncher();
+        // Hotkeys registered before the tray icon existed; show any Print Screen warning now.
+        if (PrintScreenBlocked && _printScreenWarning is { } pending) WarnPrintScreenInTray(pending);
         ProbeFfmpeg();
         if (!startInTray) ShowFirstRunIfNeeded();
         // "--edit <file>" opens an image or .vibeshot project straight in the editor.
@@ -193,8 +197,22 @@ public partial class App : Application
         }
         catch (Exception)
         {
-            _main.ShowStatus("Print Screen is in use by another app. Turn off \"Use the Print screen key to open screen capture\" in Windows Settings.");
+            // Windows won't say who owns a hotkey, so name the likely holder from what is running.
+            string warning = PrintScreenConflict.Describe(PrintScreenConflict.Detect());
+            _main.ShowStatus(warning);
+            WarnPrintScreenInTray(warning);
         }
+    }
+    /// <summary>
+    /// A tray notice for a blocked Print Screen, since the launcher footer is easy to miss and
+    /// hidden on a tray start. Shown once per distinct message; clicking it opens the launcher.
+    /// </summary>
+    private void WarnPrintScreenInTray(string warning)
+    {
+        _printScreenWarning = warning;
+        if (_tray is null || warning == _printScreenWarningShown) return;
+        _printScreenWarningShown = warning;
+        _tray.ShowBalloonTip(10000, "Vibershot can't use Print Screen", warning, Forms.ToolTipIcon.Warning);
     }
     /// <summary>True when Windows (or another app) currently owns Print Screen, so the takeover could not register.</summary>
     public bool PrintScreenBlocked => _config.PrintScreen != PrintScreenAction.Off && _printScreen == null;
