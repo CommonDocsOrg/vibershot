@@ -99,6 +99,47 @@ public sealed class ColorStrip : StackPanel
     }
 }
 
+/// <summary>Help → Keyboard shortcuts: the editor's keys in two mono columns.</summary>
+internal static class ShortcutsDialog
+{
+    private static readonly (string Keys, string Action)[] Rows =
+    [
+        ("V  M  C", "Select, Marquee, Crop tool"), ("A  S  T  I", "Arrow, Shape, Text, Image tool"), ("S again", "Next shape: rectangle, ellipse, line"),
+        ("Space + drag", "Pan"), ("Ctrl + wheel", "Zoom at the pointer"), ("Ctrl+0 / Ctrl+1", "Fit to window / actual size"),
+        ("Ctrl+Z / Ctrl+Y", "Undo / redo"), ("Ctrl+C / X / V", "Copy, cut, paste"), ("Ctrl+D", "Duplicate"), ("Delete", "Delete selection or clear pixels"),
+        ("Ctrl+A", "Select all"), ("Arrows / Shift+Arrows", "Nudge 1 px / 10 px"), ("Ctrl+] / Ctrl+[", "Bring forward / send backward"), ("Ctrl+Shift+] / [", "Bring to front / send to back"),
+        ("Enter / Esc", "Apply crop / cancel"), ("Ctrl+S / Ctrl+Shift+S", "Save project / save as"), ("Ctrl+E", "Export image"), ("Ctrl+Shift+C", "Copy the flattened image"),
+        ("Ctrl+O / Ctrl+N", "Open file / new from clipboard"), ("Ctrl+G", "Open the gallery"), ("Ctrl+W", "Close the editor"),
+    ];
+
+    public static void Show(Window owner)
+    {
+        var window = new Window
+        {
+            Owner = owner, Title = "Keyboard shortcuts", Width = 460, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false,
+            Style = (Style)Application.Current.FindResource(typeof(Window)),
+        };
+        WindowAppearance.Apply(window);
+        var grid = new Grid { Margin = new Thickness(24, 18, 24, 20) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        var mono = (FontFamily)Application.Current.FindResource("MonoFont");
+        for (int i = 0; i < Rows.Length; i++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var keys = new TextBlock { Text = Rows[i].Keys, FontFamily = mono, FontSize = 12, Margin = new Thickness(0, 0, 18, 7), Foreground = (Brush)Application.Current.FindResource("Ink") };
+            var action = new TextBlock { Text = Rows[i].Action, FontSize = 12.5, Margin = new Thickness(0, 0, 0, 7), Foreground = (Brush)Application.Current.FindResource("Ink2") };
+            Grid.SetRow(keys, i); Grid.SetRow(action, i); Grid.SetColumn(action, 1);
+            grid.Children.Add(keys);
+            grid.Children.Add(action);
+        }
+        window.Content = grid;
+        window.KeyDown += (_, e) => { if (e.Key == Key.Escape) window.Close(); };
+        window.ShowDialog();
+    }
+}
+
 /// <summary>Save / Discard / Cancel prompt shown when an editor window with unsaved edits closes.</summary>
 internal static class SaveChangesDialog
 {

@@ -119,7 +119,9 @@ public partial class EditorWindow : Window
         DragOver += Window_DragOver;
         Drop += Window_Drop;
 
+        AboutMenu.Header = $"Vibershot {AppVersion.Current}";
         Surface.SetDocument(document, _assets);
+        SetShapeButtons();
         SetTool(Tool.Select);
         UpdateChrome();
         UpdatePanel();
@@ -224,6 +226,7 @@ public partial class EditorWindow : Window
         if (_primary is Guid primary && DocumentOps.LayerIndexOf(Doc, primary) is int index && index >= 0) _activeLayer = Doc.Layers[index].Id;
         UpdateLayersPanel();
         UpdatePanel();
+        UpdateCommandState();
         Surface.InvalidateOverlay();
     }
 
@@ -238,11 +241,22 @@ public partial class EditorWindow : Window
             : $"{Doc.Size.Width:0} × {Doc.Size.Height:0} px · {Doc.AllItems.Count()} items · {Doc.Layers.Count} layer{(Doc.Layers.Count == 1 ? "" : "s")}";
         DocSizeLabel.Text = Doc.CropRect != null ? $"{content.Width:0} × {content.Height:0} of {Doc.Size.Width:0} × {Doc.Size.Height:0}" : $"{Doc.Size.Width:0} × {Doc.Size.Height:0}";
         CanvasStrip.Value = Doc.Background.A == 0 ? null : Doc.Background;
-        UndoButton.IsEnabled = _history.CanUndo;
-        RedoButton.IsEnabled = _history.CanRedo;
-        ResetCropButton.IsEnabled = Doc.CropRect != null;
-        ApplyCropButton.Visibility = _tool == Tool.Crop && _cropDraft != null ? Visibility.Visible : Visibility.Collapsed;
-        CropHint.Visibility = _tool == Tool.Crop ? Visibility.Visible : Visibility.Collapsed;
+        UndoButton.IsEnabled = UndoMenu.IsEnabled = _history.CanUndo;
+        RedoButton.IsEnabled = RedoMenu.IsEnabled = _history.CanRedo;
+        ResetCropButton.IsEnabled = ResetCropMenu.IsEnabled = Doc.CropRect != null;
+        ApplyCropMenu.IsEnabled = _tool == Tool.Crop && _cropDraft != null;
+        ApplyCropButton.Visibility = ApplyCropMenu.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
+        CropRow.Visibility = _tool == Tool.Crop ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCommandState();
+    }
+
+    /// <summary>Enables the rail buttons and menu items that need a selection (or a marquee of pixels).</summary>
+    private void UpdateCommandState()
+    {
+        bool any = _selection.Count > 0;
+        bool pixels = _pixelSelection != null;
+        CutButton.IsEnabled = CopyButton.IsEnabled = DeleteButton.IsEnabled = any || pixels;
+        DuplicateButton.IsEnabled = ForwardButton.IsEnabled = BackwardButton.IsEnabled = any;
     }
 
     private void Status(string message)
@@ -262,7 +276,29 @@ public partial class EditorWindow : Window
         else if (_cropDraft == null) _cropDraft = Doc.CropRect;
         if (tool != Tool.Marquee) _pixelSelection = null;
         _tool = tool;
-        foreach (var button in ToolRail.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == tool.ToString();
+        ToggleButton? activeRow = null;
+        foreach (var button in ToolRail.Children.OfType<ToggleButton>())
+        {
+            button.IsChecked = (string)button.Tag == tool.ToString();
+            if (button.IsChecked == true) activeRow = button;
+        }
+        // The accordion sits directly under the active tool's row.
+        if (activeRow != null)
+        {
+            ToolRail.Children.Remove(ToolPanel);
+            ToolRail.Children.Insert(ToolRail.Children.IndexOf(activeRow) + 1, ToolPanel);
+        }
+        ShapeKindRow.Visibility = tool == Tool.Shape ? Visibility.Visible : Visibility.Collapsed;
+        ToolHint.Text = tool switch
+        {
+            Tool.Select => "Click an item to select it, drag to move it. Shift-click adds to the selection. Double-click text to edit it.",
+            Tool.Marquee => "Drag to select pixels. Drag inside the box or press V to lift them; Ctrl+C copies, Ctrl+X cuts, Delete clears.",
+            Tool.Crop => "Drag the area to keep.",
+            Tool.Arrow => "Drag from the tail to the head. Hold Shift to snap to 45°.",
+            Tool.Shape => "Drag on the picture to draw. Hold Shift for a square or circle.",
+            Tool.Text => "Click or drag on the picture to place a text box, then type.",
+            _ => "Click where the image should go, then pick a file.",
+        };
         Surface.Cursor = tool switch
         {
             Tool.Text => Cursors.IBeam,
@@ -270,6 +306,7 @@ public partial class EditorWindow : Window
             _ => Cursors.Cross,
         };
         UpdateChrome();
+        UpdatePanel();
         Surface.InvalidateOverlay();
         Status(tool switch
         {
@@ -286,31 +323,37 @@ public partial class EditorWindow : Window
     private void Tool_Click(object sender, RoutedEventArgs e)
     {
         var tool = Enum.Parse<Tool>((string)((ToggleButton)sender).Tag);
-        if (tool == Tool.Shape && _tool == Tool.Shape) ShapeFlyout.IsOpen = true;
-        SetTool(tool);
+        // Clicking the active Shape row again steps through rectangle, ellipse and line, like pressing S.
+        if (tool == Tool.Shape && _tool == Tool.Shape) SetShape((ShapeKind)(((int)_shape + 1) % 3));
+        else SetTool(tool);
         Surface.Focus();
     }
 
-    private void ShapeTool_RightClick(object sender, MouseButtonEventArgs e) { ShapeFlyout.IsOpen = true; e.Handled = true; }
+    private void CropTool_Click(object sender, RoutedEventArgs e) { SetTool(Tool.Crop); Surface.Focus(); }
+    private void ImageTool_Click(object sender, RoutedEventArgs e) { SetTool(Tool.Image); Surface.Focus(); }
 
     private void ShapeKind_Click(object sender, RoutedEventArgs e)
     {
         SetShape(Enum.Parse<ShapeKind>((string)((ToggleButton)sender).Tag));
-        ShapeFlyout.IsOpen = false;
         Surface.Focus();
     }
 
     private void SetShape(ShapeKind kind)
     {
         _shape = kind;
-        ShapeToolIcon.Data = Geometry.Parse(kind switch
+        SetShapeButtons();
+        SetTool(Tool.Shape);
+    }
+
+    private void SetShapeButtons()
+    {
+        ShapeToolIcon.Data = Geometry.Parse(_shape switch
         {
             ShapeKind.Ellipse => "M10,3 A7,7 0 1 1 9.99,3 Z",
             ShapeKind.Line => "M3,17 L17,3",
             _ => "M2,4 H18 V16 H2 Z",
         });
-        foreach (var button in ((StackPanel)((Border)ShapeFlyout.Child).Child).Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == kind.ToString();
-        SetTool(Tool.Shape);
+        foreach (var button in ShapeKinds.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == _shape.ToString();
     }
 
     // ----- Keyboard -----
@@ -325,6 +368,8 @@ public partial class EditorWindow : Window
             if (key == Key.Escape && _textEditor != null && _textEditor.IsKeyboardFocusWithin) { CommitTextEdit(); Surface.Focus(); e.Handled = true; }
             return;
         }
+        // Alt belongs to the menu bar's access keys (Alt+F opens File), not to the single-letter tool shortcuts.
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) return;
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
         if (key == Key.Space)
@@ -340,13 +385,16 @@ public partial class EditorWindow : Window
                 case Key.Z: if (shift) Redo(); else Undo(); break;
                 case Key.Y: Redo(); break;
                 case Key.A: SelectAll(); break;
-                case Key.C: Copy(cut: false); break;
+                case Key.C: if (shift) CopyImage(); else Copy(cut: false); break;
                 case Key.X: Copy(cut: true); break;
                 case Key.V: Paste(); break;
                 case Key.D: Duplicate(); break;
                 case Key.S: SaveProject(saveAs: shift); break;
                 case Key.O: OpenDialog(); break;
                 case Key.E: Export(); break;
+                case Key.N: (Application.Current as App)?.OpenEditorFromClipboard(); break;
+                case Key.G: (Application.Current as App)?.ShowGallery(); break;
+                case Key.W: Close(); break;
                 case Key.D0 or Key.NumPad0: Surface.Fit(Doc.ContentRect); break;
                 case Key.D1 or Key.NumPad1: Surface.Center(Doc.ContentRect, 1); break;
                 case Key.OemPlus or Key.Add: Surface.ZoomAt(new Point(Surface.ActualWidth / 2, Surface.ActualHeight / 2), Surface.Zoom * 1.25); break;
@@ -970,8 +1018,8 @@ public partial class EditorWindow : Window
         var box = new TextBox
         {
             Text = item.Text, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Style = null, BorderThickness = new Thickness(0),
-            Background = Brushes.Transparent, Foreground = new SolidColorBrush(item.Color), CaretBrush = (Brush)FindResource("Tangerine"),
-            SelectionBrush = (Brush)FindResource("TangerineSoft"), SelectionOpacity = 0.6,
+            Background = Brushes.Transparent, Foreground = new SolidColorBrush(item.Color), CaretBrush = (Brush)FindResource("Accent"),
+            SelectionBrush = (Brush)FindResource("AccentSoft"), SelectionOpacity = 0.6,
             FontFamily = new FontFamily(item.FontFamily), FontWeight = item.Bold ? FontWeights.Bold : FontWeights.Normal, FontStyle = item.Italic ? FontStyles.Italic : FontStyles.Normal,
             TextAlignment = item.Alignment switch { TextAlign.Center => TextAlignment.Center, TextAlign.Right => TextAlignment.Right, _ => TextAlignment.Left },
             VerticalContentAlignment = VerticalAlignment.Top,
@@ -1197,11 +1245,12 @@ public partial class EditorWindow : Window
 
     private void PaintOverlay(DrawingContext dc)
     {
-        var tangerine = (Brush)FindResource("Tangerine");
+        var tangerine = (Brush)FindResource("Accent");
         var paper = (Brush)FindResource("Paper");
         var outline = new Pen(tangerine, 1);
         var dashed = new Pen((Brush)FindResource("Ink2"), 1) { DashStyle = DashStyles.Dash };
-        var tint = new SolidColorBrush(Color.FromArgb(0x30, 0xF0, 0x61, 0x2A));
+        var accentColor = tangerine is SolidColorBrush solid ? solid.Color : Color.FromRgb(0x7A, 0x3E, 0x8F);
+        var tint = new SolidColorBrush(Color.FromArgb(0x30, accentColor.R, accentColor.G, accentColor.B));
 
         if (_tool == Tool.Crop && _cropDraft is Rect crop)
         {
@@ -1298,7 +1347,8 @@ public partial class EditorWindow : Window
         {
             var items = SelectedItems();
             var primary = (_primary is Guid id ? items.FirstOrDefault(i => i.Id == id) : null) ?? items.LastOrDefault();
-            NoSelectionPanel.Visibility = primary == null ? Visibility.Visible : Visibility.Collapsed;
+            // With nothing selected the Select tool explains itself; the other tools' hints already say what to do.
+            NoSelectionPanel.Visibility = primary == null && _tool == Tool.Select ? Visibility.Visible : Visibility.Collapsed;
             ItemPanel.Visibility = primary == null ? Visibility.Collapsed : Visibility.Visible;
             if (primary == null) return;
             ItemKindLabel.Text = (primary switch
@@ -1441,6 +1491,51 @@ public partial class EditorWindow : Window
         CutMenu.IsEnabled = CopyMenu.IsEnabled = DeleteMenu.IsEnabled = any || pixels;
     }
 
+    private void EditMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        bool any = _selection.Count > 0;
+        bool pixels = _pixelSelection != null;
+        DuplicateMenu2.IsEnabled = any;
+        CutMenu2.IsEnabled = CopyMenu2.IsEnabled = DeleteMenu2.IsEnabled = any || pixels;
+    }
+
+    private void ArrangeMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        bool any = _selection.Count > 0;
+        foreach (var item in new[] { FrontMenu2, ForwardMenu2, BackwardMenu2, BackMenu2 }) item.IsEnabled = any;
+    }
+
+    private void ImageMenu_Opened(object sender, RoutedEventArgs e) => UpdateChrome();
+
+    private void LayerMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        int index = ActiveLayer is Layer active ? DocumentOps.LayerIndexOf(Doc, active) : -1;
+        DeleteLayerMenu.IsEnabled = index >= 0 && Doc.Layers.Count > 1;
+        LayerUpMenu.IsEnabled = index >= 0 && index < Doc.Layers.Count - 1;
+        LayerDownMenu.IsEnabled = MergeDownMenu.IsEnabled = index > 0;
+    }
+
+    private void MergeDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (ActiveLayer is not Layer active) return;
+        int index = DocumentOps.LayerIndexOf(Doc, active);
+        if (index <= 0) return;
+        _activeLayer = Doc.Layers[index - 1].Id;
+        Push(DocumentOps.MergeLayerDown(Doc, index));
+        Status($"Merged \"{active.Name}\" into \"{Doc.Layers[index - 1].Name}\".");
+    }
+
+    private void NewFromClipboard_Click(object sender, RoutedEventArgs e) => (Application.Current as App)?.OpenEditorFromClipboard();
+    private void OpenGallery_Click(object sender, RoutedEventArgs e) => (Application.Current as App)?.ShowGallery();
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Shortcuts_Click(object sender, RoutedEventArgs e) => ShortcutsDialog.Show(this);
+
+    private void GitHub_Click(object sender, RoutedEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/CommonDocsOrg/vibershot") { UseShellExecute = true }); }
+        catch (Exception ex) { Status("Could not open the browser: " + ex.Message); }
+    }
+
     // ----- Layers panel -----
 
     private void MoveSelectionToLayer(int index)
@@ -1483,7 +1578,7 @@ public partial class EditorWindow : Window
         var row = new Border
         {
             CornerRadius = new CornerRadius(6), Padding = new Thickness(4, 2, 8, 2), Margin = new Thickness(0, 0, 0, 2), Cursor = Cursors.Hand,
-            Background = active ? (Brush)FindResource("TangerineSoft") : Brushes.Transparent,
+            Background = active ? (Brush)FindResource("AccentSoft") : Brushes.Transparent,
         };
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1634,7 +1729,10 @@ public partial class EditorWindow : Window
         Push(DocumentOps.SetLayer(Doc, DocumentOps.LayerIndexOf(Doc, active), active with { Opacity = opacity }), "panel:layer-opacity");
     }
 
-    private void CopyImage_Click(object sender, RoutedEventArgs e)
+    private void CopyImage_Click(object sender, RoutedEventArgs e) => CopyImage();
+
+    /// <summary>Flattens the document onto the clipboard.</summary>
+    private void CopyImage()
     {
         CommitTextEdit();
         try
@@ -1673,13 +1771,6 @@ public partial class EditorWindow : Window
     }
 
     private void DismissNotice_Click(object sender, RoutedEventArgs e) { FlattenNotice.Visibility = Visibility.Collapsed; Surface.Focus(); }
-
-    private void File_Click(object sender, RoutedEventArgs e)
-    {
-        if (FileButton.ContextMenu is not ContextMenu menu) return;
-        menu.PlacementTarget = FileButton;
-        menu.IsOpen = true;
-    }
 
     private void SaveProject_Click(object sender, RoutedEventArgs e) => SaveProject(saveAs: false);
     private void SaveProjectAs_Click(object sender, RoutedEventArgs e) => SaveProject(saveAs: true);

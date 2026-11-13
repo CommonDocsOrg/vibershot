@@ -32,6 +32,8 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 
 Semantic colors (`Ok`, `Danger`) are separate from the accent and never used for decoration.
 
+The shared control templates (Button focus ring, PrimaryButton, TextBox, CheckBox, RadioButton, ComboBox, Slider, chips, nav items) read the accent through four alias tokens, `Accent`, `AccentDeep`, `AccentSoft` and `AccentInk`, with `DynamicResource`. They default to the tangerine values above. A window that needs its own accent overrides the four aliases in its `Window.Resources`; the image editor does this with plum (`#7A3E8F`, soft `#F3EAF6`) so its chrome reads differently from the capture and gallery windows while the rest of the palette stays the same.
+
 Every window uses this palette: the capture window, Settings, Preview, the recording and scrolling control panel, and the region overlay's hint and action bar. The default control styles in `App.xaml` (Button, PrimaryButton, TextBox, CheckBox toggle, RadioButton, ComboBox, Slider) are already themed, so a new window gets the look by using them. Standard windows call `WindowAppearance.Apply` so the native title bar is paper with ink text and rounded corners.
 
 ## Typography

@@ -16,6 +16,11 @@
   <SolidColorBrush x:Key="TangerineDeep" Color="#E2561F"/>
   <SolidColorBrush x:Key="TangerineSoft" Color="#FDEAE2"/>
   <SolidColorBrush x:Key="TangerineInk" Color="#FFF5F0"/>
+  <!-- Accent aliases: the shared control templates read these dynamically so one window can swap the accent (the editor uses plum). -->
+  <SolidColorBrush x:Key="Accent" Color="#F0612A"/>
+  <SolidColorBrush x:Key="AccentDeep" Color="#E2561F"/>
+  <SolidColorBrush x:Key="AccentSoft" Color="#FDEAE2"/>
+  <SolidColorBrush x:Key="AccentInk" Color="#FFF5F0"/>
   <SolidColorBrush x:Key="Ok" Color="#1F9D6A"/>
   <SolidColorBrush x:Key="Danger" Color="#D64545"/>
   <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
@@ -47,7 +52,7 @@
      <ControlTemplate.Triggers>
       <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource Hover}"/></Trigger>
       <Trigger Property="IsPressed" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource Rule}"/></Trigger>
-      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
+      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
       <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Frame" Property="Opacity" Value="0.45"/></Trigger>
      </ControlTemplate.Triggers>
     </ControlTemplate></Setter.Value>
@@ -55,16 +60,16 @@
   </Style>
   <!-- Primary button: the one tangerine element in a window. -->
   <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-   <Setter Property="Background" Value="{StaticResource Tangerine}"/>
-   <Setter Property="Foreground" Value="{StaticResource TangerineInk}"/>
-   <Setter Property="BorderBrush" Value="{StaticResource Tangerine}"/>
+   <Setter Property="Background" Value="{DynamicResource Accent}"/>
+   <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
+   <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
    <Setter Property="Template">
     <Setter.Value><ControlTemplate TargetType="Button">
      <Border x:Name="Frame" CornerRadius="8" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
       <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" RecognizesAccessKey="True"/>
      </Border>
      <ControlTemplate.Triggers>
-      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource TangerineDeep}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource TangerineDeep}"/></Trigger>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{DynamicResource AccentDeep}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource AccentDeep}"/></Trigger>
       <Trigger Property="IsPressed" Value="True"><Setter TargetName="Frame" Property="Opacity" Value="0.85"/></Trigger>
       <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Ink}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
       <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Frame" Property="Opacity" Value="0.45"/></Trigger>
@@ -75,8 +80,8 @@
 
   <Style TargetType="TextBox">
    <Setter Property="Background" Value="{StaticResource Paper}"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
-   <Setter Property="CaretBrush" Value="{StaticResource Tangerine}"/>
-   <Setter Property="SelectionBrush" Value="{StaticResource TangerineSoft}"/>
+   <Setter Property="CaretBrush" Value="{DynamicResource Accent}"/>
+   <Setter Property="SelectionBrush" Value="{DynamicResource AccentSoft}"/>
    <Setter Property="BorderBrush" Value="{StaticResource PaperEdge}"/><Setter Property="Padding" Value="10,9"/>
    <Setter Property="VerticalContentAlignment" Value="Center"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
@@ -85,7 +90,7 @@
     </Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Ink3}"/></Trigger>
-     <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
+     <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
@@ -102,7 +107,7 @@
      </Border>
     </Grid>
     <ControlTemplate.Triggers>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{StaticResource Tangerine}"/><Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Thumb" Property="Fill" Value="{StaticResource TangerineInk}"/><Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{DynamicResource Accent}"/><Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Thumb" Property="Fill" Value="{DynamicResource AccentInk}"/><Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource Ink}"/><Setter TargetName="Track" Property="BorderThickness" Value="2"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
     </ControlTemplate.Triggers>
@@ -114,13 +119,13 @@
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
     <StackPanel Orientation="Horizontal" Background="Transparent">
      <Border x:Name="Ring" Width="18" Height="18" CornerRadius="9" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1.5" Background="{StaticResource Paper}" VerticalAlignment="Center" Margin="0,0,10,0">
-      <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{StaticResource Tangerine}" Visibility="Collapsed"/>
+      <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{DynamicResource Accent}" Visibility="Collapsed"/>
      </Border>
      <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/>
     </StackPanel>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Ring" Property="BorderBrush" Value="{StaticResource Ink3}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Ring" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Dot" Property="Visibility" Value="Visible"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Ring" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Dot" Property="Visibility" Value="Visible"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Ring" Property="BorderBrush" Value="{StaticResource Ink}"/><Setter TargetName="Ring" Property="BorderThickness" Value="2"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
@@ -149,7 +154,7 @@
   </Style>
   <Style TargetType="ComboBoxItem">
    <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Padding" Value="10,9"/>
-   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem"><Border x:Name="Item" Padding="{TemplateBinding Padding}" CornerRadius="6" Background="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Item" Property="Background" Value="{StaticResource Hover}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Item" Property="Background" Value="{StaticResource TangerineSoft}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem"><Border x:Name="Item" Padding="{TemplateBinding Padding}" CornerRadius="6" Background="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Item" Property="Background" Value="{StaticResource Hover}"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Item" Property="Background" Value="{DynamicResource AccentSoft}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
   </Style>
 
   <!-- Slider: thin rule with a tangerine fill and a round thumb. -->
@@ -159,9 +164,9 @@
     <Grid VerticalAlignment="Center">
      <Border Height="4" CornerRadius="2" Background="{StaticResource Rule}"/>
      <Track x:Name="PART_Track">
-      <Track.DecreaseRepeatButton><RepeatButton Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="4" CornerRadius="2" Background="{StaticResource Tangerine}"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+      <Track.DecreaseRepeatButton><RepeatButton Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="4" CornerRadius="2" Background="{DynamicResource Accent}"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
       <Track.IncreaseRepeatButton><RepeatButton Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="4" Background="Transparent"/></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
-      <Track.Thumb><Thumb Width="18" Height="18"><Thumb.Template><ControlTemplate TargetType="Thumb"><Ellipse x:Name="Knob" Fill="{StaticResource Paper}" Stroke="{StaticResource Tangerine}" StrokeThickness="2"/><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Knob" Property="Fill" Value="{StaticResource TangerineSoft}"/></Trigger><Trigger Property="IsDragging" Value="True"><Setter TargetName="Knob" Property="Fill" Value="{StaticResource Tangerine}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+      <Track.Thumb><Thumb Width="18" Height="18"><Thumb.Template><ControlTemplate TargetType="Thumb"><Ellipse x:Name="Knob" Fill="{StaticResource Paper}" Stroke="{DynamicResource Accent}" StrokeThickness="2"/><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Knob" Property="Fill" Value="{DynamicResource AccentSoft}"/></Trigger><Trigger Property="IsDragging" Value="True"><Setter TargetName="Knob" Property="Fill" Value="{DynamicResource Accent}"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
      </Track>
     </Grid>
    </ControlTemplate></Setter.Value></Setter>
@@ -190,13 +195,13 @@
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
     <StackPanel Orientation="Horizontal" Background="Transparent">
      <Border x:Name="Box" Width="18" Height="18" CornerRadius="5" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1.5" Background="{StaticResource Paper}" VerticalAlignment="Center" Margin="0,0,10,0">
-      <TextBlock x:Name="Tick" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="11" Foreground="{StaticResource TangerineInk}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+      <TextBlock x:Name="Tick" Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="11" Foreground="{DynamicResource AccentInk}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
      </Border>
      <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/>
     </StackPanel>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Ink3}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Box" Property="Background" Value="{StaticResource Tangerine}"/><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Tick" Property="Visibility" Value="Visible"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Box" Property="Background" Value="{DynamicResource Accent}"/><Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Tick" Property="Visibility" Value="Visible"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Ink}"/><Setter TargetName="Box" Property="BorderThickness" Value="2"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
     </ControlTemplate.Triggers>
@@ -220,7 +225,7 @@
     <Border x:Name="Frame" CornerRadius="14" Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" Padding="12,5"><ContentPresenter VerticalAlignment="Center"/></Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter Property="Foreground" Value="{StaticResource TangerineDeep}"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Frame" Property="Background" Value="{DynamicResource AccentSoft}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter Property="Foreground" Value="{DynamicResource AccentDeep}"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Ink}"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
@@ -233,8 +238,8 @@
     <Border x:Name="Frame" CornerRadius="8" Background="Transparent" Padding="14,9" Margin="0,0,0,2"><ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/></Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter Property="Foreground" Value="{StaticResource TangerineDeep}"/><Setter Property="FontWeight" Value="Bold"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/><Setter TargetName="Frame" Property="Padding" Value="12,7"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Frame" Property="Background" Value="{DynamicResource AccentSoft}"/><Setter Property="Foreground" Value="{DynamicResource AccentDeep}"/><Setter Property="FontWeight" Value="Bold"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/><Setter TargetName="Frame" Property="Padding" Value="12,7"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
@@ -246,7 +251,7 @@
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
     <Border x:Name="Frame" CornerRadius="5" Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}"><ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True"/></Border>
     <ControlTemplate.Triggers>
-     <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource Tangerine}"/></Trigger>
+     <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource Accent}"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="Background" Value="{StaticResource Hover}"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
     </ControlTemplate.Triggers>
@@ -254,7 +259,7 @@
   </Style>
   <Style TargetType="Hyperlink">
    <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="TextDecorations" Value="{x:Null}"/>
-   <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource Tangerine}"/><Setter Property="TextDecorations" Value="Underline"/></Trigger></Style.Triggers>
+   <Style.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource Accent}"/><Setter Property="TextDecorations" Value="Underline"/></Trigger></Style.Triggers>
   </Style>
 
   <!-- Pale yellow notice for a problem Windows must fix (Print Screen held by Snipping Tool). -->
