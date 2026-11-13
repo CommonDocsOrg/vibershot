@@ -26,6 +26,12 @@ public sealed class EditorSettings
     /// <summary>Editor shortcut that fits the picture in the window; empty (the default) leaves it without one.</summary>
     public string FitShortcut { get; set; } = "";
 
+    /// <summary>Id of the style theme the editor's library and drawing tools use; "default" follows the stroke colour and width above.</summary>
+    public string Theme { get; set; } = "default";
+
+    /// <summary>True when the editor's right sidebar (library and layers) is folded down to its strip.</summary>
+    public bool SidebarCollapsed { get; set; }
+
     public const string White = "#FFFFFF";
     public const string Black = "#000000";
     public const string Transparent = "#00000000";
