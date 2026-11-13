@@ -87,6 +87,7 @@ class Program {
 
   GalleryChecks(first);
   EditorChecks.Run(first);
+  VideoEditorChecks.Run();
   Console.WriteLine("PASS: overlap and pixels, duplicate rejection, AVI frame counts/chunk sizes, legacy settings defaults, WebP lossy/lossless encoding, editor history/operations/project/flatten, gallery sidecars/index/query/thumbnails/files.");
 
   // Live checks when ffmpeg is present (tools\ffmpeg via get-ffmpeg.ps1); skipped otherwise.
@@ -112,6 +113,7 @@ class Program {
   using(var cts=new System.Threading.CancellationTokenSource(300)){var cancelled=runner.RunAsync(FfmpegRunner.StandardPrefix.Concat(new[]{"-re","-f","lavfi","-i","testsrc2=s=64x64","-t","60","-f","null","-"}).ToArray(),null,cts.Token).GetAwaiter().GetResult(); Check(cancelled.Cancelled,"cancellation kills ffmpeg");}
   var bad=runner.RunAsync(new[]{"-hide_banner","-i",Path.Combine(dir,"missing.mp4"),"-f","null","-"}).GetAwaiter().GetResult(); Check(!bad.Succeeded && bad.StderrTail.Count>0 && bad.ErrorText().Contains("missing.mp4"),"stderr tail kept on failure");
   Console.WriteLine($"PASS: live ffmpeg encode ({encoder.DisplayName}), progress, ffprobe, remux, concat, cancel, stderr tail.");
+  VideoEditorChecks.RunLive(runner,encoder,dir);
  }
  static void GalleryChecks(BitmapSource image) {
   // Legacy config without a Gallery section loads with defaults; a saved section round-trips.
