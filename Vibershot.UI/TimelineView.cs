@@ -29,7 +29,7 @@ public sealed class TimelineView : FrameworkElement
 
     private readonly Brush _well, _paper, _rule, _hover, _ink, _ink2, _ink3, _accent;
     private static readonly Brush VideoFill = Frozen("#3D4A63"), VideoEdge = Frozen("#2B3447"), AudioFill = Frozen("#1F4D3A"), AudioWave = Frozen("#50FA7B"),
-        PlayheadBrush = Frozen("#FF79C6"), LabelBack = Frozen("#CC191A21"), LaneAlt = Frozen("#252631");
+        ImageFill = Frozen("#5B4A7A"), PlayheadBrush = Frozen("#FF79C6"), LabelBack = Frozen("#CC191A21"), LaneAlt = Frozen("#252631");
     private readonly Typeface _face = new("Segoe UI"), _mono = new("Cascadia Mono, Consolas");
 
     private History<VideoProject>? _history;
@@ -64,6 +64,9 @@ public sealed class TimelineView : FrameworkElement
     public TimelineTool Tool { get; set; }
     public bool Snap { get; set; } = true;
     public Func<Guid, Filmstrip?>? FilmstripFor { get; set; }
+
+    /// <summary>The loudness outline of a source's sound, drawn inside its audio clips.</summary>
+    public Func<Guid, Vibershot.Media.Waveform?>? WaveformFor { get; set; }
 
     /// <summary>Raised when the user moves the playhead (ruler click, scrub).</summary>
     public event Action<long>? PlayheadMoved;
@@ -267,12 +270,12 @@ public sealed class TimelineView : FrameworkElement
 
     private void DrawClip(DrawingContext dc, VideoProject project, Row row, Clip clip, Rect rect)
     {
-        bool selected = Selection.Contains(clip.Id), video = clip is VideoClip;
+        bool selected = Selection.Contains(clip.Id), video = clip is VisualClip;
         var source = project.Source(clip.SourceId);
         bool dim = clip is AudioClip { Muted: true } || (video ? row.Track.Hidden : row.Track.Muted);
         dc.PushOpacity(dim ? 0.45 : 1);
         dc.PushClip(new RectangleGeometry(rect, 4, 4));
-        dc.DrawRectangle(video ? VideoFill : AudioFill, null, rect);
+        dc.DrawRectangle(clip is ImageClip ? ImageFill : video ? VideoFill : AudioFill, null, rect);
         if (video && source != null && FilmstripFor?.Invoke(source.Id) is { Frames.Count: > 0 } strip)
         {
             var sample = strip.Frames[0];
@@ -282,15 +285,16 @@ public sealed class TimelineView : FrameworkElement
             for (double x = rect.Left + Math.Floor((from - rect.Left) / thumbWidth) * thumbWidth; x < to; x += thumbWidth)
             {
                 double seconds = clip.SourceIn + (x - rect.Left) / _pixelsPerSecond;
-                int index = Math.Clamp((int)Math.Round(seconds / strip.Interval), 0, strip.Frames.Count - 1);
+                int index = clip is ImageClip ? 0 : Math.Clamp((int)Math.Round(seconds / strip.Interval), 0, strip.Frames.Count - 1);
                 dc.DrawImage(strip.Frames[index], new Rect(x, rect.Top, thumbWidth, thumbHeight));
                 dc.DrawRectangle(VideoEdge, null, new Rect(x + thumbWidth - 1, rect.Top, 1, thumbHeight));
             }
         }
         else if (!video)
         {
-            // Until waveforms arrive, a centre line marks the lane as sound.
-            dc.DrawRectangle(AudioWave, null, new Rect(rect.Left, rect.Top + rect.Height / 2 - 0.5, rect.Width, 1));
+            double middle = rect.Top + rect.Height / 2;
+            dc.DrawRectangle(AudioWave, null, new Rect(rect.Left, middle - 0.5, rect.Width, 1));
+            if (source != null && WaveformFor?.Invoke(source.Id) is { } wave) DrawWaveform(dc, clip, wave, rect, middle);
         }
         if (rect.Width > 28)
         {
@@ -311,6 +315,31 @@ public sealed class TimelineView : FrameworkElement
                 dc.DrawRoundedRectangle(_accent, null, new Rect(rect.Right - 4, rect.Top, 4, rect.Height), 2, 2);
             }
         }
+    }
+
+    /// <summary>The clip's stretch of the waveform as one mirrored outline, a column every two pixels, scaled by the clip's volume.</summary>
+    private void DrawWaveform(DrawingContext dc, Clip clip, Vibershot.Media.Waveform wave, Rect rect, double middle)
+    {
+        const double step = 2;
+        double from = Math.Max(rect.Left, HeaderWidth), to = Math.Min(rect.Right, ActualWidth);
+        if (to - from < step) return;
+        double gain = clip is AudioClip sound ? Math.Min(sound.Volume, 2) : 1, half = rect.Height / 2 - 3;
+        var heights = new List<double>();
+        for (double x = from; x < to; x += step)
+        {
+            double seconds = clip.SourceIn + (x - rect.Left) / _pixelsPerSecond;
+            // The square root lifts quiet passages so speech is visible beside loud music.
+            heights.Add(Math.Min(half, Math.Sqrt(wave.PeakBetween(seconds, seconds + step / _pixelsPerSecond)) * gain * half));
+        }
+        var outline = new StreamGeometry();
+        using (var g = outline.Open())
+        {
+            g.BeginFigure(new Point(from, middle), true, true);
+            for (int i = 0; i < heights.Count; i++) g.LineTo(new Point(from + i * step, middle - heights[i]), false, false);
+            for (int i = heights.Count - 1; i >= 0; i--) g.LineTo(new Point(from + i * step, middle + heights[i]), false, false);
+        }
+        outline.Freeze();
+        dc.DrawGeometry(AudioWave, null, outline);
     }
 
     /// <summary>An eye for a video layer, a speaker for an audio lane; struck through when off.</summary>

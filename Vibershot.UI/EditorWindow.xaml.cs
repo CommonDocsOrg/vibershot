@@ -958,19 +958,12 @@ public partial class EditorWindow : Window
 
     private static Rect ResizeRect(Rect r, Handle h, Vector d, bool keepAspect)
     {
-        double left = r.Left, top = r.Top, right = r.Right, bottom = r.Bottom;
-        bool l = h is Handle.TopLeft or Handle.Left or Handle.BottomLeft, rt = h is Handle.TopRight or Handle.Right or Handle.BottomRight;
-        bool t = h is Handle.TopLeft or Handle.Top or Handle.TopRight, b = h is Handle.BottomLeft or Handle.Bottom or Handle.BottomRight;
-        if (l) left += d.X;
-        if (rt) right += d.X;
-        if (t) top += d.Y;
-        if (b) bottom += d.Y;
-        if (keepAspect && r.Width > 0 && r.Height > 0 && (l || rt) && (t || b))
-        {
-            double height = Math.Abs(right - left) / (r.Width / r.Height) * (bottom >= top ? 1 : -1);
-            if (t) top = bottom - height; else bottom = top + height;
-        }
-        return new Rect(Math.Min(left, right), Math.Min(top, bottom), Math.Abs(right - left), Math.Abs(bottom - top));
+        var edges = BoxEdges.None;
+        if (h is Handle.TopLeft or Handle.Left or Handle.BottomLeft) edges |= BoxEdges.Left;
+        if (h is Handle.TopRight or Handle.Right or Handle.BottomRight) edges |= BoxEdges.Right;
+        if (h is Handle.TopLeft or Handle.Top or Handle.TopRight) edges |= BoxEdges.Top;
+        if (h is Handle.BottomLeft or Handle.Bottom or Handle.BottomRight) edges |= BoxEdges.Bottom;
+        return HandleMath.Resize(r, edges, d, keepAspect);
     }
 
     /// <summary>Resizes in the item's own rotated frame so a tilted box grows along its edges.</summary>

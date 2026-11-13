@@ -19,9 +19,16 @@ public partial class App : Application
     private bool _capturing, _setupShown, _updateDialogOpen;
     private string? _printScreenWarning, _printScreenWarningShown;
     public AppConfig Config => _config;
+    /// <summary>
+    /// Set by a tool that shows one of the app's windows itself (the test program's editor
+    /// launcher). Startup then stops short of the single-instance hand-off, the launcher, the tray
+    /// icon and the hotkeys, so a Vibershot already running is left alone.
+    /// </summary>
+    public static bool Hosted { get; set; }
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (Hosted) return;
         // A second copy hands its arguments to the running one and quits.
         _instance = SingleInstance.TryAcquire(e.Args);
         if (_instance is null) { Shutdown(); return; }

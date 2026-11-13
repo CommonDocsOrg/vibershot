@@ -147,7 +147,7 @@ public sealed class ExportVideoWindow : Window
             _status.Text = "Finding an encoder…";
             var encoder = await EncoderProbe.ResolveAsync(_runner, _config.Video.PreferHardwareEncoder, cancel.Token);
             if (encoder == null) { _status.Text = "No H.264 encoder works on this PC."; return; }
-            var plan = TimelineOps.ToPlan(_project) with { Width = width, Height = height, FrameRate = rate };
+            var plan = TimelineOps.ToPlan(_project, null, width, height) with { FrameRate = rate };
             long totalFrames = Math.Max(1, (long)Math.Round(plan.Duration * rate.Value));
             var clock = Stopwatch.StartNew();
             var progress = new Progress<FfmpegProgress>(p =>

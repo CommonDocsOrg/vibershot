@@ -3,8 +3,27 @@ using System.Text;
 
 namespace Vibershot.Media;
 
-/// <summary>One video clip on the output timeline. Times are seconds.</summary>
-public sealed record ExportVideoClip(string Path, double SourceIn, double Duration, double Start);
+/// <summary>
+/// One picture (video or still) on the output timeline. Times are seconds. X, Y, Width and Height
+/// are the box, in output pixels, that the visible part of the picture is stretched into before
+/// it is turned about the box's centre.
+/// </summary>
+public sealed record ExportVideoClip(string Path, double SourceIn, double Duration, double Start, double X, double Y, int Width, int Height)
+{
+    /// <summary>Degrees clockwise.</summary>
+    public double Rotation { get; init; }
+
+    public double Opacity { get; init; } = 1;
+
+    /// <summary>Fractions of the source cut from each side before scaling.</summary>
+    public double CropLeft { get; init; }
+    public double CropTop { get; init; }
+    public double CropRight { get; init; }
+    public double CropBottom { get; init; }
+
+    /// <summary>A still picture: looped for the clip's length instead of seeked.</summary>
+    public bool IsImage { get; init; }
+}
 
 /// <summary>One audio clip on the output timeline. Times are seconds; volume 1 is unchanged.</summary>
 public sealed record ExportAudioClip(string Path, double SourceIn, double Duration, double Start, double Volume = 1);
@@ -38,6 +57,12 @@ public static class ExportArguments
 
     private static string N(double value) => Math.Max(0, value).ToString("0.######", CultureInfo.InvariantCulture);
 
+    /// <summary>A fraction between 0 and 1.</summary>
+    private static string F(double value) => Math.Clamp(value, 0, 1).ToString("0.####", CultureInfo.InvariantCulture);
+
+    /// <summary>A signed position: a box may hang off the canvas.</summary>
+    private static string S(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
     /// <summary>Arguments for the final MP4.</summary>
     public static string[] Build(ExportPlan plan, EncoderInfo encoder, int quality, string outputPath, bool includeAudio = true)
     {
@@ -49,13 +74,25 @@ public static class ExportArguments
         string last = "bg";
         foreach (var clip in plan.Video)
         {
-            args.AddRange(new[] { "-ss", N(clip.SourceIn), "-t", N(clip.Duration), "-i", clip.Path });
-            // Fit inside the canvas keeping aspect, shift to the clip's place on the timeline, then
-            // draw it centred over what is below for exactly its own span.
+            if (clip.IsImage) args.AddRange(new[] { "-loop", "1", "-framerate", rate, "-t", N(clip.Duration), "-i", clip.Path });
+            else args.AddRange(new[] { "-ss", N(clip.SourceIn), "-t", N(clip.Duration), "-i", clip.Path });
+            // Crop, stretch into the clip's box, fade and turn it, shift it to its place on the
+            // timeline, then draw it about the box's centre for exactly its own span.
+            graph.Append(CultureInfo.InvariantCulture, $";[{input}:v]fps={rate}");
+            if (clip.CropLeft > 0 || clip.CropTop > 0 || clip.CropRight > 0 || clip.CropBottom > 0)
+                graph.Append(CultureInfo.InvariantCulture, $",crop=iw*{F(1 - clip.CropLeft - clip.CropRight)}:ih*{F(1 - clip.CropTop - clip.CropBottom)}:iw*{F(clip.CropLeft)}:ih*{F(clip.CropTop)}");
+            graph.Append(CultureInfo.InvariantCulture, $",scale={clip.Width}:{clip.Height}:flags=lanczos,setsar=1");
+            bool turned = Math.Abs(clip.Rotation % 360) > 0.005;
+            if (clip.Opacity < 0.999 || turned) graph.Append(",format=rgba");
+            if (clip.Opacity < 0.999) graph.Append(CultureInfo.InvariantCulture, $",colorchannelmixer=aa={F(clip.Opacity)}");
+            if (turned)
+            {
+                string angle = (clip.Rotation * Math.PI / 180).ToString("0.######", CultureInfo.InvariantCulture);
+                graph.Append(CultureInfo.InvariantCulture, $",rotate={angle}:ow=rotw({angle}):oh=roth({angle}):c=none");
+            }
+            graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{N(clip.Start)}/TB[v{input}]");
             graph.Append(CultureInfo.InvariantCulture,
-                $";[{input}:v]fps={rate},scale={plan.Width}:{plan.Height}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1,setpts=PTS-STARTPTS+{N(clip.Start)}/TB[v{input}]");
-            graph.Append(CultureInfo.InvariantCulture,
-                $";[{last}][v{input}]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='gte(t,{N(clip.Start)})*lt(t,{N(clip.Start + clip.Duration)})'[o{input}]");
+                $";[{last}][v{input}]overlay=x={S(clip.X + clip.Width / 2.0)}-w/2:y={S(clip.Y + clip.Height / 2.0)}-h/2:eof_action=pass:enable='gte(t,{N(clip.Start)})*lt(t,{N(clip.Start + clip.Duration)})'[o{input}]");
             last = "o" + input.ToString(CultureInfo.InvariantCulture);
             input++;
         }

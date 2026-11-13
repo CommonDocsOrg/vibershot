@@ -30,13 +30,15 @@ public sealed class ProxyCache
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vibershot", "Proxies");
 
     /// <summary>The cache file for a source, whether or not it exists yet.</summary>
-    public string PathFor(string sourcePath)
+    public string PathFor(string sourcePath) => Path.Combine(Folder, KeyFor(sourcePath) + ".mp4");
+
+    /// <summary>A name for cached work on a file that changes whenever the file's path, size or modified time does.</summary>
+    public static string KeyFor(string sourcePath)
     {
         var file = new FileInfo(sourcePath);
         string identity = string.Create(CultureInfo.InvariantCulture,
             $"{file.FullName.ToLowerInvariant()}|{(file.Exists ? file.Length : 0)}|{(file.Exists ? file.LastWriteTimeUtc.Ticks : 0)}");
-        string hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(identity)))[..20].ToLowerInvariant();
-        return Path.Combine(Folder, hash + ".mp4");
+        return Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(identity)))[..20].ToLowerInvariant();
     }
 
     /// <summary>The finished proxy for a source, or null when it has not been built.</summary>

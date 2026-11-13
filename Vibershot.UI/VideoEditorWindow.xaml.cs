@@ -30,6 +30,11 @@ public partial class VideoEditorWindow : Window
     private readonly ProxyCache? _proxies;
     private readonly ObservableCollection<BinItem> _bin = new();
     private readonly Dictionary<Guid, Filmstrip> _filmstrips = new();
+    private readonly Dictionary<Guid, Waveform> _waveforms = new();
+    private readonly WaveformCache? _waves;
+
+    public static readonly string[] ImageExtensions = { ".png", ".jpg", ".jpeg", ".bmp", ".webp" };
+    private const string MediaFilter = "Video and pictures (*.mp4;*.png;*.jpg;*.jpeg;*.bmp;*.webp)|*.mp4;*.png;*.jpg;*.jpeg;*.bmp;*.webp|MP4 video (*.mp4)|*.mp4|Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.webp)|*.png;*.jpg;*.jpeg;*.bmp;*.webp";
     private readonly Stopwatch _clock = new();
     private readonly MediaPlayer _audio = new();
     private readonly DispatcherTimer _mixTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
@@ -46,14 +51,25 @@ public partial class VideoEditorWindow : Window
         _config = config;
         _path = path;
         _history = new History<VideoProject>(project ?? TimelineOps.Empty());
-        try { _runner = new FfmpegRunner(); _proxies = new ProxyCache(_runner); }
+        try { _runner = new FfmpegRunner(); _proxies = new ProxyCache(_runner); _waves = new WaveformCache(_runner); }
         catch (FfmpegNotFoundException) { }
 
         Bin.ItemsSource = _bin;
         Preview.Runner = _runner;
         Preview.Settings = _config.VideoEditor;
         Preview.ProxyFor = source => _proxies?.TryGet(source);
+        Preview.History = _history;
+        Preview.ClipPicked += id => Timeline.Select(id is Guid picked ? TimelineOps.WithLinked(Project, new[] { picked }) : new HashSet<Guid>());
+        Preview.SourceDropped += OnSourceDroppedOnPicture;
+        Preview.CropModeChanged += () => CropButton.IsChecked = Preview.CropMode;
+        PlaceX.Committed += value => Place(p => p with { X = value });
+        PlaceY.Committed += value => Place(p => p with { Y = value });
+        PlaceW.Committed += value => Place(p => p with { Width = value });
+        PlaceH.Committed += value => Place(p => p with { Height = value });
+        PlaceRotation.Committed += value => Place(p => p with { Rotation = value });
+        foreach (var box in new[] { PlaceX, PlaceY, PlaceW, PlaceH, PlaceRotation }) box.ReturnFocusTo = Timeline;
         Timeline.FilmstripFor = id => _filmstrips.GetValueOrDefault(id);
+        Timeline.WaveformFor = id => _waveforms.GetValueOrDefault(id);
         Timeline.History = _history;
         Timeline.PlayheadMoved += frame => Seek(frame);
         Timeline.SelectionChanged += UpdatePanel;
@@ -152,7 +168,20 @@ public partial class VideoEditorWindow : Window
     {
         var source = item.Source;
         if (!File.Exists(source.Path)) { item.Badge = "Missing"; return; }
-        if (_runner == null || _proxies == null || !source.HasVideo) return;
+        if (source.IsImage)
+        {
+            // A still is its own thumbnail, in the bin and repeated along its clips.
+            if (await Task.Run(() => LoadPicture(source.Path, 88)) is { } still)
+            {
+                item.Thumb = still;
+                _filmstrips[source.Id] = new Filmstrip(1, new[] { still });
+                Timeline.InvalidateVisual();
+            }
+            return;
+        }
+        if (_runner == null) return;
+        if (source.HasAudio && _waves != null) LoadWaveform(source);
+        if (_proxies == null || !source.HasVideo) return;
         try
         {
             string? proxy = _proxies.TryGet(source.Path);
@@ -185,6 +214,33 @@ public partial class VideoEditorWindow : Window
         }
     }
 
+    private async void LoadWaveform(MediaSource source)
+    {
+        if (await _waves!.GetOrCreateAsync(source.Path) is not { } wave) return;
+        _waveforms[source.Id] = wave;
+        Timeline.InvalidateVisual();
+    }
+
+    /// <summary>Decodes a picture file, scaled down to a height when one is given. Null when Windows cannot read it.</summary>
+    private static BitmapSource? LoadPicture(string path, int height = 0)
+    {
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            if (height > 0) bitmap.DecodePixelHeight = height;
+            bitmap.UriSource = new Uri(path);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch (Exception) { return null; }
+    }
+
+    private static bool IsImagePath(string path) => ImageExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Decodes one small frame every few seconds for the timeline strip and the bin thumbnail.</summary>
     private static Task<Filmstrip> BuildFilmstripAsync(FfmpegRunner runner, string path, MediaSource source) => Task.Run(async () =>
     {
@@ -204,7 +260,7 @@ public partial class VideoEditorWindow : Window
 
     private void Import_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog { Title = "Import media", Filter = "MP4 video (*.mp4)|*.mp4", Multiselect = true };
+        var dialog = new OpenFileDialog { Title = "Import media", Filter = MediaFilter, Multiselect = true };
         try { if (Directory.Exists(_config.Gallery.RecordingsFolder)) dialog.InitialDirectory = _config.Gallery.RecordingsFolder; } catch (Exception) { }
         if (dialog.ShowDialog(this) == true) _ = ImportAsync(dialog.FileNames);
     }
@@ -214,15 +270,26 @@ public partial class VideoEditorWindow : Window
     {
         foreach (string path in paths)
         {
-            if (!string.Equals(Path.GetExtension(path), ".mp4", StringComparison.OrdinalIgnoreCase)) { ShowStatus($"{Path.GetFileName(path)} is not an MP4. Only MP4 files can be imported.", failed: true); continue; }
+            bool image = IsImagePath(path);
+            if (!image && !string.Equals(Path.GetExtension(path), ".mp4", StringComparison.OrdinalIgnoreCase)) { ShowStatus($"{Path.GetFileName(path)} cannot be imported. Videos must be MP4; pictures PNG, JPEG, BMP or WebP.", failed: true); continue; }
             try
             {
                 var existing = Project.Sources.FirstOrDefault(source => string.Equals(source.Path, path, StringComparison.OrdinalIgnoreCase))
                     ?? _bin.Select(item => item.Source).FirstOrDefault(source => string.Equals(source.Path, path, StringComparison.OrdinalIgnoreCase));
-                var source = existing ?? MediaSource.From(await Ffprobe.ProbeAsync(path));
-                if (!source.HasVideo && !source.HasAudio) { ShowStatus($"{source.Name} has no video or audio.", failed: true); continue; }
+                MediaSource source;
+                if (existing != null) source = existing;
+                else if (image)
+                {
+                    if (await Task.Run(() => LoadPicture(path, 16)) is not { } probe) { ShowStatus($"{Path.GetFileName(path)} could not be read as a picture.", failed: true); continue; }
+                    // The tiny decode keeps the aspect; the real size comes from the file's header.
+                    var frame = BitmapDecoder.Create(new Uri(path), BitmapCreateOptions.DelayCreation, BitmapCacheOption.None).Frames[0];
+                    source = MediaSource.ForImage(path, frame.PixelWidth, frame.PixelHeight);
+                }
+                else source = MediaSource.From(await Ffprobe.ProbeAsync(path));
+                if (!source.HasPicture && !source.HasAudio) { ShowStatus($"{source.Name} has no video or audio.", failed: true); continue; }
                 bool first = Project.Sources.Count == 0 && Project.Duration == 0;
-                _history.Push(first ? TimelineOps.ForSource(source) : TimelineOps.Append(Project, source));
+                // A video joins the end of the cut; a still goes over whatever is at the playhead.
+                _history.Push(first ? TimelineOps.ForSource(source) : AddFromBin(source));
                 if (first) Timeline.ZoomToFit();
                 ShowStatus($"Imported {source.Name}.", ok: true);
             }
@@ -237,7 +304,59 @@ public partial class VideoEditorWindow : Window
 
     private void Bin_DoubleClick(object sender, MouseButtonEventArgs e)
     {
+        if (Bin.SelectedItem is BinItem item) _history.Push(AddFromBin(item.Source));
+    }
+
+    /// <summary>The default way a source joins the timeline: a video after the last clip, a still on top at the playhead.</summary>
+    private VideoProject AddFromBin(MediaSource source) =>
+        source.IsImage ? TimelineOps.InsertOnTop(Project, source, _playhead, out _) : TimelineOps.Append(Project, source);
+
+    private void BinMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        var source = (Bin.SelectedItem as BinItem)?.Source;
+        BinAddEnd.IsEnabled = BinAddTop.IsEnabled = source != null;
+        BinAddTop.Visibility = source is { HasPicture: true } ? Visibility.Visible : Visibility.Collapsed;
+        BinAddAudio.Visibility = source is { HasAudio: true, HasVideo: true } ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void BinAddEnd_Click(object sender, RoutedEventArgs e)
+    {
         if (Bin.SelectedItem is BinItem item) _history.Push(TimelineOps.Append(Project, item.Source));
+    }
+
+    private void BinAddTop_Click(object sender, RoutedEventArgs e)
+    {
+        if (Bin.SelectedItem is not BinItem item) return;
+        _history.Push(TimelineOps.InsertOnTop(Project, item.Source, _playhead, out var clipId));
+        Timeline.Select(TimelineOps.WithLinked(Project, new[] { clipId }));
+    }
+
+    private void BinAddAudio_Click(object sender, RoutedEventArgs e)
+    {
+        if (Bin.SelectedItem is not BinItem item) return;
+        _history.Push(TimelineOps.InsertAudioOnly(Project, item.Source, _playhead, out var clipId));
+        Timeline.Select(new[] { clipId });
+    }
+
+    /// <summary>
+    /// A source dropped on the picture lands on top at the playhead, centred where it was dropped:
+    /// a still at its own size, a video at two fifths of the canvas. Onto an empty frame a video
+    /// simply fills the canvas.
+    /// </summary>
+    private void OnSourceDroppedOnPicture(Guid sourceId, Point canvas)
+    {
+        if (_bin.FirstOrDefault(item => item.Source.Id == sourceId) is not { } item || !item.Source.HasPicture) return;
+        var project = Project; var source = item.Source;
+        Placement? placement = null;
+        if (source.IsImage || TimelineOps.VisibleAt(project, _playhead).Count > 0)
+        {
+            var size = TimelineOps.Natural(project, source.Width, source.Height);
+            double w = size.Width, h = size.Height;
+            if (!source.IsImage) { w = Math.Round(project.Width * 0.4); h = Math.Round(w * Math.Max(1, source.Height) / Math.Max(1, source.Width)); }
+            placement = new Placement { X = Math.Round(canvas.X - w / 2), Y = Math.Round(canvas.Y - h / 2), Width = w, Height = h };
+        }
+        _history.Push(TimelineOps.InsertOnTop(project, source, _playhead, out var clipId, placement));
+        Timeline.Select(TimelineOps.WithLinked(Project, new[] { clipId }));
     }
 
     private void Bin_MouseDown(object sender, MouseButtonEventArgs e) => _binDown = e.GetPosition(Bin);
@@ -265,7 +384,7 @@ public partial class VideoEditorWindow : Window
         if (missing.Count == 0) return;
         foreach (var source in missing)
         {
-            var dialog = new OpenFileDialog { Title = $"Locate {source.Name}", Filter = "MP4 video (*.mp4)|*.mp4", FileName = source.Name };
+            var dialog = new OpenFileDialog { Title = $"Locate {source.Name}", Filter = MediaFilter, FileName = source.Name };
             if (dialog.ShowDialog(this) != true) continue;
             project = VideoProjectFile.Relink(project, source.Id, dialog.FileName);
         }
@@ -429,7 +548,7 @@ public partial class VideoEditorWindow : Window
 
     private void SelectTool_Click(object sender, RoutedEventArgs e) => SetTool(TimelineTool.Select);
     private void RazorTool_Click(object sender, RoutedEventArgs e) => SetTool(TimelineTool.Razor);
-    private void Snap_Click(object sender, RoutedEventArgs e) => Timeline.Snap = SnapButton.IsChecked == true;
+    private void Snap_Click(object sender, RoutedEventArgs e) => Timeline.Snap = Preview.Snap = SnapButton.IsChecked == true;
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => Timeline.SetZoom(Timeline.PixelsPerSecond * 1.4);
     private void ZoomOut_Click(object sender, RoutedEventArgs e) => Timeline.SetZoom(Timeline.PixelsPerSecond / 1.4);
     private void ZoomFit_Click(object sender, RoutedEventArgs e) => Timeline.ZoomToFit();
@@ -460,11 +579,12 @@ public partial class VideoEditorWindow : Window
         _updatingPanel = true;
         try
         {
+            Preview.Selected = selected.Select(pair => pair.Clip).OfType<VisualClip>().FirstOrDefault()?.Id;
             if (selected.Count == 0)
             {
                 ClipPanel.Visibility = Visibility.Collapsed; ProjectPanel.Visibility = Visibility.Visible;
                 PropTitle.Text = DocumentName;
-                PropSubtitle.Text = project.Duration == 0 ? "Import an MP4 to begin. The first clip sets the canvas size and frame rate." : "Select a clip on the timeline to see its settings.";
+                PropSubtitle.Text = project.Duration == 0 ? "Import an MP4 to begin. The first video sets the canvas size and frame rate." : "Select a clip on the timeline to see its settings.";
                 ProjectSizeValue.Text = $"{project.Width} × {project.Height}";
                 ProjectRateValue.Text = $"{project.Rate} fps";
                 ProjectLengthValue.Text = Timecode(project.Duration);
@@ -472,15 +592,23 @@ public partial class VideoEditorWindow : Window
                 return;
             }
             ClipPanel.Visibility = Visibility.Visible; ProjectPanel.Visibility = Visibility.Collapsed;
-            var primary = selected.FirstOrDefault(pair => pair.Clip is VideoClip, selected[0]);
+            var primary = selected.FirstOrDefault(pair => pair.Clip is VisualClip, selected[0]);
             var sound = selected.Select(pair => pair.Clip).OfType<AudioClip>().FirstOrDefault();
             PropTitle.Text = project.Source(primary.Clip.SourceId)?.Name ?? "Missing media";
-            string kind = primary.Clip is VideoClip ? "Video clip" : "Audio clip";
+            string kind = primary.Clip is VideoClip ? "Video clip" : primary.Clip is ImageClip ? "Picture" : "Audio clip";
             string linked = primary.Clip.LinkId == null ? "" : primary.Clip is VideoClip ? " · linked audio" : " · linked video";
             PropSubtitle.Text = selected.Count > 2 ? $"{selected.Count} clips selected" : $"{kind} on {primary.Track.Name}{linked}";
             ClipStartValue.Text = Timecode(primary.Clip.Start);
             ClipLengthValue.Text = Timecode(primary.Clip.Duration);
             ClipSourceValue.Text = Timecode(project.Frames(primary.Clip.SourceIn));
+            PicturePanel.Visibility = primary.Clip is VisualClip ? Visibility.Visible : Visibility.Collapsed;
+            if (primary.Clip is VisualClip picture)
+            {
+                var p = TimelineOps.PlacementOf(project, picture);
+                PlaceX.Show(p.X); PlaceY.Show(p.Y); PlaceW.Show(p.Width); PlaceH.Show(p.Height); PlaceRotation.Show(p.Rotation);
+                OpacitySlider.Value = Math.Round(p.Opacity * 100);
+                OpacityValue.Text = $"{Math.Round(p.Opacity * 100)}%";
+            }
             AudioPanel.Visibility = sound != null ? Visibility.Visible : Visibility.Collapsed;
             if (sound != null)
             {
@@ -492,6 +620,43 @@ public partial class VideoEditorWindow : Window
         }
         finally { _updatingPanel = false; }
     }
+
+    private VisualClip? SelectedPicture => Project.AllClips.OfType<VisualClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+
+    /// <summary>Changes the selected picture's placement, starting from the one it shows now.</summary>
+    private void Place(Func<Placement, Placement> change, string? key = null)
+    {
+        if (SelectedPicture is not { } clip) return;
+        _history.Push(TimelineOps.SetPlacement(Project, clip.Id, change(TimelineOps.PlacementOf(Project, clip))), key);
+    }
+
+    private void Opacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_updatingPanel || SelectedPicture is not { } clip) return;
+        double opacity = Math.Round(e.NewValue) / 100;
+        Place(p => p with { Opacity = opacity }, "opacity:" + clip.Id);
+    }
+
+    private void Fit_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedPicture is not { } clip || Project.Source(clip.SourceId) is not { } source) return;
+        Place(p => TimelineOps.Fit(Project, source.Width, source.Height) with { Opacity = p.Opacity });
+    }
+
+    private void Fill_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedPicture is not { } clip || Project.Source(clip.SourceId) is not { } source) return;
+        Place(p => TimelineOps.Fill(Project, source.Width, source.Height) with { Opacity = p.Opacity });
+    }
+
+    private void ResetPlacement_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedPicture is not { } clip) return;
+        Preview.CropMode = false;
+        _history.Push(TimelineOps.SetPlacement(Project, clip.Id, null));
+    }
+
+    private void Crop_Click(object sender, RoutedEventArgs e) => Preview.CropMode = CropButton.IsChecked == true;
 
     private AudioClip? SelectedSound => Project.AllClips.OfType<AudioClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
 
@@ -626,7 +791,7 @@ public partial class VideoEditorWindow : Window
     private void Shortcuts_Click(object sender, RoutedEventArgs e) => MessageBox.Show(this,
         "Space\tPlay / pause\nLeft / Right or , / .\tStep one frame (Shift: one second)\nHome / End\tStart / end\nJ / K / L\tBack one second / pause / play\n\n" +
         "V / C\tSelect tool / Razor tool\nS or Ctrl+K\tSplit at the playhead\nDelete\tDelete the selection\nShift+Delete\tRipple delete\nN\tSnap on / off (hold Alt while dragging to snap off)\n\n" +
-        "+ / -\tZoom the timeline\n\\\tFit the timeline\nCtrl + wheel\tZoom at the pointer\n\nCtrl+Z / Ctrl+Y\tUndo / redo\nCtrl+S\tSave project\nCtrl+I\tImport media\nCtrl+E\tExport MP4",
+        "Drag a picture in the preview\tMove it (Shift: one axis, Alt: no snapping)\nDouble-click a picture\tCrop it (Enter or Esc to finish)\n\n+ / -\tZoom the timeline\n\\\tFit the timeline\nCtrl + wheel\tZoom at the pointer\n\nCtrl+Z / Ctrl+Y\tUndo / redo\nCtrl+S\tSave project\nCtrl+I\tImport media\nCtrl+E\tExport MP4",
         "Keyboard shortcuts");
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -660,9 +825,10 @@ public partial class VideoEditorWindow : Window
                 case Key.Space: if (_playing) Pause(); else Play(); break;
                 case Key.V: SetTool(TimelineTool.Select); break;
                 case Key.C: SetTool(TimelineTool.Razor); break;
-                case Key.Escape: SetTool(TimelineTool.Select); break;
+                case Key.Escape: if (Preview.CropMode) Preview.CropMode = false; else SetTool(TimelineTool.Select); break;
+                case Key.Enter when Preview.CropMode: Preview.CropMode = false; break;
                 case Key.S: Split_Click(this, e); break;
-                case Key.N: SnapButton.IsChecked = !(SnapButton.IsChecked == true); Timeline.Snap = SnapButton.IsChecked == true; break;
+                case Key.N: SnapButton.IsChecked = !(SnapButton.IsChecked == true); Timeline.Snap = Preview.Snap = SnapButton.IsChecked == true; break;
                 case Key.Delete: DeleteSelection(shift); break;
                 case Key.Left when !slider: case Key.OemComma: Pause(); Seek(_playhead - (shift ? second : 1)); break;
                 case Key.Right when !slider: case Key.OemPeriod: Pause(); Seek(_playhead + (shift ? second : 1)); break;
@@ -712,10 +878,10 @@ public partial class VideoEditorWindow : Window
         {
             Source = source;
             int seconds = (int)Math.Round(source.Duration);
-            Length = $"{seconds / 60}:{seconds % 60:00}";
+            Length = source.IsImage ? "Still" : $"{seconds / 60}:{seconds % 60:00}";
             string size = source.Height >= 2160 ? "4K" : source.Height >= 1440 ? "1440p" : source.Height >= 1080 ? "1080p" : source.Height > 0 ? source.Height + "p" : "Audio";
             string rate = FrameRate.TryParse(source.FrameRate, out var parsed) ? " " + parsed.Rounded : "";
-            _badge = size + rate;
+            _badge = source.IsImage ? $"{source.Width} × {source.Height}" : size + rate;
         }
 
         public MediaSource Source { get; }
