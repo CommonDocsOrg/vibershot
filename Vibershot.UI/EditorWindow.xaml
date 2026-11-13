@@ -91,53 +91,8 @@
   <Style x:Key="FieldLabel" TargetType="TextBlock"><Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Margin" Value="0,10,0,6"/></Style>
   <Style x:Key="FieldValue" TargetType="TextBlock"><Setter Property="FontSize" Value="11"/><Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="Foreground" Value="{StaticResource Ink3}"/><Setter Property="HorizontalAlignment" Value="Right"/><Setter Property="Margin" Value="0,10,0,6"/></Style>
 
-  <!-- Menus: the menu bar's top-level headers open a paper popup; items inside it and in context menus share the flat row template. -->
+  <!-- Menus: the menu bar is transparent; the popup, row, context menu and separator styles are app-wide (App.xaml). -->
   <Style TargetType="Menu"><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="0"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
-  <ControlTemplate x:Key="MenuHeaderTemplate" TargetType="MenuItem">
-   <Grid>
-    <Border x:Name="Shell" Padding="10,4" CornerRadius="5" Background="Transparent">
-     <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
-    </Border>
-    <Popup x:Name="PART_Popup" Placement="Bottom" PlacementTarget="{Binding ElementName=Shell}" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade" VerticalOffset="2" HorizontalOffset="-8">
-     <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="8">
-      <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="6" Opacity="0.45"/></Border.Effect>
-      <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
-     </Border>
-    </Popup>
-   </Grid>
-   <ControlTemplate.Triggers>
-    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-    <Trigger Property="IsSubmenuOpen" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="Foreground" Value="{StaticResource Accent}"/></Trigger>
-   </ControlTemplate.Triggers>
-  </ControlTemplate>
-  <ControlTemplate x:Key="MenuRowTemplate" TargetType="MenuItem">
-   <Border x:Name="Shell" Padding="12,7" CornerRadius="6" Background="Transparent" MinWidth="220">
-    <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
-     <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{StaticResource Ink3}" Margin="24,0,0,0" VerticalAlignment="Center"/>
-    </Grid>
-   </Border>
-   <ControlTemplate.Triggers>
-    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
-   </ControlTemplate.Triggers>
-  </ControlTemplate>
-  <Style TargetType="MenuItem">
-   <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="12.5"/>
-   <Setter Property="Template" Value="{StaticResource MenuRowTemplate}"/>
-   <Style.Triggers>
-    <Trigger Property="Role" Value="TopLevelHeader"><Setter Property="Template" Value="{StaticResource MenuHeaderTemplate}"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/></Trigger>
-   </Style.Triggers>
-  </Style>
-  <Style TargetType="ContextMenu">
-   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
-    <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="8">
-     <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="6" Opacity="0.45"/></Border.Effect>
-     <ItemsPresenter/>
-    </Border>
-   </ControlTemplate></Setter.Value></Setter>
-  </Style>
-  <Style TargetType="Separator"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Separator"><Border Height="1" Background="{StaticResource Rule}" Margin="8,4"/></ControlTemplate></Setter.Value></Setter></Style>
   <DrawingBrush x:Key="Checkerboard" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
    <DrawingBrush.Drawing><DrawingGroup>
     <GeometryDrawing Brush="#2C2E3A"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
