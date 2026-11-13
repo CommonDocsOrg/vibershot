@@ -6,7 +6,7 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 
 - **Solid, not glass.** Opaque surfaces with a 1px edge and a real drop shadow. No transparency effects. The only gradient and glow in the app are on the launcher's hero button.
 - **Ink does the hierarchy.** Off-white type on dark slate carries structure through size and weight. Color is not used to rank text.
-- **One accent, used once.** Dracula purple appears at full strength on exactly one element per window: the primary action. Everywhere else it is a dim tint or a hover color. Text on the accent is dark, never white.
+- **One accent, used once.** Purple appears as a fill on exactly one element per window: the primary action. Everywhere else it is a glyph, a stroke, a dim tint or a hover color. The light Dracula purple (`Accent`) is for glyphs and strokes on dark surfaces; anything that holds white text is filled with the deeper `AccentFill`.
 - **Space instead of rules.** Separate groups with padding and gaps, not dividers. Rows show a fill only on hover.
 - **Monospace for data.** Keyboard shortcuts, version tags and filenames use the mono font so they scan as data, not prose.
 - **Placeholders look like placeholders.** Features that are not wired up yet are disabled, drawn in muted ink, and carry a `SOON` chip instead of a shortcut.
@@ -24,9 +24,11 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 | `Ink2` | `#B3B8CF` | Secondary text, hints, chrome icons, pin off state |
 | `Ink3` | `#6272A4` | Section labels, chips, version tag, neutral status (Dracula comment) |
 | `Accent` | `#BD93F9` | Primary action fill, pin on state, row icons, focus ring, selection chrome (Dracula purple) |
-| `AccentDeep` | `#CBA8FF` | Primary action hover (lighter, since the surface is dark) |
+| `AccentDeep` | `#CBA8FF` | Lighter purple for hover on accent-coloured text or glyphs |
+| `AccentFill` | `#7B52D1` | Fill of primary buttons, checked toggles and tool toggles (deep enough for white text) |
+| `AccentFillHover` | `#8D66E3` | Primary button hover |
 | `AccentSoft` | `#3F3A5E` | Tint behind row icons, active rows and tiles |
-| `AccentInk` | `#1E1F29` | Text and glyphs on an accent fill |
+| `AccentInk` | `#FFFFFF` | Text and glyphs on an `AccentFill` fill |
 | `AccentEdge` | `#5C4F88` | Border of an accent-tinted panel (the editor's tool accordion), tile hover edge |
 | `AccentWash` | `#2E2D42` | Fill of an accent-tinted panel |
 | `WarningInk` | `#F1FA8C` | Text inside a `WarningBox` (Dracula yellow) |
@@ -35,7 +37,7 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 
 Semantic colors (`Ok`, `Danger`) are separate from the accent and never used for decoration.
 
-The shared control templates in `App.xaml` read the accent through `DynamicResource`, so a window could override the four `Accent*` tokens in its own resources if it ever needed a different accent; today every window uses purple. The launcher adds two local gradient brushes: `HeroFill` (purple into pink, diagonal) for the primary action and `Hairline` (purple to pink, fading out at both ends) for the 2px line at the top of the window.
+The shared control templates in `App.xaml` read the accent through `DynamicResource`, so a window could override the four `Accent*` tokens in its own resources if it ever needed a different accent; today every window uses purple. The launcher adds two local gradient brushes: `HeroFill` (deep purple into magenta, diagonal) for the primary action and `Hairline` (purple to pink, fading out at both ends) for the 2px line at the top of the window.
 
 ## Typography
 
@@ -88,7 +90,7 @@ Shadow on a window: black, blur 40, depth 10, opacity 0.55. Popup shadow: black,
 
 **Window chrome.** 30×30 icon-only buttons using Segoe Fluent Icons at 13pt, `Ink2`, no border. Hover fills with `Rule`. Order from left: pin, settings, minimize, close. The pin shows `Accent` on `AccentSoft` when on and `Ink2` when off. Native-framed windows get a `Paper` caption with `Ink` text through DWM.
 
-**Primary action (hero).** Full-width `HeroFill` gradient block, radius 14, with a purple glow behind it (`DropShadowEffect` in `Accent`, blur 30, depth 0). Inside: a 42px icon tile at 19% black, a bold 17pt label, a one-line hint, and the shortcut in a bold mono chip at 19% black on the right, all in `AccentInk`. Hover adds a 10% white sheen and brightens the glow. Only one per window.
+**Primary action (hero).** Full-width `HeroFill` gradient block (`AccentFill` into a deep magenta), radius 14, with a purple glow behind it (`DropShadowEffect` in `Accent`, blur 30, depth 0). Inside: a 42px icon tile at 18% white, a bold 17pt label, a one-line hint, and the shortcut in a bold mono chip at 22% black on the right, all in `AccentInk`. Hover adds a 10% white sheen and brightens the glow. Only one per window.
 
 **Tile.** The launcher's secondary actions are three equal tiles on `Well` with a `PaperEdge` border, radius 12, 12px padding. Each holds a 32px icon tile (`AccentSoft` behind an `Accent` glyph), a bold title and a wrapping hint; an optional chip sits in the top-right corner. Hover lifts to `Hover` with an `AccentEdge` border; press fills `AccentSoft` with an `Accent` border.
 

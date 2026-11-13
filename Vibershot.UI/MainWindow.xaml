@@ -21,7 +21,7 @@
   </ControlTemplate></Setter.Value></Setter></Style>
   <!-- The accent as a gradient: purple into Dracula pink, used on the hero and the top hairline. -->
   <LinearGradientBrush x:Key="HeroFill" StartPoint="0,0" EndPoint="1,1">
-   <GradientStop Color="#BD93F9" Offset="0"/><GradientStop Color="#C98BEC" Offset="0.6"/><GradientStop Color="#E383D9" Offset="1"/>
+   <GradientStop Color="#7B52D1" Offset="0"/><GradientStop Color="#964DC4" Offset="0.6"/><GradientStop Color="#B048B0" Offset="1"/>
   </LinearGradientBrush>
   <LinearGradientBrush x:Key="Hairline" StartPoint="0,0" EndPoint="1,0">
    <GradientStop Color="#00BD93F9" Offset="0"/><GradientStop Color="#BD93F9" Offset="0.3"/><GradientStop Color="#FF79C6" Offset="0.7"/><GradientStop Color="#00FF79C6" Offset="1"/>
@@ -127,7 +127,7 @@
     </ControlTemplate></Button.Template>
     <Grid TextElement.Foreground="{StaticResource AccentInk}">
      <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-     <Border Width="42" Height="42" CornerRadius="11" Background="#30000000" Margin="0,0,14,0">
+     <Border Width="42" Height="42" CornerRadius="11" Background="#2EFFFFFF" Margin="0,0,14,0">
       <Path Data="M1,8 L1,1 L8,1 M14,1 L21,1 L21,8 M21,14 L21,21 L14,21 M8,21 L1,21 L1,14 M7,7 L15,7 L15,15 L7,15 Z" Stroke="{StaticResource AccentInk}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Center" VerticalAlignment="Center"/>
      </Border>
      <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -135,7 +135,7 @@
       <TextBlock Text="Capture region" FontSize="17" FontWeight="Bold" Foreground="{StaticResource AccentInk}"/>
       <TextBlock Text="Drag to pick any area" FontSize="11.5" FontWeight="SemiBold" Opacity="0.8" Margin="0,3,0,0" Foreground="{StaticResource AccentInk}" TextTrimming="CharacterEllipsis"/>
      </StackPanel>
-     <Border x:Name="RegionChip" Grid.Column="2" Background="#30000000" CornerRadius="6" Padding="8,4" VerticalAlignment="Center" Margin="10,0,0,0">
+     <Border x:Name="RegionChip" Grid.Column="2" Background="#38000000" CornerRadius="6" Padding="8,4" VerticalAlignment="Center" Margin="10,0,0,0">
       <TextBlock x:Name="RegionChipText" Text="Ctrl+Shift+S" FontFamily="{StaticResource MonoFont}" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource AccentInk}"/>
      </Border>
     </Grid>

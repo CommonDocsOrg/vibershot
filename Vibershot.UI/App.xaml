@@ -14,8 +14,11 @@
   <SolidColorBrush x:Key="Ink3" Color="#6272A4"/>
   <SolidColorBrush x:Key="Accent" Color="#BD93F9"/>
   <SolidColorBrush x:Key="AccentDeep" Color="#CBA8FF"/>
+  <!-- Filled controls use a deeper purple so white text on them passes contrast; Accent itself is for glyphs, strokes and rings. -->
+  <SolidColorBrush x:Key="AccentFill" Color="#7B52D1"/>
+  <SolidColorBrush x:Key="AccentFillHover" Color="#8D66E3"/>
   <SolidColorBrush x:Key="AccentSoft" Color="#3F3A5E"/>
-  <SolidColorBrush x:Key="AccentInk" Color="#1E1F29"/>
+  <SolidColorBrush x:Key="AccentInk" Color="#FFFFFF"/>
   <SolidColorBrush x:Key="AccentEdge" Color="#5C4F88"/>
   <SolidColorBrush x:Key="AccentWash" Color="#2E2D42"/>
   <SolidColorBrush x:Key="Ok" Color="#50FA7B"/>
@@ -59,16 +62,16 @@
   </Style>
   <!-- Primary button: the one accent element in a window. -->
   <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-   <Setter Property="Background" Value="{DynamicResource Accent}"/>
+   <Setter Property="Background" Value="{DynamicResource AccentFill}"/>
    <Setter Property="Foreground" Value="{DynamicResource AccentInk}"/>
-   <Setter Property="BorderBrush" Value="{DynamicResource Accent}"/>
+   <Setter Property="BorderBrush" Value="{DynamicResource AccentFill}"/>
    <Setter Property="Template">
     <Setter.Value><ControlTemplate TargetType="Button">
      <Border x:Name="Frame" CornerRadius="8" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
       <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" RecognizesAccessKey="True"/>
      </Border>
      <ControlTemplate.Triggers>
-      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{DynamicResource AccentDeep}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource AccentDeep}"/></Trigger>
+      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Frame" Property="Background" Value="{DynamicResource AccentFillHover}"/><Setter TargetName="Frame" Property="BorderBrush" Value="{DynamicResource AccentFillHover}"/></Trigger>
       <Trigger Property="IsPressed" Value="True"><Setter TargetName="Frame" Property="Opacity" Value="0.85"/></Trigger>
       <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Frame" Property="BorderBrush" Value="{StaticResource Ink}"/><Setter TargetName="Frame" Property="BorderThickness" Value="2"/></Trigger>
       <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Frame" Property="Opacity" Value="0.45"/></Trigger>
@@ -106,7 +109,7 @@
      </Border>
     </Grid>
     <ControlTemplate.Triggers>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{DynamicResource Accent}"/><Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Thumb" Property="Fill" Value="{DynamicResource AccentInk}"/><Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{DynamicResource AccentFill}"/><Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource AccentFill}"/><Setter TargetName="Thumb" Property="Fill" Value="{DynamicResource AccentInk}"/><Setter TargetName="Thumb" Property="HorizontalAlignment" Value="Right"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Track" Property="BorderBrush" Value="{StaticResource Ink}"/><Setter TargetName="Track" Property="BorderThickness" Value="2"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
     </ControlTemplate.Triggers>
@@ -232,7 +235,7 @@
     </StackPanel>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Ink3}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Box" Property="Background" Value="{DynamicResource Accent}"/><Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="Tick" Property="Visibility" Value="Visible"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentFill}"/><Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentFill}"/><Setter TargetName="Tick" Property="Visibility" Value="Visible"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Ink}"/><Setter TargetName="Box" Property="BorderThickness" Value="2"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
     </ControlTemplate.Triggers>

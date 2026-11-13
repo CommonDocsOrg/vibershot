@@ -39,7 +39,7 @@
     <Border x:Name="Shell" Background="Transparent" CornerRadius="6" BorderBrush="Transparent" BorderThickness="0" Margin="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Accent}"/><Setter Property="Foreground" Value="{StaticResource AccentInk}"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentFill}"/><Setter Property="Foreground" Value="{StaticResource AccentInk}"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
@@ -83,7 +83,7 @@
     <Border x:Name="Shell" Background="{StaticResource Paper}" CornerRadius="6" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter Property="Foreground" Value="{StaticResource AccentInk}"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentFill}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource AccentFill}"/><Setter Property="Foreground" Value="{StaticResource AccentInk}"/></Trigger>
      <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
@@ -155,7 +155,7 @@
    <Grid>
     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-     <Border Width="18" Height="18" CornerRadius="5" Background="{StaticResource Accent}" Margin="4,0,8,0" VerticalAlignment="Center"><Ellipse Width="8" Height="8" Stroke="{StaticResource AccentInk}" StrokeThickness="2"/></Border>
+     <Border Width="18" Height="18" CornerRadius="5" Background="{StaticResource AccentFill}" Margin="4,0,8,0" VerticalAlignment="Center"><Ellipse Width="8" Height="8" Stroke="{StaticResource AccentInk}" StrokeThickness="2"/></Border>
      <Menu x:Name="MenuBar" IsMainMenu="True">
       <MenuItem Header="_File">
        <MenuItem Header="New from clipboard" InputGestureText="Ctrl+N" Click="NewFromClipboard_Click"/>
