@@ -4,14 +4,14 @@ using System.Windows.Media;
 namespace Vibershot.UI;
 
 /// <summary>
-/// Click-through tangerine outline drawn just outside a region while it is being recorded, so the
+/// Click-through purple outline drawn just outside a region while it is being recorded, so the
 /// user can see what the video covers. The stroke sits entirely outside the recorded pixels and the
 /// window is excluded from capture, so it never appears in the recording either way.
 /// </summary>
 public sealed class RecordingFrameWindow : Window
 {
-    private const int Pad = 3; // Physical pixels: 1px dark hairline plus a 2px tangerine stroke.
-    private static readonly Color AccentColor = Color.FromRgb(0xF0, 0x61, 0x2A);
+    private const int Pad = 3; // Physical pixels: 1px dark hairline plus a 2px purple stroke.
+    private static readonly Color AccentColor = Color.FromRgb(0xBD, 0x93, 0xF9);
     private readonly Int32Rect _region;
     private readonly Border _edge = new() { BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0x14, 0x18, 0x1C)), CornerRadius = new CornerRadius(3) };
     private readonly Border _stroke = new() { BorderBrush = new SolidColorBrush(AccentColor), CornerRadius = new CornerRadius(2) };

@@ -12,15 +12,16 @@ public enum CaptureAction { Screenshot, Video, Scrolling }
 public sealed class RegionWindow : Window
 {
     private readonly Canvas _canvas = new();
-    // Overlay chrome follows the paper palette: tangerine selection, paper action bar and hint.
-    private static readonly Color AccentColor = Color.FromRgb(0xF0, 0x61, 0x2A);
+    // Overlay chrome follows the Dracula palette: purple selection, dark slate action bar and hint.
+    private static readonly Color AccentColor = Color.FromRgb(0xBD, 0x93, 0xF9);
+    private static readonly Color PaperColor = Color.FromRgb(0x28, 0x2A, 0x36), EdgeColor = Color.FromRgb(0x44, 0x47, 0x5A);
     private readonly Rectangle _selection = new() { Stroke = new SolidColorBrush(AccentColor), StrokeThickness = 2, IsHitTestVisible = false,
         Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = AccentColor, BlurRadius = 14, ShadowDepth = 0, Opacity = .8 } };
     private readonly System.Windows.Shapes.Path _shade = new() { Fill = new SolidColorBrush(Color.FromArgb(150, 21, 24, 28)), IsHitTestVisible = false };
-    private readonly Border _actions = new() { Background = new SolidColorBrush(Color.FromRgb(0xFB, 0xFB, 0xFC)), BorderBrush = new SolidColorBrush(Color.FromRgb(0xC9, 0xCD, 0xD3)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Visibility = Visibility.Collapsed,
-        Child = new StackPanel { Orientation = Orientation.Horizontal }, Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0x14, 0x18, 0x1C), BlurRadius = 24, ShadowDepth = 6, Opacity = .25 } };
-    private readonly Border _hint = new() { Background = new SolidColorBrush(Color.FromRgb(0xFB, 0xFB, 0xFC)), BorderBrush = new SolidColorBrush(Color.FromRgb(0xC9, 0xCD, 0xD3)), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8), IsHitTestVisible = false,
-        Child = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0x15, 0x18, 0x1C)), FontSize = 12, FontWeight = FontWeights.SemiBold } };
+    private readonly Border _actions = new() { Background = new SolidColorBrush(PaperColor), BorderBrush = new SolidColorBrush(EdgeColor), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(4), Visibility = Visibility.Collapsed,
+        Child = new StackPanel { Orientation = Orientation.Horizontal }, Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, BlurRadius = 24, ShadowDepth = 6, Opacity = .5 } };
+    private readonly Border _hint = new() { Background = new SolidColorBrush(PaperColor), BorderBrush = new SolidColorBrush(EdgeColor), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(8), Padding = new Thickness(12, 8, 12, 8), IsHitTestVisible = false,
+        Child = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0xF8, 0xF2)), FontSize = 12, FontWeight = FontWeights.SemiBold } };
     private string HintText { set => ((TextBlock)_hint.Child).Text = value; }
     private UIElementCollection ActionButtons => ((StackPanel)_actions.Child).Children;
     private readonly WindowTargets _targets = new();
@@ -42,10 +43,24 @@ public sealed class RegionWindow : Window
     /// <summary>True when the user clicked a hovered window or content area rather than dragging a region.</summary>
     public bool SelectedTarget { get; private set; }
     private readonly CaptureAction? _preset;
+
+    // Fixed-size mode: a frame of an exact pixel size follows the pointer and a click places it.
+    private static readonly (string Label, int Width, int Height)[] SizePresets = { ("720p", 1280, 720), ("1080p", 1920, 1080), ("1440p", 2560, 1440), ("Square", 1080, 1080) };
+    private readonly Border _sizeBar = new() { Background = new SolidColorBrush(PaperColor), BorderBrush = new SolidColorBrush(EdgeColor), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 6, 8, 6), Cursor = Cursors.Arrow,
+        Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Colors.Black, BlurRadius = 24, ShadowDepth = 6, Opacity = .5 } };
+    private readonly List<System.Windows.Controls.Primitives.ToggleButton> _sizeChips = new();
+    private readonly StackPanel _customPanel = new() { Orientation = Orientation.Horizontal, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBox _customWidth = new(), _customHeight = new();
+    private Size? _fixedSize;
+    /// <summary>The custom fixed size last typed into the size bar, in screen pixels; the caller stores it for next time.</summary>
+    public (int Width, int Height) CustomSize { get; private set; } = (1280, 720);
+
     /// <param name="showActions">Offer screenshot, video or scrolling photo after the selection; otherwise take a screenshot at once.</param>
     /// <param name="preset">An action chosen before the tool opened (a "Record video" hotkey); the chooser is skipped.</param>
-    public RegionWindow(BitmapSource desktop, Int32Rect bounds, bool showActions, CaptureAction? preset = null)
+    /// <param name="customSize">The custom fixed size to offer in the size bar.</param>
+    public RegionWindow(BitmapSource desktop, Int32Rect bounds, bool showActions, CaptureAction? preset = null, (int Width, int Height)? customSize = null)
     {
+        if (customSize is { } remembered) CustomSize = remembered;
         Title = "Vibershot region selection"; _desktop = desktop; _bounds = bounds; _showActions = showActions && preset is null; _preset = preset;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
         Topmost = true; ShowInTaskbar = false; Cursor = Cursors.Cross;
@@ -57,21 +72,31 @@ public sealed class RegionWindow : Window
         AddAction("Take video", () => Complete(CaptureAction.Video));
         AddAction("Scrolling photo", () => Complete(CaptureAction.Scrolling));
         AddAction("Cancel", Close); _canvas.Children.Add(_actions);
+        BuildSizeBar(); Canvas.SetLeft(_sizeBar, 24); Canvas.SetTop(_sizeBar, 68); _canvas.Children.Add(_sizeBar);
         SourceInitialized += (_, _) => SetWindowPos(new WindowInteropHelper(this).Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x0040);
         Loaded += (_, _) => UpdateHover();
         Closed += (_, _) => _closed = true;
-        KeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); else if (!_locked && !_dragging) UpdateHover(); };
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) { Close(); e.Handled = true; } };
+        KeyDown += (_, _) => { if (!_locked && !_dragging) UpdateHover(); };
         KeyUp += (_, _) => { if (!_locked && !_dragging) UpdateHover(); };
         MouseLeftButtonDown += (_, e) =>
         {
-            if (_actions.IsMouseOver) return;
+            if (_actions.IsMouseOver || _sizeBar.IsMouseOver) return;
             _locked = false; Result = null; _actions.Visibility = Visibility.Collapsed;
+            if (_fixedSize is not null)
+            {
+                // A fixed-size frame is placed with one click, centred on the pointer.
+                _start = PixelPoint(); Select(FixedRect(_start), target: false); e.Handled = true;
+                return;
+            }
             UpdateHover(); _start = PixelPoint(); _dragging = true; CaptureMouse(); e.Handled = true;
         };
         MouseMove += (_, _) =>
         {
             if (_dragging) { if ((PixelPoint() - _start).Length >= 4) Draw(new Rect(_start, PixelPoint())); }
-            else if (!_locked) UpdateHover();
+            else if (_locked || _sizeBar.IsMouseOver) return;
+            else if (_fixedSize is not null) ShowFixedFrame();
+            else UpdateHover();
         };
         MouseLeftButtonUp += (_, _) =>
         {
@@ -79,27 +104,126 @@ public sealed class RegionWindow : Window
             _dragging = false; ReleaseMouseCapture();
             var end = PixelPoint();
             var pixels = (end - _start).Length < 4 ? _hover : new Rect(_start, end);
-            if (pixels.IsEmpty) { UpdateHover(); return; }
-            int x = (int)Math.Floor(pixels.X), y = (int)Math.Floor(pixels.Y);
-            int w = Math.Min(bounds.Width, (int)Math.Ceiling(pixels.Right)) - x;
-            int h = Math.Min(bounds.Height, (int)Math.Ceiling(pixels.Bottom)) - y;
-            if (w < 2 || h < 2) { UpdateHover(); return; }
-            Draw(new Rect(x, y, w, h)); _locked = true;
-            SelectedTarget = (end - _start).Length < 4;
-            (SourceProcess, SourceTitle) = Describe(_targets.At(new Point(_start.X + bounds.X, _start.Y + bounds.Y)));
-            HintText = $"{w} × {h} • Choose an action • Hover + click or drag to replace • Esc: cancel";
-            SelectedBounds = new Int32Rect(x + bounds.X, y + bounds.Y, w, h);
-            Result = new CroppedBitmap(_desktop, new Int32Rect(x, y, w, h)); Result.Freeze();
-            if (!_showActions) { Complete(_preset ?? CaptureAction.Screenshot); return; }
-            _actions.Visibility = Visibility.Visible; _actions.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(_actions, Math.Clamp(Canvas.GetLeft(_selection), 0, Math.Max(0, ActualWidth - _actions.DesiredSize.Width)));
-            double below = Canvas.GetTop(_selection) + _selection.Height + 8;
-            Canvas.SetTop(_actions, Math.Clamp(below + _actions.DesiredSize.Height <= ActualHeight ? below : Canvas.GetTop(_selection) - _actions.DesiredSize.Height - 8, 0, Math.Max(0, ActualHeight - _actions.DesiredSize.Height)));
-            ((Button)ActionButtons[0]).Focus();
+            Select(pixels, (end - _start).Length < 4);
         };
+    }
+
+    /// <summary>Locks a selection (in overlay pixels) and either finishes at once or shows the action bar beside it.</summary>
+    private void Select(Rect pixels, bool target)
+    {
+        if (pixels.IsEmpty) { UpdateHover(); return; }
+        int x = (int)Math.Floor(pixels.X), y = (int)Math.Floor(pixels.Y);
+        int w = Math.Min(_bounds.Width, (int)Math.Ceiling(pixels.Right)) - x;
+        int h = Math.Min(_bounds.Height, (int)Math.Ceiling(pixels.Bottom)) - y;
+        if (w < 2 || h < 2) { UpdateHover(); return; }
+        Draw(new Rect(x, y, w, h)); _locked = true;
+        SelectedTarget = target;
+        (SourceProcess, SourceTitle) = Describe(_targets.At(new Point(_start.X + _bounds.X, _start.Y + _bounds.Y)));
+        HintText = _fixedSize is not null
+            ? $"{w} × {h} • Choose an action • Click elsewhere to move the frame • Esc: cancel"
+            : $"{w} × {h} • Choose an action • Hover + click or drag to replace • Esc: cancel";
+        SelectedBounds = new Int32Rect(x + _bounds.X, y + _bounds.Y, w, h);
+        Result = new CroppedBitmap(_desktop, new Int32Rect(x, y, w, h)); Result.Freeze();
+        if (!_showActions) { Complete(_preset ?? CaptureAction.Screenshot); return; }
+        _actions.Visibility = Visibility.Visible; _actions.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(_actions, Math.Clamp(Canvas.GetLeft(_selection), 0, Math.Max(0, ActualWidth - _actions.DesiredSize.Width)));
+        double below = Canvas.GetTop(_selection) + _selection.Height + 8;
+        Canvas.SetTop(_actions, Math.Clamp(below + _actions.DesiredSize.Height <= ActualHeight ? below : Canvas.GetTop(_selection) - _actions.DesiredSize.Height - 8, 0, Math.Max(0, ActualHeight - _actions.DesiredSize.Height)));
+        ((Button)ActionButtons[0]).Focus();
+    }
+
+    // ----- Fixed-size frames -----
+
+    /// <summary>The size bar: Free (hover, click or drag as usual), a few standard frames, and a custom width × height.</summary>
+    private void BuildSizeBar()
+    {
+        var ink3 = new SolidColorBrush(Color.FromRgb(0x62, 0x72, 0xA4));
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(new TextBlock { Text = "SIZE", FontSize = 10.5, FontWeight = FontWeights.Bold, Foreground = ink3, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(2, 0, 10, 0) });
+        AddSizeChip(row, "Free", "Pick a window, or drag any region", null);
+        foreach (var (label, width, height) in SizePresets)
+        {
+            var chip = AddSizeChip(row, label, $"A {width} × {height} frame: move it into place and click", new Size(width, height));
+            if (width > _bounds.Width || height > _bounds.Height) { chip.IsEnabled = false; chip.Opacity = .45; chip.ToolTip = $"{width} × {height} is larger than your desktop"; }
+        }
+        var custom = AddSizeChip(row, "Custom", "A frame of the exact size you type", null);
+        custom.Tag = "custom";
+        foreach (var (box, value, name) in new[] { (_customWidth, CustomSize.Width, "Frame width in pixels"), (_customHeight, CustomSize.Height, "Frame height in pixels") })
+        {
+            box.Text = value.ToString(); box.Width = 62; box.Padding = new Thickness(8, 5, 8, 5); box.FontSize = 12; box.TextAlignment = TextAlignment.Center; box.VerticalAlignment = VerticalAlignment.Center;
+            box.FontFamily = (FontFamily)FindResource("MonoFont"); box.ToolTip = name; System.Windows.Automation.AutomationProperties.SetName(box, name);
+            box.TextChanged += (_, _) => ApplyCustomSize();
+            box.GotKeyboardFocus += (_, _) => box.SelectAll();
+            box.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Keyboard.ClearFocus(); Focus(); e.Handled = true; } };
+        }
+        _customPanel.Children.Add(_customWidth);
+        _customPanel.Children.Add(new TextBlock { Text = "×", Foreground = ink3, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 6, 0) });
+        _customPanel.Children.Add(_customHeight);
+        _customPanel.Children.Add(new TextBlock { Text = "px", Foreground = ink3, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 4, 0) });
+        row.Children.Add(_customPanel);
+        _sizeBar.Child = row;
+        _sizeChips[0].IsChecked = true;
+    }
+
+    private System.Windows.Controls.Primitives.ToggleButton AddSizeChip(StackPanel row, string label, string tip, Size? size)
+    {
+        var chip = new System.Windows.Controls.Primitives.ToggleButton { Content = label, Style = (Style)FindResource("Chip"), Margin = new Thickness(0, 0, 6, 0), ToolTip = tip, Tag = size, Focusable = false };
+        System.Windows.Automation.AutomationProperties.SetName(chip, label + " size");
+        chip.Click += (_, _) => ChooseSize(chip);
+        _sizeChips.Add(chip); row.Children.Add(chip);
+        return chip;
+    }
+
+    private void ChooseSize(System.Windows.Controls.Primitives.ToggleButton chosen)
+    {
+        foreach (var chip in _sizeChips) chip.IsChecked = chip == chosen;
+        bool custom = chosen.Tag as string == "custom";
+        _customPanel.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+        _locked = false; Result = null; _actions.Visibility = Visibility.Collapsed;
+        if (custom) { ApplyCustomSize(); _customWidth.Focus(); return; }
+        _fixedSize = chosen.Tag as Size?;
+        Focus();
+        if (_fixedSize is null)
+        {
+            HintText = "Hover + click: window or content • Shift: whole window • Drag: region • Esc: cancel";
+            UpdateHover();
+        }
+        else ShowFixedFrame();
+    }
+
+    /// <summary>Reads the custom boxes; a readable size becomes the frame, anything else waits for more typing.</summary>
+    private void ApplyCustomSize()
+    {
+        if (_customPanel.Visibility != Visibility.Visible) return;
+        if (int.TryParse(_customWidth.Text.Trim(), out int w) && int.TryParse(_customHeight.Text.Trim(), out int h) && w >= 16 && h >= 16)
+        {
+            CustomSize = (w, h);
+            _fixedSize = new Size(Math.Min(w, _bounds.Width), Math.Min(h, _bounds.Height));
+            if (!_locked) ShowFixedFrame();
+        }
+        else HintText = "Type a width and height of at least 16 px";
+    }
+
+    /// <summary>The fixed frame centred on a point, pushed back inside the desktop.</summary>
+    private Rect FixedRect(Point centre)
+    {
+        var size = _fixedSize ?? new Size(1280, 720);
+        double w = Math.Min(size.Width, _bounds.Width), h = Math.Min(size.Height, _bounds.Height);
+        double x = Math.Clamp(Math.Round(centre.X - w / 2), 0, _bounds.Width - w), y = Math.Clamp(Math.Round(centre.Y - h / 2), 0, _bounds.Height - h);
+        return new Rect(x, y, w, h);
+    }
+
+    private void ShowFixedFrame()
+    {
+        var frame = FixedRect(PixelPoint());
+        _hover = Rect.Empty;
+        Draw(frame);
+        bool clipped = _fixedSize is { } wanted && (wanted.Width != frame.Width || wanted.Height != frame.Height || CustomSize.Width > _bounds.Width && _customPanel.Visibility == Visibility.Visible || CustomSize.Height > _bounds.Height && _customPanel.Visibility == Visibility.Visible);
+        HintText = $"{(int)frame.Width} × {(int)frame.Height}{(clipped ? " (limited to your desktop)" : "")} • Move the frame into place • Click: place it • Esc: cancel";
     }
     private async void UpdateHover()
     {
+        if (_fixedSize is not null) { if (!_locked) ShowFixedFrame(); return; }
         var local = PixelPoint(); var point = new Point(local.X + _bounds.X, local.Y + _bounds.Y);
         var target = _targets.At(point); _hover = Rect.Empty;
         if (target == null) { _selection.Width = 0; _selection.Height = 0; Shade(Rect.Empty); return; }

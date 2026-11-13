@@ -2,129 +2,279 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
  xmlns:local="clr-namespace:Vibershot.UI"
- Style="{StaticResource {x:Type Window}}" Title="Vibershot Editor" Width="1320" Height="860" MinWidth="960" MinHeight="600" WindowStartupLocation="CenterScreen" AllowDrop="True">
+ Style="{StaticResource {x:Type Window}}" Title="Vibershot Editor" Width="1320" Height="860" MinWidth="960" MinHeight="600" WindowStartupLocation="CenterScreen" AllowDrop="True"
+ Background="{StaticResource Well}">
  <Window.Resources>
-  <!-- Tool rail: 40px icon toggles; the active tool sits on a pale tangerine tile. -->
-  <Style x:Key="ToolButton" TargetType="ToggleButton">
-   <Setter Property="Width" Value="40"/><Setter Property="Height" Value="40"/><Setter Property="Margin" Value="0,0,0,4"/>
-   <Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Cursor" Value="Hand"/>
-   <Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="16"/>
+
+  <!-- Tool row in the left column: icon, name and shortcut. The active tool opens into the panel beneath it, so its tile loses its bottom corners. -->
+  <Style x:Key="ToolRow" TargetType="ToggleButton">
+   <Setter Property="Height" Value="40"/><Setter Property="Margin" Value="0,0,0,2"/>
+   <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="FontSize" Value="12.5"/><Setter Property="FontWeight" Value="SemiBold"/>
+   <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
-    <Border x:Name="Shell" Background="Transparent" CornerRadius="9" BorderBrush="Transparent" BorderThickness="0">
-     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <Border x:Name="Shell" Background="Transparent" CornerRadius="8" BorderBrush="Transparent" BorderThickness="1,1,1,0" Padding="10,0">
+     <ContentPresenter VerticalAlignment="Center"/>
     </Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter Property="Foreground" Value="{StaticResource Tangerine}"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
+     <Trigger Property="IsChecked" Value="True">
+      <Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentWash}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource AccentEdge}"/>
+      <Setter TargetName="Shell" Property="CornerRadius" Value="10,10,0,0"/><Setter Property="Foreground" Value="{StaticResource Accent}"/><Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="Margin" Value="0"/>
+     </Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
-  <!-- Top bar icon buttons (undo, redo, zoom). -->
+  <Style x:Key="ToolGlyph" TargetType="TextBlock"><Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="15"/><Setter Property="Width" Value="22"/><Setter Property="TextAlignment" Value="Center"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/></Style>
+  <Style x:Key="ToolName" TargetType="TextBlock"><Setter Property="Margin" Value="12,0,0,0"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/></Style>
+  <Style x:Key="ToolKey" TargetType="TextBlock"><Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="FontSize" Value="10.5"/><Setter Property="Foreground" Value="{StaticResource Ink3}"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+
+  <!-- Segmented choice inside the tool panel (rectangle / ellipse / line). -->
+  <Style x:Key="Segment" TargetType="ToggleButton">
+   <Setter Property="Height" Value="28"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="FontSize" Value="11.5"/><Setter Property="FontWeight" Value="SemiBold"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
+    <Border x:Name="Shell" Background="Transparent" CornerRadius="6" BorderBrush="Transparent" BorderThickness="0" Margin="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentFill}"/><Setter Property="Foreground" Value="{StaticResource AccentInk}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+
+  <!-- Action rail and panel icon buttons (undo, copy, zoom, layer tools). -->
   <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
    <Setter Property="Width" Value="32"/><Setter Property="Height" Value="32"/><Setter Property="Padding" Value="0"/>
    <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/>
    <Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="14"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
-    <Border x:Name="Shell" Background="{TemplateBinding Background}" CornerRadius="6" BorderBrush="Transparent" BorderThickness="0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <Border x:Name="Shell" Background="{TemplateBinding Background}" CornerRadius="7" BorderBrush="Transparent" BorderThickness="0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
     <ControlTemplate.Triggers>
-     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Rule}"/></Trigger>
-     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Opacity" Value="0.7"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Rule}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.35"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
+  <!-- Rail button with a glyph and a word. -->
+  <Style x:Key="RailTextButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+   <Setter Property="Width" Value="Auto"/><Setter Property="Padding" Value="10,0"/><Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI"/><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="Shell" Background="{TemplateBinding Background}" CornerRadius="7" BorderBrush="Transparent" BorderThickness="0" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Rule}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
+     <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.35"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="RailGlyph" TargetType="TextBlock"><Setter Property="FontFamily" Value="Segoe Fluent Icons"/><Setter Property="FontSize" Value="13"/><Setter Property="Margin" Value="0,0,7,0"/><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/></Style>
+  <Style x:Key="RailDivider" TargetType="Border"><Setter Property="Width" Value="1"/><Setter Property="Height" Value="22"/><Setter Property="Background" Value="{StaticResource Rule}"/><Setter Property="Margin" Value="6,0"/></Style>
   <!-- Small text toggles in the properties panel (bold, italic, alignment). -->
   <Style x:Key="SmallToggle" TargetType="ToggleButton">
    <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/><Setter Property="Margin" Value="0,0,4,0"/>
    <Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Cursor" Value="Hand"/><Setter Property="FontSize" Value="13"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ToggleButton">
-    <Border x:Name="Shell" Background="{StaticResource Paper}" CornerRadius="6" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+    <Border x:Name="Shell" Background="{StaticResource Paper}" CornerRadius="6" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
     <ControlTemplate.Triggers>
      <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource TangerineSoft}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource TangerineSoft}"/><Setter Property="Foreground" Value="{StaticResource Tangerine}"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Tangerine}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
+     <Trigger Property="IsChecked" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentFill}"/><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource AccentFill}"/><Setter Property="Foreground" Value="{StaticResource AccentInk}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="Shell" Property="BorderThickness" Value="2"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
   <Style x:Key="SmallButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Padding" Value="10,5"/><Setter Property="FontSize" Value="11.5"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
-  <Style x:Key="PanelLabel" TargetType="TextBlock" BasedOn="{StaticResource GroupLabel}"><Setter Property="Margin" Value="0,0,0,10"/></Style>
-  <Style x:Key="FieldLabel" TargetType="TextBlock"><Setter Property="FontSize" Value="11.5"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Margin" Value="0,10,0,6"/></Style>
+  <Style x:Key="PanelLabel" TargetType="TextBlock" BasedOn="{StaticResource GroupLabel}"><Setter Property="Margin" Value="0,0,0,8"/></Style>
+  <Style x:Key="FieldLabel" TargetType="TextBlock"><Setter Property="FontSize" Value="11"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/><Setter Property="Margin" Value="0,10,0,6"/></Style>
   <Style x:Key="FieldValue" TargetType="TextBlock"><Setter Property="FontSize" Value="11"/><Setter Property="FontFamily" Value="{StaticResource MonoFont}"/><Setter Property="Foreground" Value="{StaticResource Ink3}"/><Setter Property="HorizontalAlignment" Value="Right"/><Setter Property="Margin" Value="0,10,0,6"/></Style>
-  <!-- Context menu in the paper style. -->
+
+  <!-- Menus: the menu bar's top-level headers open a paper popup; items inside it and in context menus share the flat row template. -->
+  <Style TargetType="Menu"><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="0"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
+  <ControlTemplate x:Key="MenuHeaderTemplate" TargetType="MenuItem">
+   <Grid>
+    <Border x:Name="Shell" Padding="10,4" CornerRadius="5" Background="Transparent">
+     <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+    </Border>
+    <Popup x:Name="PART_Popup" Placement="Bottom" PlacementTarget="{Binding ElementName=Shell}" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" AllowsTransparency="True" Focusable="False" PopupAnimation="Fade" VerticalOffset="2" HorizontalOffset="-8">
+     <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="8">
+      <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="6" Opacity="0.45"/></Border.Effect>
+      <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle"/>
+     </Border>
+    </Popup>
+   </Grid>
+   <ControlTemplate.Triggers>
+    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+    <Trigger Property="IsSubmenuOpen" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="Foreground" Value="{StaticResource Accent}"/></Trigger>
+   </ControlTemplate.Triggers>
+  </ControlTemplate>
+  <ControlTemplate x:Key="MenuRowTemplate" TargetType="MenuItem">
+   <Border x:Name="Shell" Padding="12,7" CornerRadius="6" Background="Transparent" MinWidth="220">
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" VerticalAlignment="Center"/>
+     <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{StaticResource Ink3}" Margin="24,0,0,0" VerticalAlignment="Center"/>
+    </Grid>
+   </Border>
+   <ControlTemplate.Triggers>
+    <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
+    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+   </ControlTemplate.Triggers>
+  </ControlTemplate>
+  <Style TargetType="MenuItem">
+   <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="12.5"/>
+   <Setter Property="Template" Value="{StaticResource MenuRowTemplate}"/>
+   <Style.Triggers>
+    <Trigger Property="Role" Value="TopLevelHeader"><Setter Property="Template" Value="{StaticResource MenuHeaderTemplate}"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Ink2}"/></Trigger>
+   </Style.Triggers>
+  </Style>
   <Style TargetType="ContextMenu">
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
     <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="8">
-     <Border.Effect><DropShadowEffect Color="#14181C" BlurRadius="24" ShadowDepth="6" Opacity="0.16"/></Border.Effect>
+     <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="24" ShadowDepth="6" Opacity="0.45"/></Border.Effect>
      <ItemsPresenter/>
     </Border>
-   </ControlTemplate></Setter.Value></Setter>
-  </Style>
-  <Style TargetType="MenuItem">
-   <Setter Property="Foreground" Value="{StaticResource Ink}"/>
-   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
-    <Border x:Name="Shell" Padding="12,7" CornerRadius="6" Background="Transparent" MinWidth="200">
-     <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-      <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
-      <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{StaticResource Ink3}" Margin="24,0,0,0" VerticalAlignment="Center"/>
-     </Grid>
-    </Border>
-    <ControlTemplate.Triggers>
-     <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Shell" Property="Background" Value="{StaticResource Hover}"/></Trigger>
-     <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
-    </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
   <Style TargetType="Separator"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Separator"><Border Height="1" Background="{StaticResource Rule}" Margin="8,4"/></ControlTemplate></Setter.Value></Setter></Style>
   <DrawingBrush x:Key="Checkerboard" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
    <DrawingBrush.Drawing><DrawingGroup>
-    <GeometryDrawing Brush="#F3F4F6"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
-    <GeometryDrawing Brush="#E6E8EC"><GeometryDrawing.Geometry><GeometryGroup><RectangleGeometry Rect="0,0,10,10"/><RectangleGeometry Rect="10,10,10,10"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#2C2E3A"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,20,20"/></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing Brush="#363947"><GeometryDrawing.Geometry><GeometryGroup><RectangleGeometry Rect="0,0,10,10"/><RectangleGeometry Rect="10,10,10,10"/></GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
    </DrawingGroup></DrawingBrush.Drawing>
   </DrawingBrush>
  </Window.Resources>
  <Grid>
-  <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
 
-  <!-- Top bar: document on the left, zoom in the middle, actions on the right. Export is the one tangerine element. -->
-  <Grid Margin="22,0,20,0">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-   <StackPanel VerticalAlignment="Center" MinWidth="200">
-    <TextBlock x:Name="DocNameLabel" FontSize="14" FontWeight="Bold" TextTrimming="CharacterEllipsis" MaxWidth="320"/>
-    <TextBlock x:Name="DocInfoLabel" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource Ink2}" Margin="0,2,0,0"/>
-   </StackPanel>
-   <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-    <Button Style="{StaticResource IconButton}" Content="&#xE71F;" Click="ZoomOut_Click" ToolTip="Zoom out (Ctrl+-)" AutomationProperties.Name="Zoom out"/>
-    <TextBlock x:Name="ZoomLabel" Text="100%" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Ink2}" Width="52" TextAlignment="Center" VerticalAlignment="Center"/>
-    <Button Style="{StaticResource IconButton}" Content="&#xE8A3;" Click="ZoomIn_Click" ToolTip="Zoom in (Ctrl++)" AutomationProperties.Name="Zoom in"/>
-    <Button Style="{StaticResource SmallButton}" Content="Fit" Click="Fit_Click" Margin="10,0,0,0" ToolTip="Fit the picture in the window (Ctrl+0)"/>
-    <Button Style="{StaticResource SmallButton}" Content="100%" Click="ActualSize_Click" Margin="6,0,0,0" ToolTip="Show pixels 1:1 (Ctrl+1)"/>
-   </StackPanel>
-   <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-    <Button x:Name="UndoButton" Style="{StaticResource IconButton}" Content="&#xE7A7;" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)" AutomationProperties.Name="Undo"/>
-    <Button x:Name="RedoButton" Style="{StaticResource IconButton}" Content="&#xE7A6;" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)" AutomationProperties.Name="Redo" Margin="2,0,14,0"/>
-    <!-- File menu: the full set of document commands; the two most used also sit beside it. -->
-    <Button x:Name="FileButton" Content="File ▾" Click="File_Click" Padding="14,8" ToolTip="Open, save and export">
-     <Button.ContextMenu>
-      <ContextMenu Placement="Bottom">
+  <!-- Menu bar: the full command set on the left, the document on the right. -->
+  <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource Rule}" BorderThickness="0,0,0,1" Padding="8,0,14,0" Height="32">
+   <Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+     <Border Width="18" Height="18" CornerRadius="5" Background="{StaticResource AccentFill}" Margin="4,0,8,0" VerticalAlignment="Center"><Ellipse Width="8" Height="8" Stroke="{StaticResource AccentInk}" StrokeThickness="2"/></Border>
+     <Menu x:Name="MenuBar" IsMainMenu="True">
+      <MenuItem Header="_File">
+       <MenuItem Header="New canvas…" InputGestureText="Ctrl+N" Click="NewCanvas_Click"/>
+       <MenuItem Header="New from clipboard" InputGestureText="Ctrl+Shift+N" Click="NewFromClipboard_Click"/>
        <MenuItem Header="Open…" InputGestureText="Ctrl+O" Click="Open_Click"/>
+       <MenuItem Header="Open gallery" InputGestureText="Ctrl+G" Click="OpenGallery_Click"/>
        <Separator/>
        <MenuItem Header="Save project" InputGestureText="Ctrl+S" Click="SaveProject_Click"/>
        <MenuItem Header="Save project as…" InputGestureText="Ctrl+Shift+S" Click="SaveProjectAs_Click"/>
        <Separator/>
        <MenuItem Header="Export image…" InputGestureText="Ctrl+E" Click="Export_Click"/>
-       <MenuItem Header="Copy image" Click="CopyImage_Click"/>
-      </ContextMenu>
-     </Button.ContextMenu>
-    </Button>
-    <Button Content="Save project" Click="SaveProject_Click" Padding="14,8" Margin="8,0,0,0" ToolTip="Keep every item editable (Ctrl+S)"/>
-    <Button Content="Export image…" Style="{StaticResource PrimaryButton}" Click="Export_Click" Padding="20,8" Margin="8,0,0,0" ToolTip="Write a flat PNG, JPEG or WebP (Ctrl+E)"/>
-   </StackPanel>
-  </Grid>
+       <MenuItem Header="Copy image" InputGestureText="Ctrl+Shift+C" Click="CopyImage_Click"/>
+       <Separator/>
+       <MenuItem Header="Close" InputGestureText="Ctrl+W" Click="Close_Click"/>
+      </MenuItem>
+      <MenuItem Header="_Edit" SubmenuOpened="EditMenu_Opened">
+       <MenuItem x:Name="UndoMenu" Header="Undo" InputGestureText="Ctrl+Z" Click="Undo_Click"/>
+       <MenuItem x:Name="RedoMenu" Header="Redo" InputGestureText="Ctrl+Y" Click="Redo_Click"/>
+       <Separator/>
+       <MenuItem x:Name="CutMenu2" Header="Cut" InputGestureText="Ctrl+X" Click="Cut_Click"/>
+       <MenuItem x:Name="CopyMenu2" Header="Copy" InputGestureText="Ctrl+C" Click="Copy_Click"/>
+       <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="Paste_Click"/>
+       <MenuItem x:Name="DuplicateMenu2" Header="Duplicate" InputGestureText="Ctrl+D" Click="Duplicate_Click"/>
+       <MenuItem x:Name="DeleteMenu2" Header="Delete" InputGestureText="Del" Click="Delete_Click"/>
+       <Separator/>
+       <MenuItem Header="Select all" InputGestureText="Ctrl+A" Click="SelectAll_Click"/>
+      </MenuItem>
+      <MenuItem Header="_View">
+       <MenuItem Header="Zoom in" InputGestureText="Ctrl++" Click="ZoomIn_Click"/>
+       <MenuItem Header="Zoom out" InputGestureText="Ctrl+-" Click="ZoomOut_Click"/>
+       <Separator/>
+       <MenuItem x:Name="ActualSizeMenu" Header="Actual size (1:1)" InputGestureText="Ctrl+0" Click="ActualSize_Click"/>
+       <MenuItem x:Name="FitMenu" Header="Fit to window" Click="Fit_Click"/>
+      </MenuItem>
+      <MenuItem Header="_Image" SubmenuOpened="ImageMenu_Opened">
+       <MenuItem Header="Crop…" InputGestureText="C" Click="CropTool_Click"/>
+       <MenuItem x:Name="ApplyCropMenu" Header="Apply crop" InputGestureText="Enter" Click="ApplyCrop_Click"/>
+       <MenuItem x:Name="ResetCropMenu" Header="Reset crop" Click="ResetCrop_Click"/>
+       <Separator/>
+       <MenuItem Header="Canvas size…" Click="CanvasSize_Click"/>
+       <MenuItem Header="Image size…" Click="ImageSize_Click"/>
+       <Separator/>
+       <MenuItem Header="Place image file…" InputGestureText="I" Click="ImageTool_Click"/>
+      </MenuItem>
+      <MenuItem Header="_Layer" SubmenuOpened="LayerMenu_Opened">
+       <MenuItem Header="New layer" Click="AddLayer_Click"/>
+       <MenuItem x:Name="DeleteLayerMenu" Header="Delete layer" Click="DeleteLayer_Click"/>
+       <Separator/>
+       <MenuItem x:Name="LayerUpMenu" Header="Move layer up" Click="LayerUp_Click"/>
+       <MenuItem x:Name="LayerDownMenu" Header="Move layer down" Click="LayerDown_Click"/>
+       <MenuItem x:Name="MergeDownMenu" Header="Merge down" Click="MergeDown_Click"/>
+      </MenuItem>
+      <MenuItem Header="_Arrange" SubmenuOpened="ArrangeMenu_Opened">
+       <MenuItem x:Name="FrontMenu2" Header="Bring to front" InputGestureText="Ctrl+Shift+]" Click="BringToFront_Click"/>
+       <MenuItem x:Name="ForwardMenu2" Header="Bring forward" InputGestureText="Ctrl+]" Click="BringForward_Click"/>
+       <MenuItem x:Name="BackwardMenu2" Header="Send backward" InputGestureText="Ctrl+[" Click="SendBackward_Click"/>
+       <MenuItem x:Name="BackMenu2" Header="Send to back" InputGestureText="Ctrl+Shift+[" Click="SendToBack_Click"/>
+      </MenuItem>
+      <MenuItem Header="_Help">
+       <MenuItem Header="Keyboard shortcuts…" Click="Shortcuts_Click"/>
+       <MenuItem Header="Vibershot on GitHub" Click="GitHub_Click"/>
+       <Separator/>
+       <MenuItem x:Name="AboutMenu" Header="About Vibershot" IsEnabled="False"/>
+      </MenuItem>
+     </Menu>
+    </StackPanel>
+    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+     <TextBlock x:Name="DocNameLabel" FontSize="12.5" FontWeight="Bold" TextTrimming="CharacterEllipsis" MaxWidth="360" VerticalAlignment="Center"/>
+     <TextBlock x:Name="DocInfoLabel" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource Ink2}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+    </StackPanel>
+   </Grid>
+  </Border>
+
+  <!-- Action rail: file, history, clipboard and arrange commands; zoom and Export on the right. Export is the one full-strength accent. -->
+  <Border Grid.Row="1" Background="{StaticResource Paper}" BorderBrush="{StaticResource Rule}" BorderThickness="0,0,0,1" Padding="10,0,12,0" Height="46">
+   <Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+     <Button Style="{StaticResource IconButton}" Content="&#xE8E5;" Click="Open_Click" ToolTip="Open a project or image (Ctrl+O)" AutomationProperties.Name="Open"/>
+     <Button Style="{StaticResource IconButton}" Content="&#xE74E;" Click="SaveProject_Click" ToolTip="Save project (Ctrl+S)" AutomationProperties.Name="Save project"/>
+     <Border Style="{StaticResource RailDivider}"/>
+     <Button x:Name="UndoButton" Style="{StaticResource IconButton}" Content="&#xE7A7;" Click="Undo_Click" ToolTip="Undo (Ctrl+Z)" AutomationProperties.Name="Undo"/>
+     <Button x:Name="RedoButton" Style="{StaticResource IconButton}" Content="&#xE7A6;" Click="Redo_Click" ToolTip="Redo (Ctrl+Y)" AutomationProperties.Name="Redo"/>
+     <Border Style="{StaticResource RailDivider}"/>
+     <Button x:Name="CutButton" Style="{StaticResource IconButton}" Content="&#xE8C6;" Click="Cut_Click" ToolTip="Cut (Ctrl+X)" AutomationProperties.Name="Cut"/>
+     <Button x:Name="CopyButton" Style="{StaticResource IconButton}" Content="&#xE8C8;" Click="Copy_Click" ToolTip="Copy (Ctrl+C)" AutomationProperties.Name="Copy"/>
+     <Button Style="{StaticResource IconButton}" Content="&#xE77F;" Click="Paste_Click" ToolTip="Paste (Ctrl+V)" AutomationProperties.Name="Paste"/>
+     <Button x:Name="DuplicateButton" Style="{StaticResource IconButton}" Click="Duplicate_Click" ToolTip="Duplicate (Ctrl+D)" AutomationProperties.Name="Duplicate">
+      <Grid Width="16" Height="16"><Rectangle Width="10" Height="10" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Ink2}" StrokeThickness="1.5" HorizontalAlignment="Left" VerticalAlignment="Top"/><Rectangle Width="10" Height="10" RadiusX="1.5" RadiusY="1.5" Stroke="{StaticResource Ink2}" StrokeThickness="1.5" Fill="{StaticResource Paper}" HorizontalAlignment="Right" VerticalAlignment="Bottom"/></Grid>
+     </Button>
+     <Button x:Name="DeleteButton" Style="{StaticResource IconButton}" Content="&#xE74D;" Click="Delete_Click" ToolTip="Delete (Del)" AutomationProperties.Name="Delete"/>
+     <Border Style="{StaticResource RailDivider}"/>
+     <Button x:Name="ForwardButton" Style="{StaticResource IconButton}" Click="BringForward_Click" ToolTip="Bring forward (Ctrl+])" AutomationProperties.Name="Bring forward">
+      <Grid Width="16" Height="16"><Rectangle Width="10" Height="10" RadiusX="1" RadiusY="1" Stroke="{StaticResource Ink3}" StrokeThickness="1.5" HorizontalAlignment="Left" VerticalAlignment="Bottom"/><Rectangle Width="10" Height="10" RadiusX="1" RadiusY="1" Stroke="{StaticResource Ink2}" StrokeThickness="1.5" Fill="{StaticResource Paper}" HorizontalAlignment="Right" VerticalAlignment="Top"/></Grid>
+     </Button>
+     <Button x:Name="BackwardButton" Style="{StaticResource IconButton}" Click="SendBackward_Click" ToolTip="Send backward (Ctrl+[)" AutomationProperties.Name="Send backward">
+      <Grid Width="16" Height="16"><Rectangle Width="10" Height="10" RadiusX="1" RadiusY="1" Stroke="{StaticResource Ink3}" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Top"/><Rectangle Width="10" Height="10" RadiusX="1" RadiusY="1" Stroke="{StaticResource Ink2}" StrokeThickness="1.5" Fill="{StaticResource Paper}" HorizontalAlignment="Left" VerticalAlignment="Bottom"/></Grid>
+     </Button>
+     <Border Style="{StaticResource RailDivider}"/>
+     <Button Style="{StaticResource RailTextButton}" Click="CropTool_Click" ToolTip="Crop the picture (C)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource RailGlyph}" Text="&#xE7A8;"/><TextBlock Text="Crop" Foreground="{StaticResource Ink}"/></StackPanel></Button>
+     <Button Style="{StaticResource RailTextButton}" Click="CopyImage_Click" ToolTip="Copy the flattened picture to the clipboard (Ctrl+Shift+C)"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource RailGlyph}" Text="&#xEB9F;"/><TextBlock Text="Copy image" Foreground="{StaticResource Ink}"/></StackPanel></Button>
+    </StackPanel>
+    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+     <Border BorderBrush="{StaticResource Rule}" BorderThickness="1" CornerRadius="8" Padding="2">
+      <StackPanel Orientation="Horizontal">
+       <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE71F;" Click="ZoomOut_Click" ToolTip="Zoom out (Ctrl+-)" AutomationProperties.Name="Zoom out"/>
+       <TextBlock x:Name="ZoomLabel" Text="100%" FontFamily="{StaticResource MonoFont}" FontSize="11" Foreground="{StaticResource Ink2}" Width="44" TextAlignment="Center" VerticalAlignment="Center"/>
+       <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE8A3;" Click="ZoomIn_Click" ToolTip="Zoom in (Ctrl++)" AutomationProperties.Name="Zoom in"/>
+       <Button Style="{StaticResource RailTextButton}" Height="26" Padding="8,0" FontSize="11" x:Name="FitButton" Content="Fit" Click="Fit_Click" ToolTip="Fit the picture in the window"/>
+       <Button Style="{StaticResource RailTextButton}" Height="26" Padding="8,0" FontSize="11" x:Name="ActualSizeButton" Content="1:1" Click="ActualSize_Click" ToolTip="Show pixels 1:1 (Ctrl+0)"/>
+      </StackPanel>
+     </Border>
+     <Button Content="Export image…" Style="{StaticResource PrimaryButton}" Click="Export_Click" Padding="16,7" Margin="10,0,0,0" FontSize="12.5" ToolTip="Write a flat PNG, JPEG or WebP (Ctrl+E)"/>
+    </StackPanel>
+   </Grid>
+  </Border>
 
   <!-- Flatten notice: shown after an export while the editable document has no project file or unsaved changes. -->
-  <Border x:Name="FlattenNotice" Grid.Row="1" Visibility="Collapsed" Margin="22,0,20,10" Background="{StaticResource TangerineSoft}" BorderBrush="{StaticResource Tangerine}" BorderThickness="1" CornerRadius="8" Padding="14,8,8,8">
+  <Border x:Name="FlattenNotice" Grid.Row="2" Visibility="Collapsed" Margin="12,10,12,0" Background="{StaticResource AccentSoft}" BorderBrush="{StaticResource Accent}" BorderThickness="1" CornerRadius="8" Padding="14,8,8,8">
    <Grid>
     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <TextBlock x:Name="FlattenNoticeText" Foreground="{StaticResource Ink}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"/>
@@ -133,157 +283,246 @@
    </Grid>
   </Border>
 
-  <Grid Grid.Row="2" Margin="12,0,20,0">
-   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="268"/></Grid.ColumnDefinitions>
+  <Grid Grid.Row="3">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition/></Grid.ColumnDefinitions>
 
-   <!-- Tool rail -->
-   <StackPanel x:Name="ToolRail" Margin="4,0,8,0" VerticalAlignment="Top">
-    <ToggleButton Style="{StaticResource ToolButton}" Tag="Select" Content="&#xE7C9;" Click="Tool_Click" ToolTip="Select (V)" AutomationProperties.Name="Select tool"/>
-    <ToggleButton Style="{StaticResource ToolButton}" Tag="Marquee" Content="&#xE8B3;" Click="Tool_Click" ToolTip="Marquee: select pixels to move, cut or copy (M)" AutomationProperties.Name="Marquee tool"/>
-    <ToggleButton Style="{StaticResource ToolButton}" Tag="Crop" Content="&#xE7A8;" Click="Tool_Click" ToolTip="Crop (C)" AutomationProperties.Name="Crop tool"/>
-    <Border Height="1" Background="{StaticResource Rule}" Margin="8,4,8,8"/>
-    <ToggleButton Style="{StaticResource ToolButton}" Tag="Arrow" Content="&#xE72A;" Click="Tool_Click" ToolTip="Arrow (A)" AutomationProperties.Name="Arrow tool"/>
-    <ToggleButton x:Name="ShapeToolButton" Style="{StaticResource ToolButton}" Tag="Shape" Click="Tool_Click" MouseRightButtonUp="ShapeTool_RightClick" ToolTip="Shape: rectangle, ellipse or line (S; press again to switch)" AutomationProperties.Name="Shape tool">
-     <Grid Width="20" Height="20">
-      <Path x:Name="ShapeToolIcon" Data="M2,4 H18 V16 H2 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeLineJoin="Round"/>
-      <Path Data="M14,16 L17,19 L20,16" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.2" Margin="0,0,-6,-6" HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
-     </Grid>
-    </ToggleButton>
-    <Popup x:Name="ShapeFlyout" PlacementTarget="{Binding ElementName=ShapeToolButton}" Placement="Right" StaysOpen="False" AllowsTransparency="True" HorizontalOffset="4">
-     <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" CornerRadius="8" Padding="4" Margin="8">
-      <Border.Effect><DropShadowEffect Color="#14181C" BlurRadius="24" ShadowDepth="6" Opacity="0.16"/></Border.Effect>
-      <StackPanel Orientation="Horizontal">
-       <ToggleButton Style="{StaticResource ToolButton}" Tag="Rect" Click="ShapeKind_Click" ToolTip="Rectangle" Margin="0,0,2,0"><Path Data="M2,4 H18 V16 H2 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8"/></ToggleButton>
-       <ToggleButton Style="{StaticResource ToolButton}" Tag="Ellipse" Click="ShapeKind_Click" ToolTip="Ellipse" Margin="0,0,2,0"><Path Data="M10,3 A7,7 0 1 1 9.99,3 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8"/></ToggleButton>
-       <ToggleButton Style="{StaticResource ToolButton}" Tag="Line" Click="ShapeKind_Click" ToolTip="Line" Margin="0"><Path Data="M3,17 L17,3" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/></ToggleButton>
+   <!-- Left column: tools as labelled rows; the active tool's settings and the selection's properties open beneath it. Layers sit in the footer. -->
+   <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource Rule}" BorderThickness="0,0,1,0">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="12,14,12,0">
+      <StackPanel>
+       <TextBlock Style="{StaticResource PanelLabel}" Text="TOOLS" Margin="10,0,0,8"/>
+       <StackPanel x:Name="ToolRail">
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Select" Click="Tool_Click" ToolTip="Select (V)" AutomationProperties.Name="Select tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE7C9;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Select"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="V"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Marquee" Click="Tool_Click" ToolTip="Marquee: select pixels to move, cut or copy (M)" AutomationProperties.Name="Marquee tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8B3;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Marquee"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="M"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Crop" Click="Tool_Click" ToolTip="Crop (C)" AutomationProperties.Name="Crop tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE7A8;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Crop"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="C"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Arrow" Click="Tool_Click" ToolTip="Arrow (A)" AutomationProperties.Name="Arrow tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE72A;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Arrow"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="A"/></Grid>
+        </ToggleButton>
+        <ToggleButton x:Name="ShapeToolButton" Style="{StaticResource ToolRow}" Tag="Shape" Click="Tool_Click" ToolTip="Shape: rectangle, ellipse or line (S; press again to switch)" AutomationProperties.Name="Shape tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+          <Grid Width="22" Height="20"><Path x:Name="ShapeToolIcon" Data="M2,4 H18 V16 H2 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}" StrokeThickness="1.8" StrokeLineJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center"/></Grid>
+          <TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Shape"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="S"/>
+         </Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Text" Click="Tool_Click" ToolTip="Text (T)" AutomationProperties.Name="Text tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE8D2;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Text"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="T"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Callout" Click="Tool_Click" ToolTip="Callout: a label with arrows, or a speech or thought bubble (O; press again to switch)" AutomationProperties.Name="Callout tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE90A;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Callout"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="O"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Stamp" Click="Tool_Click" ToolTip="Stamp: place a ready-made symbol (K)" AutomationProperties.Name="Stamp tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE734;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Stamp"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="K"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Blur" Click="Tool_Click" ToolTip="Blur: paint or box over anything that should not be readable (B)" AutomationProperties.Name="Blur tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xE890;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Blur"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="B"/></Grid>
+        </ToggleButton>
+        <ToggleButton Style="{StaticResource ToolRow}" Tag="Image" Click="Tool_Click" ToolTip="Place an image file (I)" AutomationProperties.Name="Image tool">
+         <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource ToolGlyph}" Text="&#xEB9F;"/><TextBlock Grid.Column="1" Style="{StaticResource ToolName}" Text="Image"/><TextBlock Grid.Column="2" Style="{StaticResource ToolKey}" Text="I"/></Grid>
+        </ToggleButton>
+
+        <!-- The accordion: moved in code to sit directly under the active tool's row. -->
+        <Border x:Name="ToolPanel" Background="{StaticResource AccentWash}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1,0,1,1" CornerRadius="0,0,10,10" Padding="12,2,12,14" Margin="0,0,0,2">
+         <StackPanel>
+          <TextBlock x:Name="ToolHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+          <Border x:Name="ShapeKindRow" Background="{StaticResource Paper}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1" CornerRadius="8" Padding="2" Margin="0,10,0,0">
+           <UniformGrid x:Name="ShapeKinds" Columns="3">
+            <ToggleButton Style="{StaticResource Segment}" Tag="Rect" Content="Rectangle" Click="ShapeKind_Click"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Ellipse" Content="Ellipse" Click="ShapeKind_Click"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Line" Content="Line" Click="ShapeKind_Click"/>
+           </UniformGrid>
+          </Border>
+          <!-- Callout style: also shown while a callout is selected, where it restyles the selection. -->
+          <Border x:Name="CalloutKindRow" Background="{StaticResource Paper}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1" CornerRadius="8" Padding="2" Margin="0,10,0,0" Visibility="Collapsed">
+           <UniformGrid x:Name="CalloutKinds" Columns="4">
+            <ToggleButton Style="{StaticResource Segment}" Tag="Label" Content="Label" Click="CalloutKind_Click" ToolTip="A text box; drag from what it describes to add an arrow"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Speech" Content="Speech" Click="CalloutKind_Click" ToolTip="A rounded speech bubble with a tail"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Oval" Content="Oval" Click="CalloutKind_Click" ToolTip="An oval speech bubble with a tail"/>
+            <ToggleButton Style="{StaticResource Segment}" Tag="Thought" Content="Thought" Click="CalloutKind_Click" ToolTip="A thought cloud with a trail of bubbles"/>
+           </UniformGrid>
+          </Border>
+          <!-- Stamp picker: search, then click a stamp to make it the one the tool places. -->
+          <StackPanel x:Name="StampRow" Visibility="Collapsed" Margin="0,10,0,0">
+           <Grid>
+            <TextBox x:Name="StampSearch" Padding="28,6,8,6" FontSize="12" TextChanged="StampSearch_Changed" AutomationProperties.Name="Search stamps" ToolTip="Search stamps by name or meaning"/>
+            <TextBlock Text="&#xE721;" FontFamily="Segoe Fluent Icons" FontSize="12" Foreground="{StaticResource Ink3}" Margin="10,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+            <TextBlock x:Name="StampSearchHint" Text="Search stamps" FontSize="12" Foreground="{StaticResource Ink3}" Margin="30,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"/>
+           </Grid>
+           <WrapPanel x:Name="StampGrid" Margin="0,8,-4,0"/>
+           <TextBlock x:Name="StampEmpty" Style="{StaticResource Hint}" Text="No stamp matches that search." Visibility="Collapsed"/>
+          </StackPanel>
+          <!-- Blur and pixelate: shared by the Blur tool (brush or box) and the Marquee tool (the selected pixels). -->
+          <StackPanel x:Name="ObscureRow" Visibility="Collapsed" Margin="0,10,0,0">
+           <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1" CornerRadius="8" Padding="2">
+            <UniformGrid x:Name="ObscureModes" Columns="2">
+             <ToggleButton Style="{StaticResource Segment}" Tag="Blur" Content="Blur" Click="ObscureMode_Click" ToolTip="Smooth the area until it cannot be read"/>
+             <ToggleButton Style="{StaticResource Segment}" Tag="Pixelate" Content="Pixelate" Click="ObscureMode_Click" ToolTip="Replace the area with large blocks"/>
+            </UniformGrid>
+           </Border>
+           <Border x:Name="BlurShapeRow" Background="{StaticResource Paper}" BorderBrush="{StaticResource AccentEdge}" BorderThickness="1" CornerRadius="8" Padding="2" Margin="0,6,0,0">
+            <UniformGrid x:Name="BlurShapes" Columns="2">
+             <ToggleButton Style="{StaticResource Segment}" Tag="Brush" Content="Brush" Click="BlurShape_Click" ToolTip="Paint over the area"/>
+             <ToggleButton Style="{StaticResource Segment}" Tag="Box" Content="Box" Click="BlurShape_Click" ToolTip="Drag a rectangle over the area"/>
+            </UniformGrid>
+           </Border>
+           <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Strength"/><local:ValueBox x:Name="BlurStrengthBox" Grid.Column="1" Minimum="1" Maximum="300" AutomationProperties.Name="Blur strength"/></Grid>
+           <Slider x:Name="BlurStrengthSlider" Minimum="2" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="BlurStrength_Changed" AutomationProperties.Name="Blur strength slider"/>
+           <StackPanel x:Name="BrushSizeRow">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Brush size"/><local:ValueBox x:Name="BrushSizeBox" Grid.Column="1" Minimum="2" Maximum="2000" AutomationProperties.Name="Brush size"/></Grid>
+            <Slider x:Name="BrushSizeSlider" Minimum="4" Maximum="200" TickFrequency="2" IsSnapToTickEnabled="True" ValueChanged="BrushSize_Changed" AutomationProperties.Name="Brush size slider"/>
+           </StackPanel>
+           <Button x:Name="ObscureSelectionButton" Style="{StaticResource SmallButton}" Content="Blur selection" Click="ObscureSelection_Click" Margin="0,10,0,0" HorizontalAlignment="Left" ToolTip="Hide the pixels inside the marquee"/>
+          </StackPanel>
+          <StackPanel x:Name="CropRow" Visibility="Collapsed">
+           <TextBlock x:Name="CropHint" Style="{StaticResource Hint}" Text="Drag over the picture, then press Enter to crop. Esc cancels." TextWrapping="Wrap"/>
+           <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+            <Button x:Name="ApplyCropButton" Style="{StaticResource SmallButton}" Content="Apply crop" Click="ApplyCrop_Click" Visibility="Collapsed" Margin="0,0,6,0"/>
+            <Button x:Name="ResetCropButton" Style="{StaticResource SmallButton}" Content="Reset crop" Click="ResetCrop_Click" IsEnabled="False"/>
+           </StackPanel>
+          </StackPanel>
+          <StackPanel x:Name="NoSelectionPanel" Margin="0,10,0,0">
+           <TextBlock Text="Nothing selected" FontWeight="Bold" FontSize="12.5"/>
+           <TextBlock Style="{StaticResource Hint}" Text="Click an item to edit it, or pick another tool and drag on the picture." TextWrapping="Wrap"/>
+          </StackPanel>
+          <StackPanel x:Name="ItemPanel" Visibility="Collapsed" Margin="0,10,0,0">
+           <TextBlock x:Name="ItemKindLabel" Style="{StaticResource PanelLabel}" Text="RECTANGLE" Foreground="{StaticResource Accent}"/>
+           <StackPanel x:Name="StrokeRow">
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Stroke" Margin="0,0,0,6"/>
+            <local:ColorStrip x:Name="StrokeStrip" AllowNone="True"/>
+            <StackPanel x:Name="StrokeWidthRow">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Width"/><local:ValueBox x:Name="StrokeWidthBox" Grid.Column="1" Minimum="0" Maximum="1000" AutomationProperties.Name="Stroke width" ToolTip="Type any width up to 1000 px"/></Grid>
+            <Slider x:Name="StrokeWidthSlider" Minimum="0" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="StrokeWidth_Changed"/>
+            </StackPanel>
+           </StackPanel>
+           <StackPanel x:Name="FillRow">
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Fill"/>
+            <local:ColorStrip x:Name="FillStrip" AllowNone="True"/>
+           </StackPanel>
+           <StackPanel x:Name="CornerRow">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Corner radius"/><local:ValueBox x:Name="CornerBox" Grid.Column="1" Minimum="0" Maximum="5000" AutomationProperties.Name="Corner radius"/></Grid>
+            <Slider x:Name="CornerSlider" Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Corner_Changed"/>
+           </StackPanel>
+           <StackPanel x:Name="HeadRow">
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Arrow head"/><local:ValueBox x:Name="HeadBox" Grid.Column="1" Minimum="2" Maximum="2000" AutomationProperties.Name="Arrow head size"/></Grid>
+            <Slider x:Name="HeadSlider" Minimum="4" Maximum="80" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Head_Changed"/>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Head roundness"/><local:ValueBox x:Name="RoundBox" Grid.Column="1" Minimum="0" Maximum="100" Suffix="%" AutomationProperties.Name="Arrow head roundness"/></Grid>
+            <Slider x:Name="RoundSlider" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="Round_Changed" ToolTip="0% is a sharp point; 100% rounds the head right off"/>
+           </StackPanel>
+           <StackPanel x:Name="CalloutArrowRow" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button x:Name="AddPointerButton" Style="{StaticResource SmallButton}" Content="Add arrow" Click="AddPointer_Click" Margin="0,0,6,0" ToolTip="Add another pointer, then drag its tip onto what it should point at"/>
+            <Button x:Name="RemovePointerButton" Style="{StaticResource SmallButton}" Content="Remove arrow" Click="RemovePointer_Click" ToolTip="Remove the newest pointer"/>
+           </StackPanel>
+           <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Opacity"/><TextBlock x:Name="OpacityValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
+           <Slider x:Name="OpacitySlider" Minimum="5" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="Opacity_Changed"/>
+           <CheckBox x:Name="ShadowCheck" Margin="0,12,0,0" Click="Shadow_Click" AutomationProperties.Name="Drop shadow"><TextBlock Text="Drop shadow" FontWeight="SemiBold" FontSize="12"/></CheckBox>
+           <StackPanel x:Name="TextSection" Margin="0,16,0,0">
+            <TextBlock Style="{StaticResource PanelLabel}" Text="TEXT"/>
+            <ComboBox x:Name="FontCombo" SelectionChanged="Font_Changed" AutomationProperties.Name="Font family"/>
+            <Grid Margin="0,8,0,0">
+             <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
+             <TextBox x:Name="FontSizeBox" Padding="8,6" FontFamily="{StaticResource MonoFont}" FontSize="12" KeyDown="FontSize_KeyDown" LostFocus="FontSize_LostFocus" AutomationProperties.Name="Font size" ToolTip="Font size in pixels (up to 2000)"/>
+             <StackPanel Grid.Column="2" Orientation="Horizontal">
+              <ToggleButton x:Name="BoldToggle" Style="{StaticResource SmallToggle}" Content="B" FontWeight="Bold" Click="TextStyle_Click" ToolTip="Bold"/>
+              <ToggleButton x:Name="ItalicToggle" Style="{StaticResource SmallToggle}" Content="I" FontStyle="Italic" FontFamily="Georgia" Click="TextStyle_Click" ToolTip="Italic"/>
+              <ToggleButton x:Name="UnderlineToggle" Style="{StaticResource SmallToggle}" Click="TextStyle_Click" ToolTip="Underline"><TextBlock Text="U" TextDecorations="Underline" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/></ToggleButton>
+             </StackPanel>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+             <ToggleButton x:Name="AlignLeftToggle" Style="{StaticResource SmallToggle}" Content="&#xE8E4;" FontFamily="Segoe Fluent Icons" Tag="Left" Click="Align_Click" ToolTip="Align left"/>
+             <ToggleButton x:Name="AlignCenterToggle" Style="{StaticResource SmallToggle}" Content="&#xE8E3;" FontFamily="Segoe Fluent Icons" Tag="Center" Click="Align_Click" ToolTip="Centre"/>
+             <ToggleButton x:Name="AlignRightToggle" Style="{StaticResource SmallToggle}" Content="&#xE8E2;" FontFamily="Segoe Fluent Icons" Tag="Right" Click="Align_Click" ToolTip="Align right"/>
+            </StackPanel>
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Text colour"/>
+            <local:ColorStrip x:Name="TextColorStrip"/>
+            <TextBlock Style="{StaticResource FieldLabel}" Text="Background"/>
+            <local:ColorStrip x:Name="TextBackgroundStrip" AllowNone="True"/>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Padding"/><local:ValueBox x:Name="PaddingBox" Grid.Column="1" Minimum="0" Maximum="1000" AutomationProperties.Name="Text padding"/></Grid>
+            <Slider x:Name="PaddingSlider" Minimum="0" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Padding_Changed"/>
+           </StackPanel>
+          </StackPanel>
+         </StackPanel>
+        </Border>
+       </StackPanel>
+
+       <!-- Picture: size and the colour under every layer. -->
+       <StackPanel Margin="10,22,10,16">
+        <TextBlock Style="{StaticResource PanelLabel}" Text="PICTURE"/>
+        <TextBlock x:Name="DocSizeLabel" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Ink2}"/>
+        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+         <Button Style="{StaticResource SmallButton}" Content="Canvas size…" Click="CanvasSize_Click" Margin="0,0,6,0" ToolTip="Add space around the picture, or trim it"/>
+         <Button Style="{StaticResource SmallButton}" Content="Image size…" Click="ImageSize_Click" ToolTip="Scale the whole picture up or down"/>
+        </StackPanel>
+        <TextBlock Style="{StaticResource FieldLabel}" Text="Canvas"/>
+        <local:ColorStrip x:Name="CanvasStrip" AllowNone="True" ToolTip="Colour under every layer; the crossed swatch keeps the canvas transparent"/>
+       </StackPanel>
+      </StackPanel>
+     </ScrollViewer>
+
+     <!-- Layers footer: top of the list is the top of the stack. Rows are built in code; the active layer sits on the soft accent tile. -->
+     <Border Grid.Row="1" BorderBrush="{StaticResource Rule}" BorderThickness="0,1,0,0" Padding="12,10,12,12">
+      <StackPanel>
+       <Grid Margin="10,0,0,4">
+        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <TextBlock Style="{StaticResource PanelLabel}" Text="LAYERS" Margin="0" VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+         <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE710;" Click="AddLayer_Click" ToolTip="New layer above the active one" AutomationProperties.Name="New layer"/>
+         <Button x:Name="LayerUpButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE70E;" Click="LayerUp_Click" ToolTip="Move layer up" AutomationProperties.Name="Move layer up"/>
+         <Button x:Name="LayerDownButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE70D;" Click="LayerDown_Click" ToolTip="Move layer down" AutomationProperties.Name="Move layer down"/>
+         <Button x:Name="DeleteLayerButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE74D;" Click="DeleteLayer_Click" ToolTip="Delete layer" AutomationProperties.Name="Delete layer"/>
+        </StackPanel>
+       </Grid>
+       <ScrollViewer MaxHeight="168" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="LayersList"/></ScrollViewer>
+       <Grid Margin="10,0,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Layer opacity" Margin="0,8,0,4"/><TextBlock x:Name="LayerOpacityValue" Grid.Column="1" Style="{StaticResource FieldValue}" Margin="0,8,0,4"/></Grid>
+       <Slider x:Name="LayerOpacitySlider" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="LayerOpacity_Changed" AutomationProperties.Name="Layer opacity" Margin="10,0,0,0"/>
       </StackPanel>
      </Border>
-    </Popup>
-    <ToggleButton Style="{StaticResource ToolButton}" Tag="Text" Content="&#xE8D2;" Click="Tool_Click" ToolTip="Text (T)" AutomationProperties.Name="Text tool"/>
-    <ToggleButton Style="{StaticResource ToolButton}" Tag="Image" Content="&#xEB9F;" Click="Tool_Click" ToolTip="Place an image file (I)" AutomationProperties.Name="Image tool"/>
-   </StackPanel>
-
-   <!-- Canvas on the checkerboard well. A Canvas above it hosts the in-place text editor. -->
-   <Border Grid.Column="1" CornerRadius="12" BorderBrush="{StaticResource PaperEdge}" BorderThickness="1" Background="{StaticResource Checkerboard}" ClipToBounds="True">
-    <Grid>
-     <local:EditorCanvas x:Name="Surface" MouseDown="Surface_MouseDown" MouseMove="Surface_MouseMove" MouseUp="Surface_MouseUp" MouseWheel="Surface_MouseWheel" LostMouseCapture="Surface_LostMouseCapture" Cursor="Arrow">
-      <local:EditorCanvas.ContextMenu>
-       <ContextMenu Opened="ContextMenu_Opened">
-        <MenuItem x:Name="CutMenu" Header="Cut" InputGestureText="Ctrl+X" Click="Cut_Click"/>
-        <MenuItem x:Name="CopyMenu" Header="Copy" InputGestureText="Ctrl+C" Click="Copy_Click"/>
-        <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="Paste_Click"/>
-        <MenuItem x:Name="DuplicateMenu" Header="Duplicate" InputGestureText="Ctrl+D" Click="Duplicate_Click"/>
-        <MenuItem x:Name="DeleteMenu" Header="Delete" InputGestureText="Del" Click="Delete_Click"/>
-        <Separator/>
-        <MenuItem x:Name="FrontMenu" Header="Bring to front" InputGestureText="Ctrl+Shift+]" Click="BringToFront_Click"/>
-        <MenuItem x:Name="ForwardMenu" Header="Bring forward" InputGestureText="Ctrl+]" Click="BringForward_Click"/>
-        <MenuItem x:Name="BackwardMenu" Header="Send backward" InputGestureText="Ctrl+[" Click="SendBackward_Click"/>
-        <MenuItem x:Name="BackMenu" Header="Send to back" InputGestureText="Ctrl+Shift+[" Click="SendToBack_Click"/>
-        <Separator/>
-        <MenuItem Header="Select all" InputGestureText="Ctrl+A" Click="SelectAll_Click"/>
-       </ContextMenu>
-      </local:EditorCanvas.ContextMenu>
-     </local:EditorCanvas>
-     <Canvas x:Name="EditorLayer"/>
     </Grid>
    </Border>
 
-   <!-- Properties panel -->
-   <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="16,0,0,0">
-    <StackPanel>
-     <StackPanel x:Name="NoSelectionPanel">
-      <TextBlock Style="{StaticResource PanelLabel}" Text="PROPERTIES"/>
-      <TextBlock Text="Nothing selected" FontWeight="Bold"/>
-      <TextBlock Style="{StaticResource Hint}" Text="Click an item to edit it, or pick a tool on the left and drag on the picture." TextWrapping="Wrap"/>
-     </StackPanel>
-     <StackPanel x:Name="ItemPanel" Visibility="Collapsed">
-      <TextBlock x:Name="ItemKindLabel" Style="{StaticResource PanelLabel}" Text="RECTANGLE"/>
-      <StackPanel x:Name="StrokeRow">
-       <TextBlock Style="{StaticResource FieldLabel}" Text="Stroke" Margin="0,0,0,6"/>
-       <local:ColorStrip x:Name="StrokeStrip" AllowNone="True"/>
-       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Width"/><TextBlock x:Name="StrokeWidthValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-       <Slider x:Name="StrokeWidthSlider" Minimum="0" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="StrokeWidth_Changed"/>
+   <!-- Canvas on the checkerboard well, edge to edge, with the status bar under it. A Canvas above the surface hosts the in-place text editor. -->
+   <Grid Grid.Column="1">
+    <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border Background="{StaticResource Checkerboard}" ClipToBounds="True">
+     <Grid>
+      <local:EditorCanvas x:Name="Surface" MouseDown="Surface_MouseDown" MouseMove="Surface_MouseMove" MouseUp="Surface_MouseUp" MouseWheel="Surface_MouseWheel" LostMouseCapture="Surface_LostMouseCapture" Cursor="Arrow">
+       <local:EditorCanvas.ContextMenu>
+        <ContextMenu Opened="ContextMenu_Opened">
+         <MenuItem x:Name="CutMenu" Header="Cut" InputGestureText="Ctrl+X" Click="Cut_Click"/>
+         <MenuItem x:Name="CopyMenu" Header="Copy" InputGestureText="Ctrl+C" Click="Copy_Click"/>
+         <MenuItem Header="Paste" InputGestureText="Ctrl+V" Click="Paste_Click"/>
+         <MenuItem x:Name="DuplicateMenu" Header="Duplicate" InputGestureText="Ctrl+D" Click="Duplicate_Click"/>
+         <MenuItem x:Name="DeleteMenu" Header="Delete" InputGestureText="Del" Click="Delete_Click"/>
+         <Separator/>
+         <MenuItem x:Name="FrontMenu" Header="Bring to front" InputGestureText="Ctrl+Shift+]" Click="BringToFront_Click"/>
+         <MenuItem x:Name="ForwardMenu" Header="Bring forward" InputGestureText="Ctrl+]" Click="BringForward_Click"/>
+         <MenuItem x:Name="BackwardMenu" Header="Send backward" InputGestureText="Ctrl+[" Click="SendBackward_Click"/>
+         <MenuItem x:Name="BackMenu" Header="Send to back" InputGestureText="Ctrl+Shift+[" Click="SendToBack_Click"/>
+         <Separator/>
+         <MenuItem Header="Select all" InputGestureText="Ctrl+A" Click="SelectAll_Click"/>
+        </ContextMenu>
+       </local:EditorCanvas.ContextMenu>
+      </local:EditorCanvas>
+      <Canvas x:Name="EditorLayer"/>
+     </Grid>
+    </Border>
+    <Border Grid.Row="1" Background="{StaticResource Paper}" BorderBrush="{StaticResource Rule}" BorderThickness="0,1,0,0" Padding="14,0" Height="28">
+     <Grid>
+      <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+      <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+       <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="{StaticResource Ink3}" Margin="0,1,7,0" VerticalAlignment="Center"/>
+       <TextBlock x:Name="StatusLabel" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
       </StackPanel>
-      <StackPanel x:Name="FillRow">
-       <TextBlock Style="{StaticResource FieldLabel}" Text="Fill"/>
-       <local:ColorStrip x:Name="FillStrip" AllowNone="True"/>
-      </StackPanel>
-      <StackPanel x:Name="CornerRow">
-       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Corner radius"/><TextBlock x:Name="CornerValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-       <Slider x:Name="CornerSlider" Minimum="0" Maximum="80" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Corner_Changed"/>
-      </StackPanel>
-      <StackPanel x:Name="HeadRow">
-       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Arrow head"/><TextBlock x:Name="HeadValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-       <Slider x:Name="HeadSlider" Minimum="4" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Head_Changed"/>
-      </StackPanel>
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Opacity"/><TextBlock x:Name="OpacityValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-      <Slider x:Name="OpacitySlider" Minimum="5" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="Opacity_Changed"/>
-      <CheckBox x:Name="ShadowCheck" Margin="0,14,0,0" Click="Shadow_Click" AutomationProperties.Name="Drop shadow"><TextBlock Text="Drop shadow" FontWeight="Bold"/></CheckBox>
-      <StackPanel x:Name="TextSection" Margin="0,18,0,0">
-       <TextBlock Style="{StaticResource PanelLabel}" Text="TEXT"/>
-       <ComboBox x:Name="FontCombo" SelectionChanged="Font_Changed" AutomationProperties.Name="Font family"/>
-       <Grid Margin="0,8,0,0">
-        <Grid.ColumnDefinitions><ColumnDefinition Width="64"/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
-        <TextBox x:Name="FontSizeBox" Padding="8,6" FontFamily="{StaticResource MonoFont}" FontSize="12" KeyDown="FontSize_KeyDown" LostFocus="FontSize_LostFocus" AutomationProperties.Name="Font size" ToolTip="Font size in pixels"/>
-        <StackPanel Grid.Column="2" Orientation="Horizontal">
-         <ToggleButton x:Name="BoldToggle" Style="{StaticResource SmallToggle}" Content="B" FontWeight="Bold" Click="TextStyle_Click" ToolTip="Bold"/>
-         <ToggleButton x:Name="ItalicToggle" Style="{StaticResource SmallToggle}" Content="I" FontStyle="Italic" FontFamily="Georgia" Click="TextStyle_Click" ToolTip="Italic"/>
-         <ToggleButton x:Name="UnderlineToggle" Style="{StaticResource SmallToggle}" Click="TextStyle_Click" ToolTip="Underline"><TextBlock Text="U" TextDecorations="Underline"/></ToggleButton>
-        </StackPanel>
-       </Grid>
-       <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-        <ToggleButton x:Name="AlignLeftToggle" Style="{StaticResource SmallToggle}" Content="&#xE8E4;" FontFamily="Segoe Fluent Icons" Tag="Left" Click="Align_Click" ToolTip="Align left"/>
-        <ToggleButton x:Name="AlignCenterToggle" Style="{StaticResource SmallToggle}" Content="&#xE8E3;" FontFamily="Segoe Fluent Icons" Tag="Center" Click="Align_Click" ToolTip="Centre"/>
-        <ToggleButton x:Name="AlignRightToggle" Style="{StaticResource SmallToggle}" Content="&#xE8E2;" FontFamily="Segoe Fluent Icons" Tag="Right" Click="Align_Click" ToolTip="Align right"/>
-       </StackPanel>
-       <TextBlock Style="{StaticResource FieldLabel}" Text="Text colour"/>
-       <local:ColorStrip x:Name="TextColorStrip"/>
-       <TextBlock Style="{StaticResource FieldLabel}" Text="Background"/>
-       <local:ColorStrip x:Name="TextBackgroundStrip" AllowNone="True"/>
-       <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Padding"/><TextBlock x:Name="PaddingValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-       <Slider x:Name="PaddingSlider" Minimum="0" Maximum="40" TickFrequency="1" IsSnapToTickEnabled="True" ValueChanged="Padding_Changed"/>
-      </StackPanel>
-     </StackPanel>
-     <!-- Layers: top of the list is the top of the stack. Rows are built in code; the active layer sits on a pale tangerine tile. -->
-     <StackPanel Margin="0,22,0,0">
-      <Grid Margin="0,0,0,6">
-       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-       <TextBlock Style="{StaticResource PanelLabel}" Text="LAYERS" Margin="0" VerticalAlignment="Center"/>
-       <StackPanel Grid.Column="1" Orientation="Horizontal">
-        <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE710;" Click="AddLayer_Click" ToolTip="New layer above the active one" AutomationProperties.Name="New layer"/>
-        <Button x:Name="LayerUpButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE70E;" Click="LayerUp_Click" ToolTip="Move layer up" AutomationProperties.Name="Move layer up"/>
-        <Button x:Name="LayerDownButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE70D;" Click="LayerDown_Click" ToolTip="Move layer down" AutomationProperties.Name="Move layer down"/>
-        <Button x:Name="DeleteLayerButton" Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE74D;" Click="DeleteLayer_Click" ToolTip="Delete layer" AutomationProperties.Name="Delete layer"/>
-       </StackPanel>
-      </Grid>
-      <StackPanel x:Name="LayersList"/>
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Style="{StaticResource FieldLabel}" Text="Layer opacity"/><TextBlock x:Name="LayerOpacityValue" Grid.Column="1" Style="{StaticResource FieldValue}"/></Grid>
-      <Slider x:Name="LayerOpacitySlider" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="LayerOpacity_Changed" AutomationProperties.Name="Layer opacity"/>
-      <TextBlock Style="{StaticResource Hint}" Text="New items land on the active layer. Double-click a layer to rename it; right-click for more." TextWrapping="Wrap" Margin="0,8,0,0"/>
-     </StackPanel>
-     <StackPanel Margin="0,22,0,16">
-      <TextBlock Style="{StaticResource PanelLabel}" Text="PICTURE"/>
-      <TextBlock x:Name="DocSizeLabel" FontFamily="{StaticResource MonoFont}" FontSize="11.5" Foreground="{StaticResource Ink2}"/>
-      <TextBlock Style="{StaticResource FieldLabel}" Text="Canvas"/>
-      <local:ColorStrip x:Name="CanvasStrip" AllowNone="True" ToolTip="Colour under every layer; the crossed swatch keeps the canvas transparent"/>
-      <TextBlock x:Name="CropHint" Style="{StaticResource Hint}" Text="Drag over the picture, then press Enter to crop. Esc cancels." TextWrapping="Wrap" Visibility="Collapsed"/>
-      <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-       <Button x:Name="ApplyCropButton" Style="{StaticResource SmallButton}" Content="Apply crop" Click="ApplyCrop_Click" Visibility="Collapsed" Margin="0,0,6,0"/>
-       <Button x:Name="ResetCropButton" Style="{StaticResource SmallButton}" Content="Reset crop" Click="ResetCrop_Click" IsEnabled="False"/>
-      </StackPanel>
-     </StackPanel>
-    </StackPanel>
-   </ScrollViewer>
-  </Grid>
-
-  <!-- Footer: status on the left, tool shortcuts on the right as mono data. -->
-  <Grid Grid.Row="3" Margin="22,10,22,14">
-   <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-   <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-    <Ellipse x:Name="StatusDot" Width="7" Height="7" Fill="{StaticResource Ink3}" Margin="0,1,7,0" VerticalAlignment="Center"/>
-    <TextBlock x:Name="StatusLabel" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Ink2}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="700" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-   </StackPanel>
-   <TextBlock Grid.Column="1" Text="V select · M marquee · C crop · A arrow · S shape · T text · I image · Space drag pans · Ctrl+wheel zooms" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{StaticResource Ink3}" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="1" Text="Space drag pans · Ctrl+wheel zooms · Shift-click adds to the selection" FontFamily="{StaticResource MonoFont}" FontSize="10.5" Foreground="{StaticResource Ink3}" VerticalAlignment="Center" Margin="16,0,0,0"/>
+     </Grid>
+    </Border>
+   </Grid>
   </Grid>
  </Grid>
 </Window>

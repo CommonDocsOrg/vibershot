@@ -63,7 +63,7 @@ public sealed class HotkeyRecorder : ContentControl
     private void UpdatePrompt()
     {
         _prompt.Text = "Press the new keys…";
-        _prompt.Foreground = TryFindResource("Tangerine") as Brush ?? Brushes.OrangeRed;
+        _prompt.Foreground = TryFindResource("Accent") as Brush ?? Brushes.Purple;
         Content = _prompt;
     }
 

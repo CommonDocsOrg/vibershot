@@ -39,7 +39,7 @@ Choose **Take video** and the selected region is recorded as an H.264 MP4 at the
 
 ## Annotate in the editor
 
-Captures open in a layered editor. Draw arrows, rectangles, ellipses and lines, add text, place other images, crop, and move anything later. Items live on layers that can be hidden, locked, reordered and faded. Marquee-select pixels to lift, move, copy or clear them. Undo and redo cover every step.
+Captures open in a layered editor. Draw arrows, rectangles, ellipses and lines, add text, callouts and speech bubbles, drop in stamps, place other images, crop, and move anything later. Blur or pixelate anything private with a brush or a box. Start from a blank canvas, add space around a picture, or scale it. Items live on layers that can be hidden, locked, reordered and faded. Marquee-select pixels to lift, move, copy or clear them. Undo and redo cover every step.
 
 ![Annotating a capture with arrows, shapes and text](docs/images/editor.png)
 

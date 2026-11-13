@@ -193,7 +193,7 @@ public partial class App : Application
         }
         catch (Exception)
         {
-            _main.ShowStatus("Print Screen is in use by another app. In Windows Settings, turn off \"Use the Print screen key to open screen capture\".");
+            _main.ShowStatus("Print Screen is in use by another app. Turn off \"Use the Print screen key to open screen capture\" in Windows Settings.");
         }
     }
     /// <summary>True when Windows (or another app) currently owns Print Screen, so the takeover could not register.</summary>
@@ -209,12 +209,14 @@ public partial class App : Application
             case HotkeyAction.OpenEditor: OpenEditorFromClipboard(); break;
         }
     }
-    /// <summary>Opens the editor on whatever image is on the clipboard, or on a blank canvas.</summary>
+    /// <summary>Opens the editor on whatever image is on the clipboard; with none there, asks for the size of a new canvas.</summary>
     public void OpenEditorFromClipboard()
     {
         System.Windows.Media.Imaging.BitmapSource? image = null;
         try { image = ClipboardService.GetImage(); } catch (Exception) { }
-        OpenEditor(image);
+        if (image != null) { OpenEditor(image); return; }
+        try { EditorWindow.NewCanvas(null, _config); }
+        catch (Exception ex) { _main.ShowStatus("Editor failed to open: " + ex.Message); }
     }
     /// <summary>Opens the image editor on <paramref name="image"/>, or on a blank 1280×720 canvas when null.</summary>
     public void OpenEditor(System.Windows.Media.Imaging.BitmapSource? image)
@@ -282,8 +284,14 @@ public partial class App : Application
             var kind = CaptureKind.FullDesktop; string? sourceProcess = null, sourceTitle = null;
             if (region)
             {
-                var overlay = new RegionWindow(desktop, bounds, _config.ShowCaptureActions, preset);
+                var customSize = _config.CustomRegionPixels();
+                var overlay = new RegionWindow(desktop, bounds, _config.ShowCaptureActions, preset, customSize);
                 image = overlay.ShowDialog() == true ? overlay.Result : null;
+                if (overlay.CustomSize != customSize)
+                {
+                    _config.CustomRegionSize = $"{overlay.CustomSize.Width}x{overlay.CustomSize.Height}";
+                    try { _config.Save(); } catch (Exception) { /* Remembering the size is a convenience. */ }
+                }
                 sourceProcess = overlay.SourceProcess; sourceTitle = overlay.SourceTitle;
                 kind = overlay.Action == CaptureAction.Scrolling ? CaptureKind.Scrolling : overlay.SelectedTarget ? CaptureKind.Window : CaptureKind.Region;
                 if (image != null && overlay.Action != CaptureAction.Screenshot)

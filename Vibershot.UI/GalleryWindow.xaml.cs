@@ -95,6 +95,9 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
         _tileSize = Math.Clamp(settings.ThumbnailSize, MinTile, MaxTile);
         SizeSlider.Value = _tileSize;
         SizeLabel.Text = $"{(int)_tileSize} px";
+        RailColumn.Width = new GridLength(Math.Clamp(settings.RailWidth, GallerySettings.MinRailWidth, GallerySettings.MaxRailWidth));
+        _detailWidth = Math.Clamp(settings.DetailWidth, GallerySettings.MinDetailWidth, GallerySettings.MaxDetailWidth);
+        _detailVisible = false;
         SetDetailVisible(settings.ShowDetailPane);
 
         Action<Action> post = action => Dispatcher.BeginInvoke(action);
@@ -263,9 +266,30 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
 
     private void SetDetailVisible(bool visible)
     {
+        // Keep the width the user dragged to, so hiding and showing the pane brings it back the same size.
+        if (_detailVisible && DetailColumn.Width.IsAbsolute && DetailColumn.Width.Value >= GallerySettings.MinDetailWidth) _detailWidth = DetailColumn.Width.Value;
         _detailVisible = visible;
-        DetailPane.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        DetailToggle.Background = (Brush)FindResource(visible ? "TangerineSoft" : "Paper");
+        DetailPane.Visibility = DetailSplitter.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        DetailColumn.MinWidth = visible ? GallerySettings.MinDetailWidth : 0;
+        DetailColumn.Width = new GridLength(visible ? _detailWidth : 0);
+        DetailToggle.Background = (Brush)FindResource(visible ? "AccentSoft" : "Paper");
+    }
+
+    private double _detailWidth = GallerySettings.DefaultDetailWidth;
+
+    private void RailSplitter_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e) => RailColumn.Width = new GridLength(GallerySettings.DefaultRailWidth);
+
+    private void DetailSplitter_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _detailWidth = GallerySettings.DefaultDetailWidth;
+        DetailColumn.Width = new GridLength(_detailWidth);
+    }
+
+    /// <summary>The preview well keeps a 3:2 shape as the pane is resized, capped so the details below stay in reach.</summary>
+    private void DetailPane_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        double inner = Math.Max(0, DetailPane.ActualWidth - 38);
+        DetailPreview.Height = Math.Clamp(Math.Round(inner * 0.66), 180, Math.Max(180, DetailPane.ActualHeight * 0.62));
     }
 
     private void Capture_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow();
@@ -718,6 +742,8 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
         settings.WindowLeft = bounds.Left; settings.WindowTop = bounds.Top; settings.WindowWidth = bounds.Width; settings.WindowHeight = bounds.Height;
         settings.ThumbnailSize = (int)TileSize;
         settings.ShowDetailPane = _detailVisible;
+        settings.RailWidth = Math.Round(RailColumn.ActualWidth > 0 ? RailColumn.ActualWidth : settings.RailWidth);
+        settings.DetailWidth = Math.Round(_detailVisible && DetailColumn.ActualWidth > 0 ? DetailColumn.ActualWidth : _detailWidth);
         try { _config.Save(); } catch { /* Placement is a convenience; losing it is harmless. */ }
     }
 

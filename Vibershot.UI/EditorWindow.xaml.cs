@@ -17,10 +17,10 @@ namespace Vibershot.UI;
 /// </summary>
 public partial class EditorWindow : Window
 {
-    private enum Tool { Select, Marquee, Crop, Arrow, Shape, Text, Image }
+    private enum Tool { Select, Marquee, Crop, Arrow, Shape, Text, Callout, Stamp, Blur, Image }
     private enum ShapeKind { Rect, Ellipse, Line }
     private enum Handle { None, TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left, Rotate, LineTail, LineHead }
-    private enum DragKind { None, Pan, Move, Resize, Rotate, LineEnd, Marquee, PixelSelect, PixelMove, CropDraw, CropResize, CropMove, Create }
+    private enum DragKind { None, Pan, Move, Resize, Rotate, LineEnd, Marquee, PixelSelect, PixelMove, CropDraw, CropResize, CropMove, Create, Target, BlurBrush, BlurBox }
 
     private const string ProjectFilter = "Vibershot project|*.vibeshot";
     private const string ImageExtensions = "*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp;*.tif;*.tiff";
@@ -47,6 +47,17 @@ public partial class EditorWindow : Window
     private Tool _tool = Tool.Select;
     private ShapeKind _shape = ShapeKind.Rect;
     private Rect? _pixelSelection, _cropDraft, _marquee;
+
+    // Callout, stamp and blur tool options; each follows the last choice made in the tool panel.
+    private CalloutKind _calloutKind = CalloutKind.Label;
+    private string _stampId = StampLibrary.All[0].Id;
+    private ObscureMode _obscureMode = ObscureMode.Blur;
+    private bool _blurBrush = true;
+    private double _blurStrength = 14, _brushSize = 40;
+    private readonly List<Point> _brushPoints = new();
+    private Rect? _blurBox;
+    private Point? _pointer;
+    private int _dragTarget;
     private bool _spaceDown, _syncingPanel;
 
     // The drag gesture in progress. Every push during a gesture shares _dragKey so it undoes as one step.
@@ -92,16 +103,16 @@ public partial class EditorWindow : Window
         _config = config;
         _projectPath = projectPath;
         _stroke = TryParseColor(config.Editor.DefaultStrokeColor) ?? Color.FromRgb(0xF0, 0x61, 0x2A);
-        _strokeWidth = Math.Clamp(config.Editor.DefaultStrokeWidth, 0, 24);
+        _strokeWidth = Math.Clamp(config.Editor.DefaultStrokeWidth, 0, 1000);
         _history = new History<ImageDocument>(document);
         _history.Changed += OnHistoryChanged;
         _dragBase = document;
 
         Surface.OverlayPainter = PaintOverlay;
-        Surface.ViewChanged += () => { ZoomLabel.Text = $"{Surface.Zoom * 100:0}%"; PositionTextEditor(); };
+        Surface.ViewChanged += () => { ZoomLabel.Text = $"{Surface.Zoom / PixelZoom * 100:0}%"; PositionTextEditor(); };
         FontCombo.ItemsSource = Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(s => s, StringComparer.CurrentCultureIgnoreCase).ToList();
         StrokeStrip.ValueChanged += c => { _stroke = c; ApplyToSelection(i => i with { Stroke = c, StrokeWidth = c != null && i.StrokeWidth <= 0 ? Math.Max(1, _strokeWidth) : i.StrokeWidth }); };
-        FillStrip.ValueChanged += c => { _fill = c; ApplyToSelection(i => i is RectItem or EllipseItem ? i with { Fill = c } : i); };
+        FillStrip.ValueChanged += c => { if (SelectedItems().Any(i => i is not StampItem)) _fill = c; ApplyToSelection(i => i is RectItem or EllipseItem or StampItem ? i with { Fill = c } : i); };
         TextColorStrip.ValueChanged += c => { if (c is { } color) ApplyText(t => t with { Color = color }); };
         TextBackgroundStrip.ValueChanged += c => ApplyText(t => t with { Background = c });
         CanvasStrip.ValueChanged += c =>
@@ -109,8 +120,26 @@ public partial class EditorWindow : Window
             Push(DocumentOps.SetBackground(Doc, c ?? Colors.Transparent));
             Status(c == null ? "Canvas is transparent; exports keep the alpha channel." : "Canvas colour changed.");
         };
-        foreach (var slider in new[] { StrokeWidthSlider, CornerSlider, HeadSlider, OpacitySlider, PaddingSlider, LayerOpacitySlider })
+        foreach (var slider in new[] { StrokeWidthSlider, CornerSlider, HeadSlider, RoundSlider, OpacitySlider, PaddingSlider, LayerOpacitySlider })
             slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => _history.BreakCoalescing()));
+        // The number boxes take values past the sliders' range; each typed value is its own undo step.
+        foreach (var box in new[] { StrokeWidthBox, CornerBox, HeadBox, RoundBox, PaddingBox, BlurStrengthBox, BrushSizeBox }) box.ReturnFocusTo = Surface;
+        StrokeWidthBox.Committed += v => { SetStrokeWidth(v); _history.BreakCoalescing(); };
+        CornerBox.Committed += v => { SetCorner(v); _history.BreakCoalescing(); };
+        HeadBox.Committed += v => { SetHead(v); _history.BreakCoalescing(); };
+        RoundBox.Committed += v => { SetRoundness(v / 100); _history.BreakCoalescing(); };
+        PaddingBox.Committed += v => { SetPadding(v); _history.BreakCoalescing(); };
+        BlurStrengthBox.Committed += v => { _blurStrength = v; SyncObscurePanel(); };
+        BrushSizeBox.Committed += v => { _brushSize = v; SyncObscurePanel(); };
+        StampSearch.KeyDown += (_, e) => { if (e.Key is Key.Enter or Key.Escape) { Surface.Focus(); e.Handled = true; } };
+        Surface.MouseLeave += (_, _) => { if (_pointer != null) { _pointer = null; Surface.InvalidateOverlay(); } };
+        string actualKeys = Gesture(config.Editor.ActualSizeShortcut), fitKeys = Gesture(config.Editor.FitShortcut);
+        ActualSizeMenu.InputGestureText = actualKeys;
+        FitMenu.InputGestureText = fitKeys;
+        ActualSizeButton.ToolTip = actualKeys.Length > 0 ? $"Show pixels 1:1 ({actualKeys})" : "Show pixels 1:1";
+        FitButton.ToolTip = fitKeys.Length > 0 ? $"Fit the picture in the window ({fitKeys})" : "Fit the picture in the window";
+        BuildStampGrid();
+        SyncObscurePanel();
         int initialLayer = DocumentOps.ActiveLayerIndex(document);
         _activeLayer = initialLayer >= 0 && initialLayer < document.Layers.Count ? document.Layers[initialLayer].Id : null;
 
@@ -119,12 +148,14 @@ public partial class EditorWindow : Window
         DragOver += Window_DragOver;
         Drop += Window_Drop;
 
+        AboutMenu.Header = $"Vibershot {AppVersion.Current}";
         Surface.SetDocument(document, _assets);
+        SetShapeButtons();
         SetTool(Tool.Select);
         UpdateChrome();
         UpdatePanel();
         UpdateLayersPanel();
-        Loaded += (_, _) => { Surface.Fit(Doc.ContentRect, maxZoom: 1); Surface.Focus(); };
+        Loaded += (_, _) => { Surface.Fit(Doc.ContentRect, maxZoom: PixelZoom); Surface.Focus(); };
         Status($"{Doc.Size.Width:0} × {Doc.Size.Height:0} px • Pick a tool on the left, or paste an image.");
     }
 
@@ -175,6 +206,13 @@ public partial class EditorWindow : Window
     }
 
     private void Push(ImageDocument doc, string? key = null) => _history.Push(doc, key);
+    /// <summary>
+    /// The canvas zoom at which one picture pixel covers exactly one pixel of the display. On a
+    /// scaled display (125%, 150%) that is less than 1, because WPF lays out in scaled units; the
+    /// zoom readout is relative to this, so "100%" always means pixel for pixel.
+    /// </summary>
+    private double PixelZoom => 1 / VisualTreeHelper.GetDpi(this).DpiScaleX;
+
     private Item? Find(Guid id) => DocumentOps.FindItem(Doc, id);
     private List<Item> SelectedItems() => Doc.AllItems.Where(i => _selection.Contains(i.Id)).ToList();
     private IEnumerable<Guid> SelectedUnlocked() => _selection.Where(id => !Surface.IsLocked(id));
@@ -224,6 +262,7 @@ public partial class EditorWindow : Window
         if (_primary is Guid primary && DocumentOps.LayerIndexOf(Doc, primary) is int index && index >= 0) _activeLayer = Doc.Layers[index].Id;
         UpdateLayersPanel();
         UpdatePanel();
+        UpdateCommandState();
         Surface.InvalidateOverlay();
     }
 
@@ -238,11 +277,23 @@ public partial class EditorWindow : Window
             : $"{Doc.Size.Width:0} × {Doc.Size.Height:0} px · {Doc.AllItems.Count()} items · {Doc.Layers.Count} layer{(Doc.Layers.Count == 1 ? "" : "s")}";
         DocSizeLabel.Text = Doc.CropRect != null ? $"{content.Width:0} × {content.Height:0} of {Doc.Size.Width:0} × {Doc.Size.Height:0}" : $"{Doc.Size.Width:0} × {Doc.Size.Height:0}";
         CanvasStrip.Value = Doc.Background.A == 0 ? null : Doc.Background;
-        UndoButton.IsEnabled = _history.CanUndo;
-        RedoButton.IsEnabled = _history.CanRedo;
-        ResetCropButton.IsEnabled = Doc.CropRect != null;
-        ApplyCropButton.Visibility = _tool == Tool.Crop && _cropDraft != null ? Visibility.Visible : Visibility.Collapsed;
-        CropHint.Visibility = _tool == Tool.Crop ? Visibility.Visible : Visibility.Collapsed;
+        UndoButton.IsEnabled = UndoMenu.IsEnabled = _history.CanUndo;
+        RedoButton.IsEnabled = RedoMenu.IsEnabled = _history.CanRedo;
+        ResetCropButton.IsEnabled = ResetCropMenu.IsEnabled = Doc.CropRect != null;
+        ApplyCropMenu.IsEnabled = _tool == Tool.Crop && _cropDraft != null;
+        ApplyCropButton.Visibility = ApplyCropMenu.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
+        CropRow.Visibility = _tool == Tool.Crop ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCommandState();
+    }
+
+    /// <summary>Enables the rail buttons and menu items that need a selection (or a marquee of pixels).</summary>
+    private void UpdateCommandState()
+    {
+        bool any = _selection.Count > 0;
+        bool pixels = _pixelSelection != null;
+        CutButton.IsEnabled = CopyButton.IsEnabled = DeleteButton.IsEnabled = any || pixels;
+        DuplicateButton.IsEnabled = ForwardButton.IsEnabled = BackwardButton.IsEnabled = any;
+        ObscureSelectionButton.IsEnabled = pixels;
     }
 
     private void Status(string message)
@@ -261,15 +312,44 @@ public partial class EditorWindow : Window
         if (tool != Tool.Crop) _cropDraft = null;
         else if (_cropDraft == null) _cropDraft = Doc.CropRect;
         if (tool != Tool.Marquee) _pixelSelection = null;
+        if (tool != Tool.Blur) { _brushPoints.Clear(); _blurBox = null; }
         _tool = tool;
-        foreach (var button in ToolRail.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == tool.ToString();
-        Surface.Cursor = tool switch
+        ToggleButton? activeRow = null;
+        foreach (var button in ToolRail.Children.OfType<ToggleButton>())
         {
-            Tool.Text => Cursors.IBeam,
-            Tool.Select or Tool.Image => Cursors.Arrow,
-            _ => Cursors.Cross,
+            button.IsChecked = (string)button.Tag == tool.ToString();
+            if (button.IsChecked == true) activeRow = button;
+        }
+        // The accordion sits directly under the active tool's row.
+        if (activeRow != null)
+        {
+            ToolRail.Children.Remove(ToolPanel);
+            ToolRail.Children.Insert(ToolRail.Children.IndexOf(activeRow) + 1, ToolPanel);
+        }
+        ShapeKindRow.Visibility = tool == Tool.Shape ? Visibility.Visible : Visibility.Collapsed;
+        StampRow.Visibility = tool == Tool.Stamp ? Visibility.Visible : Visibility.Collapsed;
+        ObscureRow.Visibility = tool is Tool.Blur or Tool.Marquee ? Visibility.Visible : Visibility.Collapsed;
+        BlurShapeRow.Visibility = tool == Tool.Blur ? Visibility.Visible : Visibility.Collapsed;
+        ObscureSelectionButton.Visibility = tool == Tool.Marquee ? Visibility.Visible : Visibility.Collapsed;
+        SyncObscurePanel();
+        ToolHint.Text = tool switch
+        {
+            Tool.Select => "Click an item to select it, drag to move it. Shift-click adds to the selection. Double-click text to edit it.",
+            Tool.Marquee => "Drag to select pixels. Drag inside the box or press V to lift them; Ctrl+C copies, Ctrl+X cuts, Delete clears.",
+            Tool.Crop => "Drag the area to keep.",
+            Tool.Arrow => "Drag from the tail to the head. Hold Shift to snap to 45°.",
+            Tool.Shape => "Drag on the picture to draw. Hold Shift for a square or circle.",
+            Tool.Text => "Click or drag on the picture to place a text box, then type.",
+            Tool.Callout => _calloutKind == CalloutKind.Label
+                ? "Drag from the thing you are labelling to where the label should sit, then type. A click places a label without an arrow."
+                : "Drag from who is speaking to where the bubble should sit, then type.",
+            Tool.Stamp => "Pick a stamp, then click to place it or drag to size it. Hold Shift to stretch it.",
+            Tool.Blur => "Paint or box over anything that should not be readable. Each pass adds a patch you can move, delete or undo.",
+            _ => "Click where the image should go, then pick a file.",
         };
+        SetCursorForTool();
         UpdateChrome();
+        UpdatePanel();
         Surface.InvalidateOverlay();
         Status(tool switch
         {
@@ -279,6 +359,9 @@ public partial class EditorWindow : Window
             Tool.Arrow => "Drag from the tail to the head. Shift snaps to 45°.",
             Tool.Shape => $"Drag to draw a {_shape.ToString().ToLowerInvariant()}. Press S again to switch shape.",
             Tool.Text => "Click or drag to place a text box, then type.",
+            Tool.Callout => "Drag from what the callout points at to where it should sit. Press O again to switch style.",
+            Tool.Stamp => "Click to place the stamp, or drag to size it.",
+            Tool.Blur => _blurBrush ? "Paint over what should be hidden." : "Drag a box over what should be hidden.",
             _ => "Click where the image should go.",
         });
     }
@@ -286,31 +369,44 @@ public partial class EditorWindow : Window
     private void Tool_Click(object sender, RoutedEventArgs e)
     {
         var tool = Enum.Parse<Tool>((string)((ToggleButton)sender).Tag);
-        if (tool == Tool.Shape && _tool == Tool.Shape) ShapeFlyout.IsOpen = true;
-        SetTool(tool);
+        // Clicking the active Shape row again steps through rectangle, ellipse and line, like pressing S.
+        if (tool == Tool.Shape && _tool == Tool.Shape) SetShape((ShapeKind)(((int)_shape + 1) % 3));
+        else if (tool == Tool.Callout && _tool == Tool.Callout) NextCalloutKind();
+        else SetTool(tool);
         Surface.Focus();
     }
 
-    private void ShapeTool_RightClick(object sender, MouseButtonEventArgs e) { ShapeFlyout.IsOpen = true; e.Handled = true; }
+    private void NextCalloutKind()
+    {
+        _calloutKind = (CalloutKind)(((int)_calloutKind + 1) % 4);
+        SetTool(Tool.Callout);
+    }
+
+    private void CropTool_Click(object sender, RoutedEventArgs e) { SetTool(Tool.Crop); Surface.Focus(); }
+    private void ImageTool_Click(object sender, RoutedEventArgs e) { SetTool(Tool.Image); Surface.Focus(); }
 
     private void ShapeKind_Click(object sender, RoutedEventArgs e)
     {
         SetShape(Enum.Parse<ShapeKind>((string)((ToggleButton)sender).Tag));
-        ShapeFlyout.IsOpen = false;
         Surface.Focus();
     }
 
     private void SetShape(ShapeKind kind)
     {
         _shape = kind;
-        ShapeToolIcon.Data = Geometry.Parse(kind switch
+        SetShapeButtons();
+        SetTool(Tool.Shape);
+    }
+
+    private void SetShapeButtons()
+    {
+        ShapeToolIcon.Data = Geometry.Parse(_shape switch
         {
             ShapeKind.Ellipse => "M10,3 A7,7 0 1 1 9.99,3 Z",
             ShapeKind.Line => "M3,17 L17,3",
             _ => "M2,4 H18 V16 H2 Z",
         });
-        foreach (var button in ((StackPanel)((Border)ShapeFlyout.Child).Child).Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == kind.ToString();
-        SetTool(Tool.Shape);
+        foreach (var button in ShapeKinds.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == _shape.ToString();
     }
 
     // ----- Keyboard -----
@@ -325,6 +421,11 @@ public partial class EditorWindow : Window
             if (key == Key.Escape && _textEditor != null && _textEditor.IsKeyboardFocusWithin) { CommitTextEdit(); Surface.Focus(); e.Handled = true; }
             return;
         }
+        // The two view shortcuts are configurable (Settings → Editor), so they are matched before the fixed keys.
+        if (Matches(_config.Editor.ActualSizeShortcut, key)) { Surface.Center(Doc.ContentRect, PixelZoom); e.Handled = true; return; }
+        if (Matches(_config.Editor.FitShortcut, key)) { Surface.Fit(Doc.ContentRect); e.Handled = true; return; }
+        // Alt belongs to the menu bar's access keys (Alt+F opens File), not to the single-letter tool shortcuts.
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) return;
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
         if (key == Key.Space)
@@ -340,15 +441,17 @@ public partial class EditorWindow : Window
                 case Key.Z: if (shift) Redo(); else Undo(); break;
                 case Key.Y: Redo(); break;
                 case Key.A: SelectAll(); break;
-                case Key.C: Copy(cut: false); break;
+                case Key.C: if (shift) CopyImage(); else Copy(cut: false); break;
                 case Key.X: Copy(cut: true); break;
                 case Key.V: Paste(); break;
                 case Key.D: Duplicate(); break;
                 case Key.S: SaveProject(saveAs: shift); break;
                 case Key.O: OpenDialog(); break;
                 case Key.E: Export(); break;
-                case Key.D0 or Key.NumPad0: Surface.Fit(Doc.ContentRect); break;
-                case Key.D1 or Key.NumPad1: Surface.Center(Doc.ContentRect, 1); break;
+                case Key.N: if (shift) (Application.Current as App)?.OpenEditorFromClipboard(); else NewCanvas(this, _config); break;
+                case Key.G: (Application.Current as App)?.ShowGallery(); break;
+                case Key.W: Close(); break;
+                case Key.D1 or Key.NumPad1: Surface.Center(Doc.ContentRect, PixelZoom); break;
                 case Key.OemPlus or Key.Add: Surface.ZoomAt(new Point(Surface.ActualWidth / 2, Surface.ActualHeight / 2), Surface.Zoom * 1.25); break;
                 case Key.OemMinus or Key.Subtract: Surface.ZoomAt(new Point(Surface.ActualWidth / 2, Surface.ActualHeight / 2), Surface.Zoom / 1.25); break;
                 case Key.OemCloseBrackets: Reorder(shift ? ZOrderMove.BringToFront : ZOrderMove.BringForward); break;
@@ -368,6 +471,9 @@ public partial class EditorWindow : Window
             case Key.S: if (_tool == Tool.Shape) SetShape((ShapeKind)(((int)_shape + 1) % 3)); else SetTool(Tool.Shape); break;
             case Key.T: SetTool(Tool.Text); break;
             case Key.I: SetTool(Tool.Image); break;
+            case Key.O: if (_tool == Tool.Callout) NextCalloutKind(); else SetTool(Tool.Callout); break;
+            case Key.K: SetTool(Tool.Stamp); break;
+            case Key.B: SetTool(Tool.Blur); break;
             case Key.Delete or Key.Back: DeleteSelection(); break;
             case Key.Escape: Cancel(); break;
             case Key.Enter: if (_tool == Tool.Crop && _cropDraft != null) ApplyCrop(); else return; break;
@@ -387,6 +493,17 @@ public partial class EditorWindow : Window
     }
 
     private void SetCursorForTool() => Surface.Cursor = _tool switch { Tool.Text => Cursors.IBeam, Tool.Select or Tool.Image => Cursors.Arrow, _ => Cursors.Cross };
+
+    /// <summary>The shortcut as the user reads it ("Ctrl+0"), or "" when it is not set or unreadable.</summary>
+    private static string Gesture(string? shortcut) => HotkeyGesture.TryParse(shortcut, out var gesture) ? gesture.ToString() : "";
+
+    /// <summary>True when the pressed key, with the modifiers held right now, is the configured shortcut. A digit matches its number-pad twin.</summary>
+    private static bool Matches(string? shortcut, Key key)
+    {
+        if (!HotkeyGesture.TryParse(shortcut, out var gesture) || gesture.IsEmpty) return false;
+        if (HotkeyManager.CurrentModifiers() != gesture.Modifiers || HotkeyManager.ToKey(gesture.Key) is not Key wanted) return false;
+        return key == wanted || (wanted is >= Key.D0 and <= Key.D9 && key == Key.NumPad0 + (wanted - Key.D0));
+    }
 
     private void Cancel()
     {
@@ -488,6 +605,13 @@ public partial class EditorWindow : Window
         {
             case Tool.Select:
             {
+                if (HitTarget(screen) is int tip && _primary is Guid owner && Find(owner) is CalloutItem pointing)
+                {
+                    StartDrag(DragKind.Target, screen, doc);
+                    _dragOriginal = pointing;
+                    _dragTarget = tip;
+                    break;
+                }
                 var handle = HitHandle(screen);
                 if (handle != Handle.None && _primary is Guid primary && Find(primary) is Item target)
                 {
@@ -531,9 +655,15 @@ public partial class EditorWindow : Window
                 StartDrag(DragKind.CropDraw, screen, doc);
                 break;
             }
-            case Tool.Arrow or Tool.Shape or Tool.Text:
+            case Tool.Arrow or Tool.Shape or Tool.Text or Tool.Callout or Tool.Stamp:
                 StartDrag(DragKind.Create, screen, doc);
                 _createId = Guid.NewGuid();
+                break;
+            case Tool.Blur:
+                _brushPoints.Clear();
+                _blurBox = null;
+                if (_blurBrush) { _brushPoints.Add(doc); StartDrag(DragKind.BlurBrush, screen, doc); Surface.InvalidateOverlay(); }
+                else StartDrag(DragKind.BlurBox, screen, doc);
                 break;
             case Tool.Image:
                 PlaceImageFromFile(doc);
@@ -545,6 +675,7 @@ public partial class EditorWindow : Window
     private void Surface_MouseMove(object sender, MouseEventArgs e)
     {
         var screen = e.GetPosition(Surface);
+        if (_tool == Tool.Blur && _blurBrush) { _pointer = screen; if (_drag == DragKind.None) Surface.InvalidateOverlay(); }
         if (_drag == DragKind.None) { UpdateHoverCursor(screen); return; }
         var doc = Surface.ToDoc(screen);
         bool shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
@@ -562,9 +693,26 @@ public partial class EditorWindow : Window
             {
                 if (shift) { if (Math.Abs(delta.X) > Math.Abs(delta.Y)) delta.Y = 0; else delta.X = 0; }
                 delta = new Vector(Math.Round(delta.X), Math.Round(delta.Y));
-                Push(DocumentOps.MoveItems(_dragBase, SelectedUnlocked(), delta), _dragKey);
+                // Alt leaves a callout's pointers aimed where they were while its box moves.
+                Push(DocumentOps.MoveItems(_dragBase, SelectedUnlocked(), delta, pinTargets: Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)), _dragKey);
                 break;
             }
+            case DragKind.Target:
+            {
+                var callout = (CalloutItem)_dragOriginal!;
+                if (_dragTarget < 0 || _dragTarget >= callout.Targets.Count) break;
+                var tip = new Point(Math.Round(doc.X), Math.Round(doc.Y));
+                Push(DocumentOps.ReplaceItem(_dragBase, callout with { Targets = callout.Targets.SetItem(_dragTarget, tip) }), _dragKey);
+                break;
+            }
+            case DragKind.BlurBrush:
+                if (_brushPoints.Count == 0 || (_brushPoints[^1] - doc).Length >= 1) _brushPoints.Add(doc);
+                Surface.InvalidateOverlay();
+                break;
+            case DragKind.BlurBox:
+                _blurBox = Snap(Rect.Intersect(new Rect(_dragStartDoc, doc), canvas));
+                Surface.InvalidateOverlay();
+                break;
             case DragKind.Resize:
                 Push(DocumentOps.ReplaceItem(_dragBase, ResizeItem(_dragOriginal!, _dragHandle, _dragStartDoc, doc, shift)), _dragKey);
                 break;
@@ -667,8 +815,16 @@ public partial class EditorWindow : Window
             case DragKind.Pan:
                 SetCursorForTool();
                 break;
-            case DragKind.Move or DragKind.Resize or DragKind.Rotate or DragKind.LineEnd:
+            case DragKind.Move or DragKind.Resize or DragKind.Rotate or DragKind.LineEnd or DragKind.Target:
                 _history.BreakCoalescing();
+                break;
+            case DragKind.BlurBrush:
+                ApplyBrushStroke();
+                break;
+            case DragKind.BlurBox:
+                if (_blurBox is { Width: >= 2, Height: >= 2 } blurred) ApplyObscure(blurred);
+                _blurBox = null;
+                Surface.InvalidateOverlay();
                 break;
             case DragKind.Marquee:
             {
@@ -685,7 +841,8 @@ public partial class EditorWindow : Window
             }
             case DragKind.PixelSelect:
                 if (_pixelSelection is { Width: < 1 } or { Height: < 1 }) _pixelSelection = null;
-                if (_pixelSelection is Rect px) Status($"{px.Width:0} × {px.Height:0} px selected • drag inside or press V to move, Ctrl+C copies, Ctrl+X cuts, Delete clears.");
+                if (_pixelSelection is Rect px) Status($"{px.Width:0} × {px.Height:0} px selected • drag inside or press V to move, Ctrl+C copies, Ctrl+X cuts, Delete clears, or blur it from the tool panel.");
+                UpdateCommandState();
                 Surface.InvalidateOverlay();
                 break;
             case DragKind.PixelMove:
@@ -716,6 +873,26 @@ public partial class EditorWindow : Window
     {
         if (!_dragMoved)
         {
+            if (_tool == Tool.Stamp)
+            {
+                // A click places the stamp at a size that suits the picture.
+                double side = Math.Clamp(Math.Round(Math.Min(Doc.Size.Width, Doc.Size.Height) / 9), 32, 320);
+                var stamp = new StampItem { Id = _createId, StampId = _stampId, Bounds = new Rect(Math.Round(doc.X - side / 2), Math.Round(doc.Y - side / 2), side, side) };
+                Push(AddToActiveLayer(_dragBase, [stamp]), _dragKey);
+                Select(stamp.Id);
+                _history.BreakCoalescing();
+                return;
+            }
+            if (_tool == Tool.Callout)
+            {
+                // A click drops a label where it was clicked; a bubble sits up and to the right with its tail on the click.
+                var at = new Point(Math.Round(doc.X), Math.Round(doc.Y));
+                var callout = _calloutKind == CalloutKind.Label ? NewCallout(at, null) : NewCallout(at + new Vector(150, -110), at);
+                Push(AddToActiveLayer(_dragBase, [callout]), _dragKey);
+                Select(callout.Id);
+                BeginTextEdit(callout.Id, _dragKey);
+                return;
+            }
             if (_tool != Tool.Text) return;
             var text = NewText(new Rect(Math.Round(doc.X), Math.Round(doc.Y), 240, 10));
             text = text with { Bounds = new Rect(text.Bounds.X, text.Bounds.Y, 240, DocumentRenderer.MeasureText(text).Height) };
@@ -740,6 +917,7 @@ public partial class EditorWindow : Window
         if (_spaceDown) { Surface.Cursor = Cursors.ScrollAll; return; }
         if (_tool == Tool.Select)
         {
+            if (HitTarget(screen) != null) { Surface.Cursor = Cursors.Hand; return; }
             Surface.Cursor = HitHandle(screen) switch
             {
                 Handle.TopLeft or Handle.BottomRight => Cursors.SizeNWSE,
@@ -857,6 +1035,15 @@ public partial class EditorWindow : Window
         return Handle.None;
     }
 
+    /// <summary>The index of the selected callout's pointer tip under a screen point, or null.</summary>
+    private int? HitTarget(Point screen)
+    {
+        if (_selection.Count != 1 || _primary is not Guid id || Find(id) is not CalloutItem callout || Surface.IsLocked(id) || _editingText == id) return null;
+        for (int i = callout.Targets.Count - 1; i >= 0; i--)
+            if ((screen - Surface.ToScreen(callout.Targets[i])).Length <= HandleRadius + 2) return i;
+        return null;
+    }
+
     private static Handle HitRectHandle(Point screen, Rect r)
     {
         var handles = new (Handle, Point)[]
@@ -890,6 +1077,15 @@ public partial class EditorWindow : Window
                     ? new RectItem { Id = _createId, Bounds = bounds, Stroke = stroke, StrokeWidth = width, Fill = _fill }
                     : new EllipseItem { Id = _createId, Bounds = bounds, Stroke = stroke, StrokeWidth = width, Fill = _fill };
             }
+            case Tool.Callout:
+                // Dragged from the thing being pointed at to where the callout should sit.
+                return NewCallout(end, start);
+            case Tool.Stamp:
+            {
+                // Stamps keep their shape unless Shift stretches them.
+                var bounds = new Rect(start, shift ? end : SquareEnd(start, end));
+                return new StampItem { Id = _createId, StampId = _stampId, Bounds = bounds };
+            }
             default:
             {
                 var bounds = new Rect(start, end);
@@ -903,9 +1099,32 @@ public partial class EditorWindow : Window
     {
         Id = _createId, Bounds = bounds, Text = "",
         FontFamily = string.IsNullOrWhiteSpace(_config.Editor.DefaultFontFamily) ? "Segoe UI" : _config.Editor.DefaultFontFamily,
-        FontSize = Math.Clamp(_config.Editor.DefaultFontSize, 6, 400),
+        FontSize = Math.Clamp(_config.Editor.DefaultFontSize, 6, 2000),
         Color = _stroke ?? Color.FromRgb(0x15, 0x18, 0x1C),
     };
+
+    /// <summary>A callout in the current style, centred on <paramref name="centre"/> and pointing at <paramref name="target"/> when one is given.</summary>
+    private CalloutItem NewCallout(Point centre, Point? target)
+    {
+        bool round = _calloutKind is CalloutKind.Oval or CalloutKind.Thought;
+        var item = new CalloutItem
+        {
+            Id = _createId, Kind = _calloutKind, Text = "", Alignment = TextAlign.Center, Padding = 10,
+            FontFamily = string.IsNullOrWhiteSpace(_config.Editor.DefaultFontFamily) ? "Segoe UI" : _config.Editor.DefaultFontFamily,
+            FontSize = Math.Clamp(_config.Editor.DefaultFontSize, 6, 2000),
+            Color = Color.FromRgb(0x15, 0x18, 0x1C), Background = Colors.White,
+            Stroke = _stroke ?? Color.FromRgb(0xF0, 0x61, 0x2A), StrokeWidth = Math.Max(1, _strokeWidth),
+            CornerRadius = _calloutKind == CalloutKind.Speech ? 18 : 8,
+            HeadSize = Math.Max(10, _strokeWidth * 3),
+            Bounds = new Rect(0, 0, round ? 240 : 200, 10),
+        };
+        double width = item.Bounds.Width, height = Math.Max(DocumentRenderer.MeasureText(item).Height, round ? 120 : 56);
+        return item with
+        {
+            Bounds = new Rect(Math.Round(centre.X - width / 2), Math.Round(centre.Y - height / 2), width, Math.Ceiling(height)),
+            Targets = target is Point tip ? [new Point(Math.Round(tip.X), Math.Round(tip.Y))] : [],
+        };
+    }
 
     private void PlaceImage(BitmapSource bitmap, Point? at = null, string? key = null)
     {
@@ -970,11 +1189,11 @@ public partial class EditorWindow : Window
         var box = new TextBox
         {
             Text = item.Text, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, Style = null, BorderThickness = new Thickness(0),
-            Background = Brushes.Transparent, Foreground = new SolidColorBrush(item.Color), CaretBrush = (Brush)FindResource("Tangerine"),
-            SelectionBrush = (Brush)FindResource("TangerineSoft"), SelectionOpacity = 0.6,
+            Background = Brushes.Transparent, Foreground = new SolidColorBrush(item.Color), CaretBrush = (Brush)FindResource("Accent"),
+            SelectionBrush = (Brush)FindResource("AccentSoft"), SelectionOpacity = 0.6,
             FontFamily = new FontFamily(item.FontFamily), FontWeight = item.Bold ? FontWeights.Bold : FontWeights.Normal, FontStyle = item.Italic ? FontStyles.Italic : FontStyles.Normal,
             TextAlignment = item.Alignment switch { TextAlign.Center => TextAlignment.Center, TextAlign.Right => TextAlignment.Right, _ => TextAlignment.Left },
-            VerticalContentAlignment = VerticalAlignment.Top,
+            VerticalContentAlignment = item is CalloutItem ? VerticalAlignment.Center : VerticalAlignment.Top,
         };
         if (item.Underline) box.TextDecorations = TextDecorations.Underline;
         box.LostKeyboardFocus += (_, _) => CommitTextEdit();
@@ -995,7 +1214,10 @@ public partial class EditorWindow : Window
     private void PositionTextEditor()
     {
         if (_textEditor == null || _editingText is not Guid id || Find(id) is not TextItem item) return;
-        var r = Surface.ToScreen(item.Bounds);
+        // The editor covers the item's text area plus its padding: the whole box for plain text, the inside of the curve for a round callout.
+        var area = DocumentRenderer.TextArea(item);
+        area.Inflate(item.Padding, item.Padding);
+        var r = Surface.ToScreen(area);
         Canvas.SetLeft(_textEditor, r.X);
         Canvas.SetTop(_textEditor, r.Y);
         _textEditor.Width = Math.Max(10, r.Width);
@@ -1007,6 +1229,12 @@ public partial class EditorWindow : Window
     private void GrowTextEditor()
     {
         if (_textEditor == null || _editingText is not Guid id || Find(id) is not TextItem item) return;
+        if (item is CalloutItem)
+        {
+            // A callout keeps its shape while typing; it grows, if it must, when the edit is committed.
+            _textEditor.MinHeight = (DocumentRenderer.TextArea(item).Height + item.Padding * 2) * Surface.Zoom;
+            return;
+        }
         var measured = DocumentRenderer.MeasureText(item with { Text = _textEditor.Text });
         _textEditor.MinHeight = Math.Max(item.Bounds.Height, measured.Height) * Surface.Zoom;
     }
@@ -1023,7 +1251,8 @@ public partial class EditorWindow : Window
         Surface.SetHidden(null);
         if (Find(id) is not TextItem item) return;
         var text = box.Text;
-        if (string.IsNullOrWhiteSpace(text))
+        // An emptied text box is removed; a callout that already existed may stay as an empty bubble.
+        if (string.IsNullOrWhiteSpace(text) && !(item is CalloutItem && key == null && item.Text.Length == 0))
         {
             if (key != null) _history.Rollback(key);
             else Push(DocumentOps.RemoveItems(Doc, [id]));
@@ -1036,7 +1265,8 @@ public partial class EditorWindow : Window
         {
             var updated = item with { Text = text };
             var size = DocumentRenderer.MeasureText(updated);
-            updated = updated with { Bounds = new Rect(item.Bounds.X, item.Bounds.Y, item.Bounds.Width, size.Height) };
+            double height = item is CalloutItem ? Math.Max(item.Bounds.Height, size.Height) : size.Height;
+            updated = updated with { Bounds = new Rect(item.Bounds.X, item.Bounds.Y, item.Bounds.Width, height) };
             Push(DocumentOps.ReplaceItem(Doc, updated), key);
         }
         _history.BreakCoalescing();
@@ -1197,19 +1427,20 @@ public partial class EditorWindow : Window
 
     private void PaintOverlay(DrawingContext dc)
     {
-        var tangerine = (Brush)FindResource("Tangerine");
+        var accent = (Brush)FindResource("Accent");
         var paper = (Brush)FindResource("Paper");
-        var outline = new Pen(tangerine, 1);
+        var outline = new Pen(accent, 1);
         var dashed = new Pen((Brush)FindResource("Ink2"), 1) { DashStyle = DashStyles.Dash };
-        var tint = new SolidColorBrush(Color.FromArgb(0x30, 0xF0, 0x61, 0x2A));
+        var accentColor = accent is SolidColorBrush solid ? solid.Color : Color.FromRgb(0xBD, 0x93, 0xF9);
+        var tint = new SolidColorBrush(Color.FromArgb(0x30, accentColor.R, accentColor.G, accentColor.B));
 
         if (_tool == Tool.Crop && _cropDraft is Rect crop)
         {
             var canvas = Surface.ToScreen(new Rect(Doc.Size));
             var screen = Surface.ToScreen(crop);
-            dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(0xB0, 0xFB, 0xFB, 0xFC)), null, new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(canvas), new RectangleGeometry(screen)));
-            dc.DrawRectangle(null, new Pen(tangerine, 1.5), screen);
-            foreach (var (_, point) in RectHandles(screen)) DrawHandle(dc, point, paper, tangerine);
+            dc.DrawGeometry(new SolidColorBrush(Color.FromArgb(0xB0, 0x21, 0x22, 0x2C)), null, new CombinedGeometry(GeometryCombineMode.Exclude, new RectangleGeometry(canvas), new RectangleGeometry(screen)));
+            dc.DrawRectangle(null, new Pen(accent, 1.5), screen);
+            foreach (var (_, point) in RectHandles(screen)) DrawHandle(dc, point, paper, accent);
             DrawLabel(dc, $"{crop.Width:0} × {crop.Height:0}", new Point(screen.Right, screen.Bottom + 8));
         }
         if (_pixelSelection is Rect pixels)
@@ -1218,7 +1449,31 @@ public partial class EditorWindow : Window
             dc.DrawRectangle(tint, dashed, screen);
             DrawLabel(dc, $"{pixels.Width:0} × {pixels.Height:0}", new Point(screen.Right, screen.Bottom + 8));
         }
-        if (_marquee is Rect marquee) dc.DrawRectangle(tint, new Pen(tangerine, 1) { DashStyle = DashStyles.Dash }, Surface.ToScreen(marquee));
+        if (_marquee is Rect marquee) dc.DrawRectangle(tint, new Pen(accent, 1) { DashStyle = DashStyles.Dash }, Surface.ToScreen(marquee));
+
+        if (_tool == Tool.Blur)
+        {
+            var wash = new SolidColorBrush(Color.FromArgb(0x66, accentColor.R, accentColor.G, accentColor.B));
+            if (_blurBox is Rect blurBox) dc.DrawRectangle(tint, new Pen(accent, 1) { DashStyle = DashStyles.Dash }, Surface.ToScreen(blurBox));
+            if (_brushPoints.Count > 0)
+            {
+                double size = Math.Max(1, _brushSize * Surface.Zoom);
+                if (_brushPoints.Count == 1) dc.DrawEllipse(wash, null, Surface.ToScreen(_brushPoints[0]), size / 2, size / 2);
+                else
+                {
+                    var figure = new PathFigure { StartPoint = Surface.ToScreen(_brushPoints[0]), IsFilled = false };
+                    figure.Segments.Add(new PolyLineSegment(_brushPoints.Skip(1).Select(Surface.ToScreen), true));
+                    dc.DrawGeometry(null, new Pen(wash, size) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round }, new PathGeometry([figure]));
+                }
+            }
+            if (_blurBrush && _pointer is Point pointer)
+            {
+                // The brush outline: dark under light so it reads on any picture.
+                double radius = Math.Max(2, _brushSize * Surface.Zoom / 2);
+                dc.DrawEllipse(null, new Pen(new SolidColorBrush(Color.FromArgb(0xAA, 0, 0, 0)), 3), pointer, radius, radius);
+                dc.DrawEllipse(null, new Pen(Brushes.White, 1), pointer, radius, radius);
+            }
+        }
 
         // Like Photoshop's Move tool: the selection persists across tool switches, but its outline and handles only show while Select is active.
         if (_tool != Tool.Select) return;
@@ -1241,15 +1496,18 @@ public partial class EditorWindow : Window
                 if (handle == Handle.Rotate)
                 {
                     dc.DrawLine(outline, top.Screen, point);
-                    dc.DrawEllipse(paper, new Pen(tangerine, 1.5), point, 5, 5);
+                    dc.DrawEllipse(paper, new Pen(accent, 1.5), point, 5, 5);
                 }
-                else DrawHandle(dc, point, paper, tangerine);
+                else DrawHandle(dc, point, paper, accent);
             }
+            // A callout's pointer tips: round accent handles that drag independently of the box.
+            if (primary is CalloutItem pointing)
+                foreach (var tip in pointing.Targets) dc.DrawEllipse(accent, new Pen(paper, 1.5), Surface.ToScreen(tip), 5.5, 5.5);
         }
         else if (selected.Count > 1)
         {
             var union = DocumentOps.UnionBounds(selected);
-            if (!union.IsEmpty) dc.DrawRectangle(null, new Pen(tangerine, 1) { DashStyle = DashStyles.Dash }, Surface.ToScreen(union));
+            if (!union.IsEmpty) dc.DrawRectangle(null, new Pen(accent, 1) { DashStyle = DashStyles.Dash }, Surface.ToScreen(union));
         }
     }
 
@@ -1298,22 +1556,47 @@ public partial class EditorWindow : Window
         {
             var items = SelectedItems();
             var primary = (_primary is Guid id ? items.FirstOrDefault(i => i.Id == id) : null) ?? items.LastOrDefault();
-            NoSelectionPanel.Visibility = primary == null ? Visibility.Visible : Visibility.Collapsed;
+            // With nothing selected the Select tool explains itself; the other tools' hints already say what to do.
+            NoSelectionPanel.Visibility = primary == null && _tool == Tool.Select ? Visibility.Visible : Visibility.Collapsed;
             ItemPanel.Visibility = primary == null ? Visibility.Collapsed : Visibility.Visible;
+            // The callout style row belongs to the tool, and to a selected callout it can restyle.
+            var selectedCallout = primary as CalloutItem;
+            CalloutKindRow.Visibility = _tool == Tool.Callout || (selectedCallout != null && _tool == Tool.Select) ? Visibility.Visible : Visibility.Collapsed;
+            var shownKind = _tool == Tool.Callout ? _calloutKind : selectedCallout?.Kind ?? _calloutKind;
+            foreach (var button in CalloutKinds.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == shownKind.ToString();
             if (primary == null) return;
             ItemKindLabel.Text = (primary switch
             {
-                ImageItem => "Image", RectItem => "Rectangle", EllipseItem => "Ellipse", ArrowItem => "Arrow", LineItem => "Line", TextItem => "Text", _ => "Item",
+                ImageItem => "Image", RectItem => "Rectangle", EllipseItem => "Ellipse", ArrowItem => "Arrow", LineItem => "Line", CalloutItem => "Callout", TextItem => "Text",
+                StampItem stamp => StampLibrary.Find(stamp.StampId)?.Name ?? "Stamp", _ => "Item",
             } + (items.Count > 1 ? $" + {items.Count - 1} more" : "")).ToUpperInvariant();
             StrokeStrip.Value = primary.Stroke;
-            StrokeWidthSlider.Value = Math.Clamp(primary.StrokeWidth, 0, 24);
-            StrokeWidthValue.Text = $"{primary.StrokeWidth:0} px";
-            FillRow.Visibility = primary is RectItem or EllipseItem ? Visibility.Visible : Visibility.Collapsed;
+            // Sliders show what fits their range; the boxes beside them always show the real value.
+            StrokeWidthRow.Visibility = primary is StampItem ? Visibility.Collapsed : Visibility.Visible;
+            StrokeWidthSlider.Value = Math.Clamp(primary.StrokeWidth, StrokeWidthSlider.Minimum, StrokeWidthSlider.Maximum);
+            StrokeWidthBox.Show(primary.StrokeWidth);
+            FillRow.Visibility = primary is RectItem or EllipseItem or StampItem ? Visibility.Visible : Visibility.Collapsed;
             FillStrip.Value = primary.Fill;
-            CornerRow.Visibility = primary is RectItem ? Visibility.Visible : Visibility.Collapsed;
-            if (primary is RectItem rect) { CornerSlider.Value = Math.Clamp(rect.CornerRadius, 0, 80); CornerValue.Text = $"{rect.CornerRadius:0} px"; }
-            HeadRow.Visibility = primary is ArrowItem ? Visibility.Visible : Visibility.Collapsed;
-            if (primary is ArrowItem arrow) { HeadSlider.Value = Math.Clamp(arrow.HeadSize, 4, 60); HeadValue.Text = $"{arrow.HeadSize:0} px"; }
+            double? corner = primary switch { RectItem r => r.CornerRadius, CalloutItem { Kind: CalloutKind.Label or CalloutKind.Speech } c => c.CornerRadius, _ => null };
+            CornerRow.Visibility = corner != null ? Visibility.Visible : Visibility.Collapsed;
+            if (corner is double radius) { CornerSlider.Value = Math.Clamp(radius, CornerSlider.Minimum, CornerSlider.Maximum); CornerBox.Show(radius); }
+            (double Size, double Roundness)? head = primary switch { ArrowItem a => (a.HeadSize, a.HeadRoundness), CalloutItem { Kind: CalloutKind.Label } c => (c.HeadSize, c.HeadRoundness), _ => null };
+            HeadRow.Visibility = head != null ? Visibility.Visible : Visibility.Collapsed;
+            if (head is var (headSize, roundness))
+            {
+                HeadSlider.Value = Math.Clamp(headSize, HeadSlider.Minimum, HeadSlider.Maximum);
+                HeadBox.Show(headSize);
+                RoundSlider.Value = Math.Clamp(Math.Round(roundness * 100), 0, 100);
+                RoundBox.Show(Math.Round(roundness * 100));
+            }
+            CalloutArrowRow.Visibility = selectedCallout != null ? Visibility.Visible : Visibility.Collapsed;
+            if (selectedCallout != null)
+            {
+                string noun = selectedCallout.Kind == CalloutKind.Label ? "arrow" : "tail";
+                AddPointerButton.Content = "Add " + noun;
+                RemovePointerButton.Content = "Remove " + noun;
+                RemovePointerButton.IsEnabled = selectedCallout.Targets.Count > 0;
+            }
             OpacitySlider.Value = Math.Clamp(Math.Round(primary.Opacity * 100), 5, 100);
             OpacityValue.Text = $"{primary.Opacity * 100:0}%";
             ShadowCheck.IsChecked = primary.Shadow;
@@ -1330,36 +1613,50 @@ public partial class EditorWindow : Window
                 AlignRightToggle.IsChecked = text.Alignment == TextAlign.Right;
                 TextColorStrip.Value = text.Color;
                 TextBackgroundStrip.Value = text.Background;
-                PaddingSlider.Value = Math.Clamp(text.Padding, 0, 40);
-                PaddingValue.Text = $"{text.Padding:0} px";
+                PaddingSlider.Value = Math.Clamp(text.Padding, PaddingSlider.Minimum, PaddingSlider.Maximum);
+                PaddingBox.Show(text.Padding);
             }
         }
         finally { _syncingPanel = false; }
     }
 
-    private void StrokeWidth_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void StrokeWidth_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) { if (!_syncingPanel) SetStrokeWidth(Math.Round(e.NewValue)); }
+    private void Corner_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) { if (!_syncingPanel) SetCorner(Math.Round(e.NewValue)); }
+    private void Head_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) { if (!_syncingPanel) SetHead(Math.Round(e.NewValue)); }
+    private void Round_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) { if (!_syncingPanel) SetRoundness(Math.Round(e.NewValue) / 100); }
+    private void Padding_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) { if (!_syncingPanel) SetPadding(Math.Round(e.NewValue)); }
+
+    // Each setter serves both its slider and its number box, so a typed 120 px behaves like a dragged 12 px.
+
+    private void SetStrokeWidth(double width)
     {
-        if (_syncingPanel) return;
-        double width = Math.Round(e.NewValue);
-        StrokeWidthValue.Text = $"{width:0} px";
+        StrokeWidthBox.Show(width);
         _strokeWidth = width;
         ApplyToSelection(i => i with { StrokeWidth = width, Stroke = i.Stroke ?? (width > 0 ? _stroke : null) }, "panel:width");
     }
 
-    private void Corner_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void SetCorner(double radius)
     {
-        if (_syncingPanel) return;
-        double radius = Math.Round(e.NewValue);
-        CornerValue.Text = $"{radius:0} px";
-        ApplyToSelection(i => i is RectItem rect ? rect with { CornerRadius = radius } : i, "panel:corner");
+        CornerBox.Show(radius);
+        ApplyToSelection(i => i switch { RectItem rect => rect with { CornerRadius = radius }, CalloutItem callout => callout with { CornerRadius = radius }, _ => i }, "panel:corner");
     }
 
-    private void Head_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void SetHead(double size)
     {
-        if (_syncingPanel) return;
-        double size = Math.Round(e.NewValue);
-        HeadValue.Text = $"{size:0} px";
-        ApplyToSelection(i => i is ArrowItem arrow ? arrow with { HeadSize = size } : i, "panel:head");
+        HeadBox.Show(size);
+        ApplyToSelection(i => i switch { ArrowItem arrow => arrow with { HeadSize = size }, CalloutItem callout => callout with { HeadSize = size }, _ => i }, "panel:head");
+    }
+
+    private void SetRoundness(double fraction)
+    {
+        RoundBox.Show(Math.Round(fraction * 100));
+        ApplyToSelection(i => i switch { ArrowItem arrow => arrow with { HeadRoundness = fraction }, CalloutItem callout => callout with { HeadRoundness = fraction }, _ => i }, "panel:round");
+    }
+
+    private void SetPadding(double padding)
+    {
+        PaddingBox.Show(padding);
+        ApplyText(t => t with { Padding = padding }, "panel:padding");
     }
 
     private void Opacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -1368,14 +1665,6 @@ public partial class EditorWindow : Window
         double opacity = Math.Round(e.NewValue) / 100;
         OpacityValue.Text = $"{opacity * 100:0}%";
         ApplyToSelection(i => i with { Opacity = opacity }, "panel:opacity");
-    }
-
-    private void Padding_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_syncingPanel) return;
-        double padding = Math.Round(e.NewValue);
-        PaddingValue.Text = $"{padding:0} px";
-        ApplyText(t => t with { Padding = padding }, "panel:padding");
     }
 
     private void Shadow_Click(object sender, RoutedEventArgs e) => ApplyToSelection(i => i with { Shadow = ShadowCheck.IsChecked == true });
@@ -1400,7 +1689,7 @@ public partial class EditorWindow : Window
     {
         if (_syncingPanel) return;
         if (!double.TryParse(FontSizeBox.Text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.CurrentCulture, out var size)) { UpdatePanel(); return; }
-        size = Math.Clamp(size, 6, 400);
+        size = Math.Clamp(size, 6, 2000);
         ApplyText(t => t.FontSize == size ? t : t with { FontSize = size });
     }
 
@@ -1419,7 +1708,7 @@ public partial class EditorWindow : Window
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => Surface.ZoomAt(new Point(Surface.ActualWidth / 2, Surface.ActualHeight / 2), Surface.Zoom * 1.25);
     private void ZoomOut_Click(object sender, RoutedEventArgs e) => Surface.ZoomAt(new Point(Surface.ActualWidth / 2, Surface.ActualHeight / 2), Surface.Zoom / 1.25);
     private void Fit_Click(object sender, RoutedEventArgs e) => Surface.Fit(Doc.ContentRect);
-    private void ActualSize_Click(object sender, RoutedEventArgs e) => Surface.Center(Doc.ContentRect, 1);
+    private void ActualSize_Click(object sender, RoutedEventArgs e) => Surface.Center(Doc.ContentRect, PixelZoom);
     private void Undo_Click(object sender, RoutedEventArgs e) => Undo();
     private void Redo_Click(object sender, RoutedEventArgs e) => Redo();
     private void Cut_Click(object sender, RoutedEventArgs e) => Copy(cut: true);
@@ -1439,6 +1728,266 @@ public partial class EditorWindow : Window
         bool pixels = _pixelSelection != null;
         foreach (var item in new[] { DuplicateMenu, FrontMenu, ForwardMenu, BackwardMenu, BackMenu }) item.IsEnabled = any;
         CutMenu.IsEnabled = CopyMenu.IsEnabled = DeleteMenu.IsEnabled = any || pixels;
+    }
+
+    private void EditMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        bool any = _selection.Count > 0;
+        bool pixels = _pixelSelection != null;
+        DuplicateMenu2.IsEnabled = any;
+        CutMenu2.IsEnabled = CopyMenu2.IsEnabled = DeleteMenu2.IsEnabled = any || pixels;
+    }
+
+    private void ArrangeMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        bool any = _selection.Count > 0;
+        foreach (var item in new[] { FrontMenu2, ForwardMenu2, BackwardMenu2, BackMenu2 }) item.IsEnabled = any;
+    }
+
+    private void ImageMenu_Opened(object sender, RoutedEventArgs e) => UpdateChrome();
+
+    private void LayerMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        int index = ActiveLayer is Layer active ? DocumentOps.LayerIndexOf(Doc, active) : -1;
+        DeleteLayerMenu.IsEnabled = index >= 0 && Doc.Layers.Count > 1;
+        LayerUpMenu.IsEnabled = index >= 0 && index < Doc.Layers.Count - 1;
+        LayerDownMenu.IsEnabled = MergeDownMenu.IsEnabled = index > 0;
+    }
+
+    private void MergeDown_Click(object sender, RoutedEventArgs e)
+    {
+        if (ActiveLayer is not Layer active) return;
+        int index = DocumentOps.LayerIndexOf(Doc, active);
+        if (index <= 0) return;
+        _activeLayer = Doc.Layers[index - 1].Id;
+        Push(DocumentOps.MergeLayerDown(Doc, index));
+        Status($"Merged \"{active.Name}\" into \"{Doc.Layers[index - 1].Name}\".");
+    }
+
+    private void NewFromClipboard_Click(object sender, RoutedEventArgs e) => (Application.Current as App)?.OpenEditorFromClipboard();
+    private void OpenGallery_Click(object sender, RoutedEventArgs e) => (Application.Current as App)?.ShowGallery();
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Shortcuts_Click(object sender, RoutedEventArgs e)
+    {
+        string actual = Gesture(_config.Editor.ActualSizeShortcut), fit = Gesture(_config.Editor.FitShortcut);
+        ShortcutsDialog.Show(this, $"{(actual.Length > 0 ? actual : "not set")} / {(fit.Length > 0 ? fit : "not set")}");
+    }
+
+    private void GitHub_Click(object sender, RoutedEventArgs e)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/CommonDocsOrg/vibershot") { UseShellExecute = true }); }
+        catch (Exception ex) { Status("Could not open the browser: " + ex.Message); }
+    }
+
+    // ----- Canvas: new, canvas size, image size -----
+
+    private void NewCanvas_Click(object sender, RoutedEventArgs e) => NewCanvas(this, _config);
+
+    /// <summary>Asks for a size and background, then opens a blank document in a new editor window.</summary>
+    public static void NewCanvas(Window? owner, AppConfig config)
+    {
+        if (CanvasSetupWindow.AskNew(owner, new Size(1920, 1080), CanvasColor(config)) is not { } choice) return;
+        new EditorWindow(config, DocumentOps.Blank(choice.Size, choice.Background), null).Show();
+    }
+
+    private void CanvasSize_Click(object sender, RoutedEventArgs e)
+    {
+        CommitTextEdit();
+        if (CanvasSetupWindow.AskCanvasSize(this, Doc) is not { } add) return;
+        var before = Doc.Size;
+        _cropDraft = null;
+        _pixelSelection = null;
+        Push(DocumentOps.ResizeCanvas(Doc, add.Left, add.Top, add.Right, add.Bottom));
+        Surface.Fit(Doc.ContentRect, maxZoom: Math.Max(1, Surface.Zoom));
+        Status($"Canvas resized from {before.Width:0} × {before.Height:0} to {Doc.Size.Width:0} × {Doc.Size.Height:0} px. Nothing was deleted; undo brings the old canvas back.");
+    }
+
+    private void ImageSize_Click(object sender, RoutedEventArgs e)
+    {
+        CommitTextEdit();
+        if (CanvasSetupWindow.AskImageSize(this, Doc) is not { } size) return;
+        var before = Doc.Size;
+        _cropDraft = null;
+        _pixelSelection = null;
+        Push(DocumentOps.Scale(Doc, size));
+        Surface.Fit(Doc.ContentRect, maxZoom: Math.Max(1, Surface.Zoom));
+        Status($"Picture scaled from {before.Width:0} × {before.Height:0} to {Doc.Size.Width:0} × {Doc.Size.Height:0} px.");
+    }
+
+    // ----- Callouts -----
+
+    private void CalloutKind_Click(object sender, RoutedEventArgs e)
+    {
+        var kind = Enum.Parse<CalloutKind>((string)((ToggleButton)sender).Tag);
+        _calloutKind = kind;
+        if (_tool == Tool.Callout) SetTool(Tool.Callout);
+        else ApplyToSelection(i => i is CalloutItem callout ? Refit(callout with { Kind = kind, CornerRadius = kind == CalloutKind.Speech && callout.Kind != CalloutKind.Speech ? Math.Max(callout.CornerRadius, 18) : callout.CornerRadius }) : i);
+        UpdatePanel();
+        Surface.Focus();
+    }
+
+    /// <summary>Adds a pointer to the selected callout, fanned out around the box so each new tip is easy to grab.</summary>
+    private void AddPointer_Click(object sender, RoutedEventArgs e)
+    {
+        if (_primary is not Guid id || Find(id) is not CalloutItem callout) return;
+        double[] angles = [135, 45, 225, 315, 90, 270, 180, 0];
+        double angle = angles[callout.Targets.Count % angles.Length] * Math.PI / 180;
+        double reach = Math.Max(callout.Bounds.Width, callout.Bounds.Height) / 2 + 80;
+        var tip = callout.Center + new Vector(Math.Cos(angle), Math.Sin(angle)) * reach;
+        Push(DocumentOps.ReplaceItem(Doc, callout with { Targets = callout.Targets.Add(new Point(Math.Round(tip.X), Math.Round(tip.Y))) }));
+        if (_tool != Tool.Select) SetTool(Tool.Select);
+        Status("Pointer added. Drag its round tip onto what it should point at.");
+        Surface.Focus();
+    }
+
+    private void RemovePointer_Click(object sender, RoutedEventArgs e)
+    {
+        if (_primary is not Guid id || Find(id) is not CalloutItem { Targets.Count: > 0 } callout) return;
+        Push(DocumentOps.ReplaceItem(Doc, callout with { Targets = callout.Targets.RemoveAt(callout.Targets.Count - 1) }));
+        Surface.Focus();
+    }
+
+    // ----- Stamps -----
+
+    private void StampSearch_Changed(object sender, TextChangedEventArgs e) => BuildStampGrid();
+
+    /// <summary>Fills the stamp picker with the stamps matching the search box; the chosen stamp carries the accent edge.</summary>
+    private void BuildStampGrid()
+    {
+        if (StampGrid == null) return;
+        StampSearchHint.Visibility = StampSearch.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        StampGrid.Children.Clear();
+        foreach (var stamp in StampLibrary.Search(StampSearch.Text))
+        {
+            bool chosen = stamp.Id == _stampId;
+            var drawing = new DrawingGroup();
+            using (var dc = drawing.Open())
+            {
+                dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, StampLibrary.Grid, StampLibrary.Grid));
+                StampLibrary.Draw(dc, stamp.Id, new Rect(0, 0, StampLibrary.Grid, StampLibrary.Grid));
+            }
+            drawing.Freeze();
+            var tile = new Button
+            {
+                Width = 48, Height = 48, Padding = new Thickness(9), Margin = new Thickness(0, 0, 4, 4), ToolTip = stamp.Name,
+                Background = (Brush)FindResource(chosen ? "AccentSoft" : "Paper"), BorderBrush = (Brush)FindResource(chosen ? "Accent" : "AccentEdge"), BorderThickness = new Thickness(chosen ? 2 : 1),
+                Content = new Image { Source = new DrawingImage(drawing), Stretch = Stretch.Uniform },
+            };
+            AutomationProperties.SetName(tile, stamp.Name + " stamp");
+            string id = stamp.Id;
+            tile.Click += (_, _) =>
+            {
+                _stampId = id;
+                BuildStampGrid();
+                Status($"{StampLibrary.Find(id)?.Name}: click the picture to place it, or drag to size it.");
+                Surface.Focus();
+            };
+            StampGrid.Children.Add(tile);
+        }
+        StampEmpty.Visibility = StampGrid.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // ----- Blur and pixelate -----
+
+    private void ObscureMode_Click(object sender, RoutedEventArgs e)
+    {
+        _obscureMode = Enum.Parse<ObscureMode>((string)((ToggleButton)sender).Tag);
+        SyncObscurePanel();
+        Surface.Focus();
+    }
+
+    private void BlurShape_Click(object sender, RoutedEventArgs e)
+    {
+        _blurBrush = (string)((ToggleButton)sender).Tag == "Brush";
+        SyncObscurePanel();
+        Surface.InvalidateOverlay();
+        Surface.Focus();
+    }
+
+    private void BlurStrength_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        // A slider coerces its value to its minimum while the XAML loads; that is not the user choosing a value.
+        if (_syncingPanel || !IsInitialized) return;
+        _blurStrength = Math.Round(e.NewValue);
+        BlurStrengthBox.Show(_blurStrength);
+    }
+
+    private void BrushSize_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingPanel || !IsInitialized) return;
+        _brushSize = Math.Round(e.NewValue);
+        BrushSizeBox.Show(_brushSize);
+    }
+
+    /// <summary>Shows the blur options as they are: mode, brush or box, strength and brush size.</summary>
+    private void SyncObscurePanel()
+    {
+        bool was = _syncingPanel;
+        _syncingPanel = true;
+        try
+        {
+            foreach (var button in ObscureModes.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == _obscureMode.ToString();
+            foreach (var button in BlurShapes.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == (_blurBrush ? "Brush" : "Box");
+            BlurStrengthSlider.Value = Math.Clamp(_blurStrength, BlurStrengthSlider.Minimum, BlurStrengthSlider.Maximum);
+            BlurStrengthBox.Show(_blurStrength);
+            BrushSizeSlider.Value = Math.Clamp(_brushSize, BrushSizeSlider.Minimum, BrushSizeSlider.Maximum);
+            BrushSizeBox.Show(_brushSize);
+            BrushSizeRow.Visibility = _tool == Tool.Blur && _blurBrush ? Visibility.Visible : Visibility.Collapsed;
+            ObscureSelectionButton.Content = _obscureMode == ObscureMode.Blur ? "Blur selection" : "Pixelate selection";
+        }
+        finally { _syncingPanel = was; }
+    }
+
+    private void ObscureSelection_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pixelSelection is not Rect region) return;
+        if (ApplyObscure(region)) { _pixelSelection = null; UpdateCommandState(); Surface.InvalidateOverlay(); }
+        Surface.Focus();
+    }
+
+    /// <summary>Turns the stroke just painted into a blurred patch shaped like the stroke.</summary>
+    private void ApplyBrushStroke()
+    {
+        var points = _brushPoints.ToList();
+        _brushPoints.Clear();
+        Surface.InvalidateOverlay();
+        if (points.Count == 0) return;
+        double size = Math.Max(2, _brushSize);
+        // A soft edge suits a blur; pixel blocks keep a hard one.
+        double feather = _obscureMode == ObscureMode.Blur ? Math.Min(8, Math.Round(size * 0.12)) : 0;
+        var bounds = new Rect(points[0], new Size(0, 0));
+        foreach (var point in points) bounds.Union(point);
+        bounds.Inflate(size / 2 + feather + 1, size / 2 + feather + 1);
+        if (points.Count == 1) { ApplyObscure(bounds, new EllipseGeometry(points[0], size / 2, size / 2), null, feather); return; }
+        var figure = new PathFigure { StartPoint = points[0], IsFilled = false };
+        figure.Segments.Add(new PolyLineSegment(points.Skip(1), true));
+        var pen = new Pen(Brushes.White, size) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
+        ApplyObscure(bounds, new PathGeometry([figure]), pen, feather);
+    }
+
+    /// <summary>
+    /// Covers a region with a blurred or pixelated copy of what is under it. The patch is a new image
+    /// item on the active layer, made from that layer and everything below, so it can be moved,
+    /// deleted or undone, and the hidden pixels are really gone from an export.
+    /// </summary>
+    private bool ApplyObscure(Rect region, Geometry? mask = null, Pen? maskPen = null, double feather = 0)
+    {
+        CommitTextEdit();
+        int layer = ActiveLayerIndex();
+        try
+        {
+            var patch = PixelOps.ObscurePatch(Doc, _assets, region, _obscureMode, _blurStrength, layer, mask, maskPen, feather);
+            if (patch == null) { Status("Nothing to hide there: that area is outside the picture."); return false; }
+            Push(DocumentOps.AddItem(Doc, patch, layer));
+            _history.BreakCoalescing();
+            Status($"{(_obscureMode == ObscureMode.Blur ? "Blurred" : "Pixelated")} {patch.Bounds.Width:0} × {patch.Bounds.Height:0} px on \"{Doc.Layers[Math.Clamp(layer, 0, Doc.Layers.Count - 1)].Name}\". The patch is its own image: select it to move or delete it.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Status("Could not hide that area: " + ex.Message);
+            return false;
+        }
     }
 
     // ----- Layers panel -----
@@ -1483,7 +2032,7 @@ public partial class EditorWindow : Window
         var row = new Border
         {
             CornerRadius = new CornerRadius(6), Padding = new Thickness(4, 2, 8, 2), Margin = new Thickness(0, 0, 0, 2), Cursor = Cursors.Hand,
-            Background = active ? (Brush)FindResource("TangerineSoft") : Brushes.Transparent,
+            Background = active ? (Brush)FindResource("AccentSoft") : Brushes.Transparent,
         };
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -1634,7 +2183,10 @@ public partial class EditorWindow : Window
         Push(DocumentOps.SetLayer(Doc, DocumentOps.LayerIndexOf(Doc, active), active with { Opacity = opacity }), "panel:layer-opacity");
     }
 
-    private void CopyImage_Click(object sender, RoutedEventArgs e)
+    private void CopyImage_Click(object sender, RoutedEventArgs e) => CopyImage();
+
+    /// <summary>Flattens the document onto the clipboard.</summary>
+    private void CopyImage()
     {
         CommitTextEdit();
         try
@@ -1673,13 +2225,6 @@ public partial class EditorWindow : Window
     }
 
     private void DismissNotice_Click(object sender, RoutedEventArgs e) { FlattenNotice.Visibility = Visibility.Collapsed; Surface.Focus(); }
-
-    private void File_Click(object sender, RoutedEventArgs e)
-    {
-        if (FileButton.ContextMenu is not ContextMenu menu) return;
-        menu.PlacementTarget = FileButton;
-        menu.IsOpen = true;
-    }
 
     private void SaveProject_Click(object sender, RoutedEventArgs e) => SaveProject(saveAs: false);
     private void SaveProjectAs_Click(object sender, RoutedEventArgs e) => SaveProject(saveAs: true);

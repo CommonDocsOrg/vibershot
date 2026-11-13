@@ -105,7 +105,7 @@ public partial class UpdateWindow : Window
 
     private void ShowError(string message)
     {
-        var text = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = new SolidColorBrush(Color.FromRgb(0x5A, 0x45, 0x0A)) };
+        var text = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, FontSize = 12, Foreground = SettingsHelpers.Brush("WarningInk") };
         var box = new Border { Child = text };
         box.SetResourceReference(StyleProperty, "WarningBox");
         ErrorHost.Content = box;

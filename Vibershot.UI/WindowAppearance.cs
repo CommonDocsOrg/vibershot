@@ -9,8 +9,8 @@ internal static class WindowAppearance
         window.SourceInitialized += (_, _) =>
         {
             var handle = new WindowInteropHelper(window).Handle;
-            // Light caption in the Paper color (COLORREF is 0x00BBGGRR) with Ink text, rounded corners.
-            int dark = 0, rounded = 2, caption = 0x00FCFBFB, text = 0x001C1815;
+            // Dark caption in the Paper color (COLORREF is 0x00BBGGRR) with Ink text, rounded corners.
+            int dark = 1, rounded = 2, caption = 0x00362A28, text = 0x00F2F8F8;
             _ = DwmSetWindowAttribute(handle, 20, ref dark, sizeof(int));
             _ = DwmSetWindowAttribute(handle, 33, ref rounded, sizeof(int));
             _ = DwmSetWindowAttribute(handle, 35, ref caption, sizeof(int));

@@ -57,6 +57,17 @@ public sealed class AppConfig
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public PrintScreenAction PrintScreen { get; set; } = PrintScreenAction.CaptureTool;
 
+    /// <summary>The last custom fixed size typed into the region tool, as "1280x720" (screen pixels).</summary>
+    public string CustomRegionSize { get; set; } = "1280x720";
+
+    /// <summary>Parses <see cref="CustomRegionSize"/>; falls back to 1280 x 720 when unreadable.</summary>
+    public (int Width, int Height) CustomRegionPixels()
+    {
+        var parts = (CustomRegionSize ?? "").ToLowerInvariant().Split('x');
+        if (parts.Length == 2 && int.TryParse(parts[0].Trim(), out int w) && int.TryParse(parts[1].Trim(), out int h) && w >= 16 && h >= 16 && w <= 32768 && h <= 32768) return (w, h);
+        return (1280, 720);
+    }
+
     private bool? _setupCompleted;
     /// <summary>True once the first-run page has been answered (or the config predates it).</summary>
     public bool SetupCompleted { get => _setupCompleted ?? false; set => _setupCompleted = value; }

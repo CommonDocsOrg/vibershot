@@ -20,6 +20,12 @@ public sealed class EditorSettings
     /// </summary>
     public string CanvasBackground { get; set; } = White;
 
+    /// <summary>Editor shortcut that shows the picture at one screen pixel per image pixel.</summary>
+    public string ActualSizeShortcut { get; set; } = "Ctrl+0";
+
+    /// <summary>Editor shortcut that fits the picture in the window; empty (the default) leaves it without one.</summary>
+    public string FitShortcut { get; set; } = "";
+
     public const string White = "#FFFFFF";
     public const string Black = "#000000";
     public const string Transparent = "#00000000";
