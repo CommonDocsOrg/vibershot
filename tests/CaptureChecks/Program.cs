@@ -556,6 +556,33 @@ static class EditorChecks {
     var sp=new byte[96*96*4];sflat.CopyPixels(sp,96*4,0);int opaque=0;for(int i=3;i<sp.Length;i+=4)if(sp[i]>0)opaque++;
     Check(opaque>150,"Stamp '"+def.Id+"' draws something");
    }
+   var libThemes=Vibershot.Editing.StyleLibrary.Themes(Colors.Red,3);
+   Check(libThemes.Count>=5&&libThemes[0].Id==Vibershot.Editing.StyleLibrary.DefaultThemeId&&libThemes[0].Primary==Colors.Red&&libThemes[0].StrokeWidth==3&&libThemes.Select(t=>t.Id).Distinct().Count()==libThemes.Count,"Style themes: Settings defaults first, ids unique");
+   foreach(var theme in libThemes)
+   {
+    var defaults=Vibershot.Editing.StyleLibrary.Defaults(theme);
+    Check(defaults.Arrow.Stroke==theme.Primary&&defaults.Arrow.StrokeWidth==theme.StrokeWidth&&defaults.Line.Stroke==theme.Primary&&defaults.Rect.CornerRadius==theme.CornerRadius&&defaults.Ellipse.Stroke==theme.Primary&&defaults.Text.Color==theme.Primary&&defaults.Callout.Stroke==theme.Primary&&defaults.Callout.Background==Colors.White,"Theme '"+theme.Id+"' sets the tool styles");
+    Check(Vibershot.Editing.StyleLibrary.Find(theme,Vibershot.Editing.PresetGroup.Shapes,"tinted")?.Style.Fill==theme.Tint&&Vibershot.Editing.StyleLibrary.Find(theme,Vibershot.Editing.PresetGroup.Shapes,"nope")==null,"Preset lookup in theme '"+theme.Id+"'");
+    foreach(var group in Enum.GetValues<Vibershot.Editing.PresetGroup>())
+    {
+     var presets=Vibershot.Editing.StyleLibrary.Presets(theme,group);
+     Check(presets.Count>=6&&presets.Select(p=>p.Id).Distinct().Count()==presets.Count&&presets.All(p=>p.Group==group),"Presets of "+theme.Id+"/"+group+" have unique ids");
+     foreach(var preset in presets)
+     {
+      string where=theme.Id+"/"+group+"/"+preset.Id;
+      Check(new Rect(Vibershot.Editing.StyleLibrary.SampleSize).Contains(preset.Sample.Bounds)&&preset.Sample.GetType()==preset.Style.GetType(),"Sample of "+where+" fits its tile");
+      var pflat=Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=Vibershot.Editing.StyleLibrary.SampleSize,Layers=[new Vibershot.Editing.Layer{Items=[preset.Sample]}]},assets);
+      var pp=new byte[96*64*4];pflat.CopyPixels(pp,96*4,0);int drawn=0;for(int i=3;i<pp.Length;i+=4)if(pp[i]>0)drawn++;
+      Check(drawn>60,"Sample of "+where+" draws something");
+      var placed=Vibershot.Editing.StyleLibrary.Place(preset.Style,preset.Sample,new Point(400.4,300.2),2.5);
+      Check(placed.Id!=preset.Style.Id&&placed.Id!=preset.Sample.Id&&placed.GetType()==preset.Style.GetType()&&placed.Stroke==preset.Style.Stroke&&placed.StrokeWidth==preset.Style.StrokeWidth&&placed.Fill==preset.Style.Fill,"Placing "+where+" keeps its style");
+      if(placed is Vibershot.Editing.CalloutItem pc)Check(pc.Text==""&&pc.Targets.Count==1&&pc.Bounds.Width>=200&&pc.Bounds.Height>=56&&!pc.Bounds.Contains(pc.Targets[0])&&pc.Kind==((Vibershot.Editing.CalloutItem)preset.Style).Kind,"Placed callout "+where+" points away from its box");
+      else Check(Math.Abs(placed.Center.X-400)<=1&&Math.Abs(placed.Center.Y-300)<=1&&Math.Abs(placed.Bounds.Width-Math.Round(preset.Sample.Bounds.Width*2.5))<0.01,"Placed "+where+" is centred and scaled: "+placed.Bounds);
+      if(placed is Vibershot.Editing.LineItem pl&&preset.Sample is Vibershot.Editing.LineItem sl)Check(pl.Flipped==sl.Flipped&&pl.Reversed==sl.Reversed,"Placed line "+where+" keeps its direction");
+     }
+    }
+   }
+   var themedConfig=AppConfig.FromJson("{\"Editor\":{\"Theme\":\"marker\",\"SidebarCollapsed\":true}}")!;Check(themedConfig.Editor.Theme=="marker"&&themedConfig.Editor.SidebarCollapsed&&new AppConfig().Editor.Theme==Vibershot.Editing.StyleLibrary.DefaultThemeId&&!new AppConfig().Editor.SidebarCollapsed,"Editor theme and sidebar settings round trip");
    var sharp=Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=new Size(100,70),Layers=[new Vibershot.Editing.Layer{Items=[roundArrow with{HeadRoundness=0}]}]},assets);
    var blunt=Vibershot.Editing.DocumentRenderer.Flatten(new Vibershot.Editing.ImageDocument{Size=new Size(100,70),Layers=[new Vibershot.Editing.Layer{Items=[roundArrow with{HeadRoundness=1}]}]},assets);
    int Ink(BitmapSource b){var px=new byte[b.PixelWidth*b.PixelHeight*4];b.CopyPixels(px,b.PixelWidth*4,0);int n=0;for(int i=3;i<px.Length;i+=4)if(px[i]>127)n++;return n;}

@@ -77,11 +77,6 @@ public partial class EditorWindow : Window
     private Guid? _editingText;
     private string? _textEditKey;
 
-    // Style for the next new item; follows the last change made in the panel.
-    private Color? _stroke;
-    private Color? _fill;
-    private double _strokeWidth;
-
     private ImageDocument Doc => _history.Current;
     private string DocumentName => _projectPath != null ? Path.GetFileNameWithoutExtension(_projectPath) : _sourceImagePath != null ? Path.GetFileName(_sourceImagePath) : "Untitled";
     /// <summary>File-name stem offered by the export and save dialogs.</summary>
@@ -102,8 +97,6 @@ public partial class EditorWindow : Window
         WindowAppearance.Apply(this);
         _config = config;
         _projectPath = projectPath;
-        _stroke = TryParseColor(config.Editor.DefaultStrokeColor) ?? Color.FromRgb(0xF0, 0x61, 0x2A);
-        _strokeWidth = Math.Clamp(config.Editor.DefaultStrokeWidth, 0, 1000);
         _history = new History<ImageDocument>(document);
         _history.Changed += OnHistoryChanged;
         _dragBase = document;
@@ -111,8 +104,8 @@ public partial class EditorWindow : Window
         Surface.OverlayPainter = PaintOverlay;
         Surface.ViewChanged += () => { ZoomLabel.Text = $"{Surface.Zoom / PixelZoom * 100:0}%"; PositionTextEditor(); };
         FontCombo.ItemsSource = Fonts.SystemFontFamilies.Select(f => f.Source).OrderBy(s => s, StringComparer.CurrentCultureIgnoreCase).ToList();
-        StrokeStrip.ValueChanged += c => { _stroke = c; ApplyToSelection(i => i with { Stroke = c, StrokeWidth = c != null && i.StrokeWidth <= 0 ? Math.Max(1, _strokeWidth) : i.StrokeWidth }); };
-        FillStrip.ValueChanged += c => { if (SelectedItems().Any(i => i is not StampItem)) _fill = c; ApplyToSelection(i => i is RectItem or EllipseItem or StampItem ? i with { Fill = c } : i); };
+        StrokeStrip.ValueChanged += c => ApplyToSelection(i => i with { Stroke = c, StrokeWidth = c != null && i.StrokeWidth <= 0 ? Math.Max(1, _theme.StrokeWidth) : i.StrokeWidth });
+        FillStrip.ValueChanged += c => ApplyToSelection(i => i is RectItem or EllipseItem or StampItem ? i with { Fill = c } : i);
         TextColorStrip.ValueChanged += c => { if (c is { } color) ApplyText(t => t with { Color = color }); };
         TextBackgroundStrip.ValueChanged += c => ApplyText(t => t with { Background = c });
         CanvasStrip.ValueChanged += c =>
@@ -138,6 +131,7 @@ public partial class EditorWindow : Window
         FitMenu.InputGestureText = fitKeys;
         ActualSizeButton.ToolTip = actualKeys.Length > 0 ? $"Show pixels 1:1 ({actualKeys})" : "Show pixels 1:1";
         FitButton.ToolTip = fitKeys.Length > 0 ? $"Fit the picture in the window ({fitKeys})" : "Fit the picture in the window";
+        InitLibrary();
         BuildStampGrid();
         SyncObscurePanel();
         int initialLayer = DocumentOps.ActiveLayerIndex(document);
@@ -314,18 +308,15 @@ public partial class EditorWindow : Window
         if (tool != Tool.Marquee) _pixelSelection = null;
         if (tool != Tool.Blur) { _brushPoints.Clear(); _blurBox = null; }
         _tool = tool;
-        ToggleButton? activeRow = null;
-        foreach (var button in ToolRail.Children.OfType<ToggleButton>())
+        foreach (var button in ToolRail.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == tool.ToString();
+        ToolTitle.Text = tool.ToString();
+        ToolKeyLabel.Text = tool switch
         {
-            button.IsChecked = (string)button.Tag == tool.ToString();
-            if (button.IsChecked == true) activeRow = button;
-        }
-        // The accordion sits directly under the active tool's row.
-        if (activeRow != null)
-        {
-            ToolRail.Children.Remove(ToolPanel);
-            ToolRail.Children.Insert(ToolRail.Children.IndexOf(activeRow) + 1, ToolPanel);
-        }
+            Tool.Select => "V", Tool.Marquee => "M", Tool.Crop => "C", Tool.Arrow => "A", Tool.Shape => "S", Tool.Text => "T",
+            Tool.Callout => "O", Tool.Stamp => "K", Tool.Blur => "B", _ => "I",
+        };
+        // The library follows the tool, so its presets are the ones the tool draws.
+        ShowLibraryTab(tool switch { Tool.Arrow => PresetGroup.Arrows, Tool.Shape => PresetGroup.Shapes, Tool.Callout => PresetGroup.Callouts, Tool.Stamp => PresetGroup.Stamps, _ => _libraryTab });
         ShapeKindRow.Visibility = tool == Tool.Shape ? Visibility.Visible : Visibility.Collapsed;
         StampRow.Visibility = tool == Tool.Stamp ? Visibility.Visible : Visibility.Collapsed;
         ObscureRow.Visibility = tool is Tool.Blur or Tool.Marquee ? Visibility.Visible : Visibility.Collapsed;
@@ -1062,20 +1053,16 @@ public partial class EditorWindow : Window
     {
         start = new Point(Math.Round(start.X), Math.Round(start.Y));
         end = new Point(Math.Round(end.X), Math.Round(end.Y));
-        var stroke = _stroke ?? Color.FromRgb(0xF0, 0x61, 0x2A);
-        double width = Math.Max(1, _strokeWidth);
         switch (_tool)
         {
             case Tool.Arrow:
-                return new ArrowItem { Id = _createId, Stroke = stroke, StrokeWidth = width }.WithPoints(start, shift ? SnapAngle(start, end) : end);
+                return (_arrowStyle with { Id = _createId }).WithPoints(start, shift ? SnapAngle(start, end) : end);
             case Tool.Shape when _shape == ShapeKind.Line:
-                return new LineItem { Id = _createId, Stroke = stroke, StrokeWidth = width }.WithPoints(start, shift ? SnapAngle(start, end) : end);
+                return (_lineStyle with { Id = _createId }).WithPoints(start, shift ? SnapAngle(start, end) : end);
             case Tool.Shape:
             {
                 var bounds = new Rect(start, shift ? SquareEnd(start, end) : end);
-                return _shape == ShapeKind.Rect
-                    ? new RectItem { Id = _createId, Bounds = bounds, Stroke = stroke, StrokeWidth = width, Fill = _fill }
-                    : new EllipseItem { Id = _createId, Bounds = bounds, Stroke = stroke, StrokeWidth = width, Fill = _fill };
+                return _shape == ShapeKind.Rect ? _rectStyle with { Id = _createId, Bounds = bounds } : _ellipseStyle with { Id = _createId, Bounds = bounds };
             }
             case Tool.Callout:
                 // Dragged from the thing being pointed at to where the callout should sit.
@@ -1095,28 +1082,17 @@ public partial class EditorWindow : Window
         }
     }
 
-    private TextItem NewText(Rect bounds) => new()
-    {
-        Id = _createId, Bounds = bounds, Text = "",
-        FontFamily = string.IsNullOrWhiteSpace(_config.Editor.DefaultFontFamily) ? "Segoe UI" : _config.Editor.DefaultFontFamily,
-        FontSize = Math.Clamp(_config.Editor.DefaultFontSize, 6, 2000),
-        Color = _stroke ?? Color.FromRgb(0x15, 0x18, 0x1C),
-    };
+    private TextItem NewText(Rect bounds) => _textStyle with { Id = _createId, Bounds = bounds, Text = "" };
 
     /// <summary>A callout in the current style, centred on <paramref name="centre"/> and pointing at <paramref name="target"/> when one is given.</summary>
     private CalloutItem NewCallout(Point centre, Point? target)
     {
         bool round = _calloutKind is CalloutKind.Oval or CalloutKind.Thought;
-        var item = new CalloutItem
+        var item = _calloutStyle with
         {
-            Id = _createId, Kind = _calloutKind, Text = "", Alignment = TextAlign.Center, Padding = 10,
-            FontFamily = string.IsNullOrWhiteSpace(_config.Editor.DefaultFontFamily) ? "Segoe UI" : _config.Editor.DefaultFontFamily,
-            FontSize = Math.Clamp(_config.Editor.DefaultFontSize, 6, 2000),
-            Color = Color.FromRgb(0x15, 0x18, 0x1C), Background = Colors.White,
-            Stroke = _stroke ?? Color.FromRgb(0xF0, 0x61, 0x2A), StrokeWidth = Math.Max(1, _strokeWidth),
-            CornerRadius = _calloutKind == CalloutKind.Speech ? 18 : 8,
-            HeadSize = Math.Max(10, _strokeWidth * 3),
-            Bounds = new Rect(0, 0, round ? 240 : 200, 10),
+            Id = _createId, Kind = _calloutKind, Text = "",
+            CornerRadius = _calloutKind == CalloutKind.Speech ? Math.Max(_calloutStyle.CornerRadius, 18) : _calloutStyle.CornerRadius,
+            Bounds = new Rect(0, 0, round ? 240 : 200, 10), Targets = [],
         };
         double width = item.Bounds.Width, height = Math.Max(DocumentRenderer.MeasureText(item).Height, round ? 120 : 56);
         return item with
@@ -1156,12 +1132,14 @@ public partial class EditorWindow : Window
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        // Files can land anywhere in the window; a library preset has to be dropped on the picture.
+        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) || (e.Data.GetDataPresent(PresetDragFormat) && IsOverSurface(e)) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
+        if (e.Data.GetDataPresent(PresetDragFormat)) { DropPreset(e); return; }
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] files) return;
         var point = Surface.ToDoc(e.GetPosition(Surface));
         var key = "drop:" + Guid.NewGuid().ToString("N");
@@ -1533,10 +1511,30 @@ public partial class EditorWindow : Window
 
     private void ApplyToSelection(Func<Item, Item> update, string? key = null)
     {
-        if (_syncingPanel) return;
+        // Sliders coerce their value to their minimum while the XAML loads; that is not the user choosing one.
+        if (_syncingPanel || !IsInitialized) return;
         var ids = SelectedUnlocked().ToList();
+        if (ToolStyle is Item style)
+        {
+            // A drawing tool's panel edits the style of its next item, and the item just drawn with it.
+            SetToolStyle(update(style));
+            ids = ids.Where(id => Find(id)?.GetType() == style.GetType()).ToList();
+            if (ids.Count == 0) { UpdatePanel(); return; }
+        }
+        else if (PrimaryItem() is Item primary && StyleLike(primary) is Item like)
+        {
+            // A change to a selected item carries on to the next item of its kind.
+            SetToolStyle(update(like));
+        }
         if (ids.Count == 0) return;
         Push(DocumentOps.UpdateItems(Doc, ids, update), key);
+    }
+
+    /// <summary>The item the panel describes when several are selected: the one clicked last.</summary>
+    private Item? PrimaryItem()
+    {
+        var items = SelectedItems();
+        return (_primary is Guid id ? items.FirstOrDefault(i => i.Id == id) : null) ?? items.LastOrDefault();
     }
 
     private void ApplyText(Func<TextItem, TextItem> update, string? key = null) =>
@@ -1555,21 +1553,28 @@ public partial class EditorWindow : Window
         try
         {
             var items = SelectedItems();
-            var primary = (_primary is Guid id ? items.FirstOrDefault(i => i.Id == id) : null) ?? items.LastOrDefault();
-            // With nothing selected the Select tool explains itself; the other tools' hints already say what to do.
-            NoSelectionPanel.Visibility = primary == null && _tool == Tool.Select ? Visibility.Visible : Visibility.Collapsed;
+            var selected = PrimaryItem();
+            // A drawing tool shows the style of its next item; every other tool shows the selection.
+            var toolStyle = ToolStyle;
+            var primary = toolStyle ?? selected;
+            // With nothing selected the Select tool shows the picture's own settings; the other tools' hints already say what to do.
+            NoSelectionPanel.Visibility = selected == null && _tool == Tool.Select ? Visibility.Visible : Visibility.Collapsed;
             ItemPanel.Visibility = primary == null ? Visibility.Collapsed : Visibility.Visible;
             // The callout style row belongs to the tool, and to a selected callout it can restyle.
-            var selectedCallout = primary as CalloutItem;
+            var selectedCallout = toolStyle == null ? selected as CalloutItem : null;
             CalloutKindRow.Visibility = _tool == Tool.Callout || (selectedCallout != null && _tool == Tool.Select) ? Visibility.Visible : Visibility.Collapsed;
+            StyleGroup.Visibility = ShapeKindRow.Visibility == Visibility.Visible || CalloutKindRow.Visibility == Visibility.Visible ? Visibility.Visible : Visibility.Collapsed;
             var shownKind = _tool == Tool.Callout ? _calloutKind : selectedCallout?.Kind ?? _calloutKind;
             foreach (var button in CalloutKinds.Children.OfType<ToggleButton>()) button.IsChecked = (string)button.Tag == shownKind.ToString();
             if (primary == null) return;
-            ItemKindLabel.Text = (primary switch
+            string kindName = primary switch
             {
                 ImageItem => "Image", RectItem => "Rectangle", EllipseItem => "Ellipse", ArrowItem => "Arrow", LineItem => "Line", CalloutItem => "Callout", TextItem => "Text",
                 StampItem stamp => StampLibrary.Find(stamp.StampId)?.Name ?? "Stamp", _ => "Item",
-            } + (items.Count > 1 ? $" + {items.Count - 1} more" : "")).ToUpperInvariant();
+            };
+            ItemKindLabel.Text = (toolStyle != null ? "New " + kindName : kindName + (items.Count > 1 ? $" + {items.Count - 1} more" : "")).ToUpperInvariant();
+            TextColorRow.Visibility = primary is TextItem ? Visibility.Visible : Visibility.Collapsed;
+            TextBackgroundLabel.Text = primary is CalloutItem ? "Fill" : "Background";
             StrokeStrip.Value = primary.Stroke;
             // Sliders show what fits their range; the boxes beside them always show the real value.
             StrokeWidthRow.Visibility = primary is StampItem ? Visibility.Collapsed : Visibility.Visible;
@@ -1590,6 +1595,7 @@ public partial class EditorWindow : Window
                 RoundBox.Show(Math.Round(roundness * 100));
             }
             CalloutArrowRow.Visibility = selectedCallout != null ? Visibility.Visible : Visibility.Collapsed;
+            LineGroup.Visibility = new UIElement[] { StrokeWidthRow, CornerRow, HeadRow, CalloutArrowRow }.Any(row => row.Visibility == Visibility.Visible) ? Visibility.Visible : Visibility.Collapsed;
             if (selectedCallout != null)
             {
                 string noun = selectedCallout.Kind == CalloutKind.Label ? "arrow" : "tail";
@@ -1631,8 +1637,7 @@ public partial class EditorWindow : Window
     private void SetStrokeWidth(double width)
     {
         StrokeWidthBox.Show(width);
-        _strokeWidth = width;
-        ApplyToSelection(i => i with { StrokeWidth = width, Stroke = i.Stroke ?? (width > 0 ? _stroke : null) }, "panel:width");
+        ApplyToSelection(i => i with { StrokeWidth = width, Stroke = i.Stroke ?? (width > 0 ? _theme.Primary : null) }, "panel:width");
     }
 
     private void SetCorner(double radius)
@@ -1667,7 +1672,11 @@ public partial class EditorWindow : Window
         ApplyToSelection(i => i with { Opacity = opacity }, "panel:opacity");
     }
 
-    private void Shadow_Click(object sender, RoutedEventArgs e) => ApplyToSelection(i => i with { Shadow = ShadowCheck.IsChecked == true });
+    private void Shadow_Click(object sender, RoutedEventArgs e)
+    {
+        bool shadow = ShadowCheck.IsChecked == true;
+        ApplyToSelection(i => i with { Shadow = shadow });
+    }
 
     private void Font_Changed(object sender, SelectionChangedEventArgs e)
     {
@@ -1693,8 +1702,12 @@ public partial class EditorWindow : Window
         ApplyText(t => t.FontSize == size ? t : t with { FontSize = size });
     }
 
-    private void TextStyle_Click(object sender, RoutedEventArgs e) =>
-        ApplyText(t => t with { Bold = BoldToggle.IsChecked == true, Italic = ItalicToggle.IsChecked == true, Underline = UnderlineToggle.IsChecked == true });
+    private void TextStyle_Click(object sender, RoutedEventArgs e)
+    {
+        // Read the toggles first: applying the change refreshes the panel.
+        bool bold = BoldToggle.IsChecked == true, italic = ItalicToggle.IsChecked == true, underline = UnderlineToggle.IsChecked == true;
+        ApplyText(t => t with { Bold = bold, Italic = italic, Underline = underline });
+    }
 
     private void Align_Click(object sender, RoutedEventArgs e)
     {

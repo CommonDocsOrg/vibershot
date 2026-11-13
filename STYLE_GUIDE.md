@@ -29,7 +29,7 @@ How the Vibershot desktop UI should look and feel. The capture window (`Vibersho
 | `AccentFillHover` | `#8D66E3` | Primary button hover |
 | `AccentSoft` | `#3F3A5E` | Tint behind row icons, active rows and tiles |
 | `AccentInk` | `#FFFFFF` | Text and glyphs on an `AccentFill` fill |
-| `AccentEdge` | `#5C4F88` | Border of an accent-tinted panel (the editor's tool accordion), tile hover edge |
+| `AccentEdge` | `#5C4F88` | Border of an accent-tinted panel or tile (the editor's active tool tile), tile hover edge |
 | `AccentWash` | `#2E2D42` | Fill of an accent-tinted panel |
 | `WarningInk` | `#F1FA8C` | Text inside a `WarningBox` (Dracula yellow) |
 | `Ok` | `#50FA7B` | Status dot after a save or copy (Dracula green) |
