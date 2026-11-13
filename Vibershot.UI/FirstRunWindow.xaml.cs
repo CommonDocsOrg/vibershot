@@ -19,6 +19,14 @@ public partial class FirstRunWindow : Window
         WindowAppearance.Apply(this);
         _config = config;
         LoadFromConfig();
+        if (config.InstalledByInstaller)
+        {
+            // The installer already asked where the library goes and whether to start with Windows.
+            LibraryCard.Visibility = Visibility.Collapsed;
+            StartupPanel.Visibility = Visibility.Collapsed;
+            SubtitleText.Text = "One quick choice. Everything can be changed later in Settings.";
+            Height = 520;
+        }
     }
 
     private void LoadFromConfig()
@@ -82,18 +90,21 @@ public partial class FirstRunWindow : Window
 
     private void Start_Click(object sender, RoutedEventArgs e)
     {
-        var root = ElsewhereRadio.IsChecked == true ? CustomPathBox.Text.Trim() : GallerySettings.DefaultLibraryRoot();
-        if (!SettingsHelpers.IsAbsolutePath(root))
+        if (!_config.InstalledByInstaller)
         {
-            MessageBox.Show(this, "Choose an absolute folder for the library, or pick Pictures.", "Welcome to Vibershot");
-            return;
+            var root = ElsewhereRadio.IsChecked == true ? CustomPathBox.Text.Trim() : GallerySettings.DefaultLibraryRoot();
+            if (!SettingsHelpers.IsAbsolutePath(root))
+            {
+                MessageBox.Show(this, "Choose an absolute folder for the library, or pick Pictures.", "Welcome to Vibershot");
+                return;
+            }
+            _config.Gallery.LibraryRoot = root;
         }
-        _config.Gallery.LibraryRoot = root;
         if (PsNoRadio.IsChecked == true) _config.PrintScreen = PrintScreenAction.Off;
         else if (_config.PrintScreen == PrintScreenAction.Off) _config.PrintScreen = PrintScreenAction.CaptureTool;
 
         Finish();
-        if (StartupCheckbox.IsChecked == true)
+        if (!_config.InstalledByInstaller && StartupCheckbox.IsChecked == true)
         {
             try { StartupRegistration.SetEnabled(true); } catch (Exception) { }
         }

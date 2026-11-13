@@ -15,11 +15,16 @@ public partial class App : Application
     private HotkeyManager? _hotkeys;
     private HotkeyService? _printScreen;
     private Forms.NotifyIcon? _tray;
-    private bool _capturing, _setupShown;
+    private SingleInstance? _instance;
+    private bool _capturing, _setupShown, _updateDialogOpen;
     public AppConfig Config => _config;
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // A second copy hands its arguments to the running one and quits.
+        _instance = SingleInstance.TryAcquire(e.Args);
+        if (_instance is null) { Shutdown(); return; }
+        _instance.Listen(HandleForwardedArgs);
         _main = new MainWindow(_config); MainWindow = _main;
         // Launched at sign-in: stay in the tray until the user asks for the launcher.
         bool startInTray = e.Args.Contains(StartupRegistration.TrayArgument, StringComparer.OrdinalIgnoreCase);
@@ -36,6 +41,7 @@ public partial class App : Application
         menu.Items.Add("Capture region", null, (_, _) => CaptureNow());
         menu.Items.Add("Full desktop", null, (_, _) => CaptureNow(false));
         menu.Items.Add("Gallery", null, (_, _) => ShowGallery());
+        menu.Items.Add("Check for updates…", null, (_, _) => CheckForUpdates(manual: true));
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
         _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "Vibershot • running in tray", ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowLauncher();
@@ -44,7 +50,58 @@ public partial class App : Application
         // "--edit <file>" opens an image or .vibeshot project straight in the editor.
         int edit = Array.FindIndex(e.Args, a => a.Equals("--edit", StringComparison.OrdinalIgnoreCase));
         if (edit >= 0 && edit + 1 < e.Args.Length) OpenEditor(e.Args[edit + 1]);
+        // The installer relaunches with "--updated" after a silent upgrade.
+        if (e.Args.Contains("--updated", StringComparer.OrdinalIgnoreCase)) _main.ShowStatus($"Updated to Vibershot {AppVersion.Current}.");
         RunLibraryCleanup();
+        ScheduleUpdateCheck();
+    }
+    /// <summary>Arguments from a second launch: open the file it was given, otherwise bring the launcher up.</summary>
+    private void HandleForwardedArgs(string[] args)
+    {
+        int edit = Array.FindIndex(args, a => a.Equals("--edit", StringComparison.OrdinalIgnoreCase));
+        if (edit >= 0 && edit + 1 < args.Length) { OpenEditor(args[edit + 1]); return; }
+        if (!args.Contains(StartupRegistration.TrayArgument, StringComparer.OrdinalIgnoreCase)) ShowLauncher();
+    }
+    /// <summary>Runs the daily update check a little after startup so it never delays the first capture.</summary>
+    private async void ScheduleUpdateCheck()
+    {
+        await Task.Run(UpdateService.Cleanup);
+        try { await Task.Delay(TimeSpan.FromSeconds(20)); } catch (Exception) { return; }
+        if (_config.Updates.IsCheckDue(DateTime.UtcNow)) await CheckForUpdatesAsync(null, manual: false);
+    }
+    public async void CheckForUpdates(bool manual) => await CheckForUpdatesAsync(manual && _main.IsVisible ? _main : null, manual);
+    /// <summary>
+    /// Reads the release feed and offers a newer version in the update dialog. A manual check
+    /// also reports "up to date" and feed errors; the automatic one stays quiet about both and
+    /// respects a skipped version.
+    /// </summary>
+    public async Task CheckForUpdatesAsync(Window? owner, bool manual)
+    {
+        if (_updateDialogOpen) return;
+        var result = await UpdateService.CheckAsync(_config.Updates);
+        try { _config.Save(); } catch (Exception) { }
+        if (result.Error is not null)
+        {
+            if (manual) MessageBox.Show(owner ?? _main, result.Error, "Vibershot update");
+            else _main.ShowStatus("Update check skipped: " + result.Error);
+            return;
+        }
+        if (!result.Available || result.Manifest is null)
+        {
+            if (manual) MessageBox.Show(owner ?? _main, $"Vibershot {result.CurrentVersion} is the latest version.", "Vibershot update");
+            return;
+        }
+        if (!manual && string.Equals(_config.Updates.SkippedVersion, AppVersion.Normalize(result.Manifest.Version), StringComparison.OrdinalIgnoreCase)) return;
+        _updateDialogOpen = true;
+        try
+        {
+            var dialog = new UpdateWindow(_config, result.Manifest);
+            if (owner is { IsVisible: true }) dialog.Owner = owner;
+            else if (_main.IsVisible) dialog.Owner = _main;
+            dialog.ShowDialog();
+        }
+        catch (Exception ex) { _main.ShowStatus("Update failed: " + ex.Message); }
+        finally { _updateDialogOpen = false; }
     }
     private void ShowLauncher()
     {
@@ -189,6 +246,7 @@ public partial class App : Application
         _printScreen?.Dispose();
         _hotkeys?.Dispose();
         var menu = _tray?.ContextMenuStrip; _tray?.Dispose(); menu?.Dispose();
+        _instance?.Dispose();
         base.OnExit(e);
     }
     /// <param name="region">Open the region tool; otherwise snap the full desktop at once.</param>

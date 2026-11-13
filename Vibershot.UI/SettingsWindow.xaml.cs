@@ -686,6 +686,13 @@ public partial class SettingsWindow : Window
         AskActionsCheckbox.IsChecked = _config.ShowCaptureActions;
         ConfigPathText.Text = SettingsHelpers.ConfigPath;
         ConfigPathText.ToolTip = SettingsHelpers.ConfigPath;
+        UpdateSwitch.IsChecked = _config.Updates.CheckAutomatically;
+        VersionText.Text = "Vibershot " + AppVersion.Current;
+    }
+
+    private async void CheckUpdates_Click(object sender, RoutedEventArgs e)
+    {
+        if (Application.Current is App app) await app.CheckForUpdatesAsync(this, manual: true);
     }
 
     private void OpenConfigFolder_Click(object sender, RoutedEventArgs e) =>
@@ -774,6 +781,7 @@ public partial class SettingsWindow : Window
         _config.Video.Quality = VideoSettings.ClampQuality((int)VideoQualitySlider.Value);
         _config.Video.PreferHardwareEncoder = HardwareEncoderCheckbox.IsChecked != false;
         _config.Video.ShowCursor = CursorCheckbox.IsChecked != false;
+        _config.Updates.CheckAutomatically = UpdateSwitch.IsChecked == true;
 
         if (rootChanged && Directory.Exists(oldRoot))
         {

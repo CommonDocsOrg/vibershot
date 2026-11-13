@@ -12,12 +12,12 @@
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
   <StackPanel Margin="0,0,0,14">
    <TextBlock Text="Welcome to Vibershot" FontSize="22" FontWeight="Bold"/>
-   <TextBlock Text="Two quick choices. Everything can be changed later in Settings." Foreground="{StaticResource Ink2}" Margin="0,4,0,0"/>
+   <TextBlock x:Name="SubtitleText" Text="Two quick choices. Everything can be changed later in Settings." Foreground="{StaticResource Ink2}" Margin="0,4,0,0"/>
   </StackPanel>
 
   <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
    <StackPanel>
-    <Border Style="{StaticResource Card}">
+    <Border x:Name="LibraryCard" Style="{StaticResource Card}">
      <StackPanel>
       <TextBlock Style="{StaticResource CardTitle}" Text="Where should your library live?"/>
       <TextBlock Style="{StaticResource CardHint}" Text="Screenshots, recordings and editor projects are kept here, and the gallery shows this folder."/>
@@ -59,7 +59,7 @@
 
   <Grid Grid.Row="2" Margin="0,18,0,0">
    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-   <StackPanel VerticalAlignment="Center">
+   <StackPanel x:Name="StartupPanel" VerticalAlignment="Center">
     <StackPanel Orientation="Horizontal">
      <TextBlock Text="&#xE73E;" FontFamily="Segoe Fluent Icons" FontSize="13" Foreground="{StaticResource Ok}" VerticalAlignment="Center" Margin="0,0,8,0"/>
      <TextBlock Text="Starts with Windows and lives in the tray" FontWeight="SemiBold" VerticalAlignment="Center"/>

@@ -12,8 +12,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _config = config;
-        var version = typeof(MainWindow).Assembly.GetName().Version;
-        VersionLabel.Text = version is null ? "" : $"v{version.Major}.{version.Minor}";
+        VersionLabel.Text = "v" + AppVersion.Current;
         RefreshShortcutChips();
     }
     /// <summary>

@@ -61,6 +61,16 @@ public sealed class AppConfig
     /// <summary>True once the first-run page has been answered (or the config predates it).</summary>
     public bool SetupCompleted { get => _setupCompleted ?? false; set => _setupCompleted = value; }
 
+    /// <summary>
+    /// True when the Windows installer chose the library and startup options, so the welcome page
+    /// skips those cards. Set by <see cref="InstallChoices"/> on the first launch after installing.
+    /// </summary>
+    public bool InstalledByInstaller { get; set; }
+
+    // Automatic update check; missing in older configs, so the defaults (daily check) apply.
+    private UpdateSettings _updates = new();
+    public UpdateSettings Updates { get => _updates; set => _updates = value ?? new UpdateSettings(); }
+
     private AfterCaptureSettings _afterCapture = new();
     private bool _afterCaptureRead;
     public AfterCaptureSettings AfterCapture { get => _afterCapture; set { _afterCapture = value ?? new AfterCaptureSettings(); _afterCaptureRead = true; } }
@@ -113,7 +123,22 @@ public sealed class AppConfig
             }
         }
 
-        return new AppConfig();
+        return FreshInstall(InstallChoices.FilePath);
+    }
+
+    /// <summary>
+    /// A brand-new config. When the installer left its choices in <paramref name="seedPath"/>,
+    /// they are applied, the config is saved so they stick, and the seed is removed.
+    /// </summary>
+    public static AppConfig FreshInstall(string seedPath)
+    {
+        var cfg = new AppConfig();
+        var choices = InstallChoices.TryRead(seedPath);
+        if (choices is null) return cfg;
+        choices.ApplyTo(cfg);
+        try { cfg.Save(); } catch { }
+        InstallChoices.Delete(seedPath);
+        return cfg;
     }
 
     /// <summary>Reads a config that already exists on disk, folding legacy flat fields into the sections.</summary>

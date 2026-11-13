@@ -28,6 +28,7 @@ class Program {
   if(config.WebpQuality!=80)throw new Exception("WebP quality default");
   var legacyWebp=AppConfig.FromJson("{\"Format\":2,\"WebpQuality\":55}")!;if(legacyWebp.Format!=ImageFormat.Webp||legacyWebp.AfterCapture.Format!=ImageFormat.Webp||legacyWebp.WebpQuality!=55)throw new Exception("Legacy WebP enum value changed");
   SettingsChecks.Run();
+  UpdateChecks.Run();
   foreach(var (fmt,lossless) in new[]{(ImageFormat.Webp,false),(ImageFormat.WebpLossless,true)}){
    var ms=new MemoryStream();ImageEncoding.Encode(first,fmt,60,ms);byte[] webp=ms.ToArray();
    if(webp.Length<12||Encoding.ASCII.GetString(webp,0,4)!="RIFF"||Encoding.ASCII.GetString(webp,8,4)!="WEBP")throw new Exception("Invalid WebP header for "+fmt);
@@ -289,6 +290,67 @@ static class SettingsChecks {
   var p1=FileSaveService.NextPath(dir,ImageFormat.Vibeshot,when);Check(p1.EndsWith("screenshot_20261112_093015_0000000.vibeshot")&&Directory.Exists(dir),"NextPath name");File.WriteAllText(p1,"x");
   Check(FileSaveService.NextPath(dir,ImageFormat.Vibeshot,when).EndsWith(" (2).vibeshot"),"NextPath avoids collisions");Directory.Delete(dir,true);
   Console.WriteLine("PASS: settings sections, legacy migration, destinations, presets, hotkey gestures.");
+ }
+}
+static class UpdateChecks {
+ static void Check(bool ok,string what){if(!ok)throw new Exception("FAIL: "+what);}
+ public static void Run(){
+  // Version order: numeric parts, missing parts are zero, a pre-release tag sorts below the release.
+  Check(AppVersion.Compare("0.1.0","0.1.0")==0&&AppVersion.Compare("0.1","0.1.0")==0&&AppVersion.Compare("v0.2.0","0.1.9+abc")>0&&AppVersion.Compare("0.10.0","0.9.0")>0,"Version numeric order");
+  Check(AppVersion.Compare("1.0.0-beta.1","1.0.0")<0&&AppVersion.Compare("1.0.0-beta.2","1.0.0-beta.10")<0&&AppVersion.Compare("1.0.0-rc","1.0.0-beta")>0&&AppVersion.Compare("1.0.0-beta","1.0.0-beta")==0,"Version pre-release order");
+  Check(AppVersion.IsNewer("0.2.0","0.1.0")&&!AppVersion.IsNewer("0.1.0","0.1.0")&&!AppVersion.IsNewer("0.1.0","0.1.1"),"IsNewer");
+  Check(AppVersion.IsValid("1.2.3")&&AppVersion.IsValid("v1.2.3-beta.1+sha")&&!AppVersion.IsValid("")&&!AppVersion.IsValid("abc")&&!AppVersion.IsValid("1.x")&&AppVersion.Normalize(" v1.2.3+abc ")=="1.2.3","Version validity and normalising");
+  Check(AppVersion.IsValid(AppVersion.Current)&&AppVersion.Current==AppVersion.Normalize(AppVersion.Current),"Running version is well formed: "+AppVersion.Current);
+
+  // The feed written by tools\build-installer.ps1.
+  string sha=new string('a',64);
+  var m=UpdateManifest.Parse("{\"version\":\"0.2.0\",\"installerUrl\":\"https://example.test/VibershotSetup-0.2.0.exe\",\"sha256\":\""+sha+"\",\"size\":123,\"publishedUtc\":\"2026-11-12T10:00:00Z\",\"releaseUrl\":\"https://example.test/r\",\"notes\":\"Fixes\"}");
+  Check(m.Version=="0.2.0"&&m.Size==123&&m.Notes=="Fixes"&&m.FileName=="VibershotSetup-0.2.0.exe"&&m.PublishedUtc!=null&&m.MinimumVersion==null,"Manifest parse");
+  Check(UpdateManifest.Parse("{\"Version\":\"v0.3.0\",\"InstallerUrl\":\"x\",\"Sha256\":\""+sha.ToUpperInvariant()+"\"}").FileName=="VibershotSetup-0.3.0.exe","Manifest is case-insensitive and strips v");
+  foreach(var bad in new[]{"{}","{\"version\":\"nope\",\"installerUrl\":\"x\",\"sha256\":\""+sha+"\"}","{\"version\":\"1.0.0\",\"sha256\":\""+sha+"\"}","{\"version\":\"1.0.0\",\"installerUrl\":\"x\",\"sha256\":\"abc\"}"}){
+   bool threw=false;try{UpdateManifest.Parse(bad);}catch(Exception){threw=true;}Check(threw,"Manifest rejects "+bad);
+  }
+  Check(UpdateService.NeedsManualInstall(new UpdateManifest{MinimumVersion="0.2.0"},"0.1.0")&&!UpdateService.NeedsManualInstall(new UpdateManifest{MinimumVersion="0.1.0"},"0.1.0")&&!UpdateService.NeedsManualInstall(m,"0.0.1"),"Minimum version gate");
+
+  // Check settings: due once a day when on, never when off; a check from a local feed path.
+  var us=new UpdateSettings();var now=new DateTime(2026,11,12,12,0,0,DateTimeKind.Utc);
+  Check(us.IsCheckDue(now)&&us.CheckAutomatically&&us.LastCheckUtc==null&&us.SkippedVersion==null&&us.FeedUrl==null,"Fresh settings are due");
+  us.LastCheckUtc=now.AddHours(-3);Check(!us.IsCheckDue(now),"Recent check is not due");us.LastCheckUtc=now.AddHours(-25);Check(us.IsCheckDue(now),"Day-old check is due");
+  us.CheckAutomatically=false;Check(!us.IsCheckDue(now),"Automatic off is never due");
+  string dir=Path.Combine(AppContext.BaseDirectory,"updatechecks");if(Directory.Exists(dir))Directory.Delete(dir,true);Directory.CreateDirectory(dir);
+  string fakeSetup=Path.Combine(dir,"VibershotSetup-9.9.9.exe");File.WriteAllBytes(fakeSetup,new byte[]{1,2,3,4,5});
+  string realSha=Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(fakeSetup))).ToLowerInvariant();
+  Check(UpdateService.VerifySha256(fakeSetup,realSha)&&UpdateService.VerifySha256(fakeSetup,realSha.ToUpperInvariant())&&!UpdateService.VerifySha256(fakeSetup,sha)&&!UpdateService.VerifySha256(Path.Combine(dir,"missing.exe"),realSha),"SHA-256 verification");
+  string feed=Path.Combine(dir,"latest.json");
+  File.WriteAllText(feed,"{\"version\":\"9.9.9\",\"installerUrl\":\""+fakeSetup.Replace("\\","\\\\")+"\",\"sha256\":\""+realSha+"\",\"size\":5}");
+  var settings=new UpdateSettings{FeedUrl=feed};var result=UpdateService.CheckAsync(settings).GetAwaiter().GetResult();
+  Check(result.Available&&result.Error==null&&result.Manifest!.Version=="9.9.9"&&settings.LastCheckUtc!=null,"Local feed reports the newer version: "+result.Error);
+  File.WriteAllText(feed,"{\"version\":\"0.0.1\",\"installerUrl\":\"x\",\"sha256\":\""+sha+"\"}");
+  result=UpdateService.CheckAsync(settings).GetAwaiter().GetResult();Check(!result.Available&&result.Error==null&&result.Manifest!=null,"Older feed version is not offered");
+  settings.FeedUrl=Path.Combine(dir,"nope.json");result=UpdateService.CheckAsync(settings).GetAwaiter().GetResult();Check(!result.Available&&result.Error!=null,"Missing feed is an error, not a throw");
+  File.WriteAllText(feed,"not json");settings.FeedUrl=feed;Check(UpdateService.CheckAsync(settings).GetAwaiter().GetResult().Error!=null,"Bad feed is an error");
+  // Download from a local path lands in the Updates folder and is verified; a wrong hash is refused and leaves nothing behind.
+  var okManifest=new UpdateManifest{Version="9.9.9",InstallerUrl=fakeSetup,Sha256=realSha,Size=5};
+  string downloaded=UpdateService.DownloadAsync(okManifest).GetAwaiter().GetResult();
+  Check(File.Exists(downloaded)&&downloaded.StartsWith(UpdateService.DownloadFolder)&&Path.GetFileName(downloaded)=="VibershotSetup-9.9.9.exe","Download to the Updates folder: "+downloaded);
+  Check(UpdateService.DownloadAsync(okManifest).GetAwaiter().GetResult()==downloaded,"A verified download is reused");
+  bool refused=false;try{UpdateService.DownloadAsync(new UpdateManifest{Version="9.9.8",InstallerUrl=fakeSetup,Sha256=sha}).GetAwaiter().GetResult();}catch(InvalidDataException){refused=true;}
+  Check(refused&&!File.Exists(Path.Combine(UpdateService.DownloadFolder,"VibershotSetup-9.9.8.exe"))&&!File.Exists(Path.Combine(UpdateService.DownloadFolder,"VibershotSetup-9.9.8.exe.part")),"Wrong checksum is refused and cleaned up");
+  File.Delete(downloaded);
+  string stale=Path.Combine(UpdateService.DownloadFolder,"VibershotSetup-0.0.1.exe");File.WriteAllBytes(stale,new byte[]{1});UpdateService.Cleanup();Check(!File.Exists(stale),"Cleanup removes installers that are not newer");
+
+  // Installer seed: applied to a fresh config only, library root must be absolute, and the welcome page learns the installer handled the rest.
+  var seed=InstallChoices.Parse("{\"libraryRoot\":\"D:\\\\Shots\\\\Lib\",\"installer\":\"inno\",\"version\":\"0.2.0\"}")!;
+  var cfg=new AppConfig();Check(seed.ApplyTo(cfg)&&cfg.Gallery.LibraryRoot=="D:\\Shots\\Lib"&&cfg.InstalledByInstaller&&!cfg.SetupCompleted,"Seed applies the library and marks the installer");
+  var relative=new AppConfig();Check(!InstallChoices.Parse("{\"libraryRoot\":\"Shots\"}")!.ApplyTo(relative)&&relative.Gallery.LibraryRoot==new AppConfig().Gallery.LibraryRoot&&relative.InstalledByInstaller,"Relative seed root is ignored");
+  Check(InstallChoices.Parse("garbage")==null&&InstallChoices.TryRead(Path.Combine(dir,"none.json"))==null,"Bad or missing seed reads as null");
+  string seedPath=Path.Combine(dir,"install-choices.json");File.WriteAllText(seedPath,"\uFEFF{\"libraryRoot\":\"D:\\\\Seeded\"}");
+  Check(InstallChoices.TryRead(seedPath)!.LibraryRoot=="D:\\Seeded","Seed with a UTF-8 BOM reads");
+  string roundTrip=cfg.ToJson();var back=AppConfig.FromJson(roundTrip)!;Check(back.InstalledByInstaller&&back.Gallery.LibraryRoot=="D:\\Shots\\Lib"&&back.Updates.CheckAutomatically&&roundTrip.Contains("\"Updates\""),"InstalledByInstaller and Updates persist");
+  Check(AppConfig.FromJson("{\"Autosave\":true}")!.Updates.CheckAutomatically&&JsonSerializer.Deserialize<AppConfig>("{\"Updates\":null}")!.Updates!=null,"Legacy config gets update defaults");
+  var skipped=AppConfig.FromJson("{\"Updates\":{\"CheckAutomatically\":false,\"SkippedVersion\":\"0.2.0\",\"FeedUrl\":\"C:\\\\feed.json\"}}")!;Check(!skipped.Updates.CheckAutomatically&&skipped.Updates.SkippedVersion=="0.2.0"&&skipped.Updates.FeedUrl=="C:\\feed.json","Update settings round trip");
+  Directory.Delete(dir,true);
+  Console.WriteLine("PASS: version order, update feed, local download and checksum, installer seed.");
  }
 }
 static class EditorChecks {
