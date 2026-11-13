@@ -82,9 +82,7 @@
    <Grid Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown" Margin="22,0,14,0" ToolTip="Drag to move">
     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-     <Border Width="18" Height="18" CornerRadius="4" Background="{StaticResource Ink}" Margin="0,0,8,0">
-      <TextBlock Text="&#xE722;" FontFamily="Segoe Fluent Icons" FontSize="10" Foreground="{StaticResource Paper}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-     </Border>
+     <Image Source="/Assets/logo.png" Width="20" Height="20" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
      <TextBlock Text="Vibershot" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"/>
      <TextBlock x:Name="VersionLabel" FontFamily="{StaticResource MonoFont}" FontSize="10" Foreground="{StaticResource Ink3}" Margin="6,1,0,0" VerticalAlignment="Center"/>
     </StackPanel>

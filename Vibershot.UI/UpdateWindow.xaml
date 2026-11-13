@@ -4,10 +4,14 @@
  Style="{StaticResource {x:Type Window}}" Title="Vibershot update" Width="520" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterScreen" Background="{StaticResource Well}">
  <Grid Margin="28,24,28,22">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <StackPanel Margin="0,0,0,14">
-   <TextBlock x:Name="TitleText" Text="A new version is ready" FontSize="20" FontWeight="Bold"/>
-   <TextBlock x:Name="VersionText" Foreground="{StaticResource Ink2}" Margin="0,4,0,0" TextWrapping="Wrap"/>
-  </StackPanel>
+  <Grid Margin="0,0,0,14">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+   <Image Source="/Assets/logo.png" Width="44" Height="44" Margin="0,0,14,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+   <StackPanel Grid.Column="1" VerticalAlignment="Center">
+    <TextBlock x:Name="TitleText" Text="A new version is ready" FontSize="20" FontWeight="Bold"/>
+    <TextBlock x:Name="VersionText" Foreground="{StaticResource Ink2}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+   </StackPanel>
+  </Grid>
 
   <Border Grid.Row="1" Style="{StaticResource Group}" x:Name="NotesCard">
    <StackPanel>

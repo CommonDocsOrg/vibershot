@@ -10,10 +10,14 @@
  </Window.Resources>
  <Grid Margin="28,24,28,22">
   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-  <StackPanel Margin="0,0,0,14">
-   <TextBlock Text="Welcome to Vibershot" FontSize="22" FontWeight="Bold"/>
-   <TextBlock x:Name="SubtitleText" Text="Two quick choices. Everything can be changed later in Settings." Foreground="{StaticResource Ink2}" Margin="0,4,0,0"/>
-  </StackPanel>
+  <Grid Margin="0,0,0,14">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+   <Image Source="/Assets/logo.png" Width="52" Height="52" Margin="0,0,16,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+   <StackPanel Grid.Column="1" VerticalAlignment="Center">
+    <TextBlock Text="Welcome to Vibershot" FontSize="22" FontWeight="Bold"/>
+    <TextBlock x:Name="SubtitleText" Text="Two quick choices. Everything can be changed later in Settings." Foreground="{StaticResource Ink2}" Margin="0,4,0,0"/>
+   </StackPanel>
+  </Grid>
 
   <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
    <StackPanel>

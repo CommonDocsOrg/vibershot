@@ -10,8 +10,14 @@
     <AssemblyName>Vibershot</AssemblyName>
     <RootNamespace>Vibershot.UI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
+    <ApplicationIcon>Assets\vibershot.ico</ApplicationIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- The app icon (exe, windows, taskbar, tray) and the transparent logo used inside the UI. Masters live in ..\assets. -->
+    <Resource Include="Assets\vibershot.ico" />
+    <Resource Include="Assets\logo.png" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Vibershot.Core\Vibershot.Core.csproj" />
     <ProjectReference Include="..\Vibershot.Editing\Vibershot.Editing.csproj" />

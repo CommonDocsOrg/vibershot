@@ -43,7 +43,7 @@ public partial class App : Application
         menu.Items.Add("Gallery", null, (_, _) => ShowGallery());
         menu.Items.Add("Check for updates…", null, (_, _) => CheckForUpdates(manual: true));
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
-        _tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Application, Text = "Vibershot • running in tray", ContextMenuStrip = menu, Visible = true };
+        _tray = new Forms.NotifyIcon { Icon = LoadTrayIcon(), Text = "Vibershot • running in tray", ContextMenuStrip = menu, Visible = true };
         _tray.DoubleClick += (_, _) => ShowLauncher();
         ProbeFfmpeg();
         if (!startInTray) ShowFirstRunIfNeeded();
@@ -54,6 +54,17 @@ public partial class App : Application
         if (e.Args.Contains("--updated", StringComparer.OrdinalIgnoreCase)) _main.ShowStatus($"Updated to Vibershot {AppVersion.Current}.");
         RunLibraryCleanup();
         ScheduleUpdateCheck();
+    }
+    /// <summary>The app icon at the tray's small size, from the embedded .ico; the stock icon if the resource is missing.</summary>
+    private static System.Drawing.Icon LoadTrayIcon()
+    {
+        try
+        {
+            var info = GetResourceStream(new Uri("pack://application:,,,/Assets/vibershot.ico"));
+            if (info is not null) { using var stream = info.Stream; return new System.Drawing.Icon(stream, Forms.SystemInformation.SmallIconSize); }
+        }
+        catch (Exception) { }
+        return System.Drawing.SystemIcons.Application;
     }
     /// <summary>Arguments from a second launch: open the file it was given, otherwise bring the launcher up.</summary>
     private void HandleForwardedArgs(string[] args)
