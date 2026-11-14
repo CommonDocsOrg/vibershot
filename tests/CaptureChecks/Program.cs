@@ -89,6 +89,7 @@ class Program {
   GalleryChecks(first);
   EditorChecks.Run(first);
   VideoEditorChecks.Run();
+  VideoFadeChecks.Run();
   Console.WriteLine("PASS: overlap and pixels, duplicate rejection, AVI frame counts/chunk sizes, legacy settings defaults, WebP lossy/lossless encoding, editor history/operations/project/flatten, gallery sidecars/index/query/thumbnails/files.");
 
   // Live checks when ffmpeg is present (tools\ffmpeg via get-ffmpeg.ps1); skipped otherwise.

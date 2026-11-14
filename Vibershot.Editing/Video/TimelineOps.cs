@@ -409,7 +409,7 @@ public static class TimelineOps
         }
         delta = Math.Clamp(delta, min, Math.Max(min, max));
         if (delta == 0) return project;
-        return Map(project, group, clip => clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = Unbounded(clip) ? 0 : Math.Max(0, clip.SourceIn + project.Seconds(delta)) });
+        return Map(project, group, clip => ClampFades(clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = Unbounded(clip) ? 0 : Math.Max(0, clip.SourceIn + project.Seconds(delta)) }));
     }
 
     /// <summary>Drags a clip's right edge to <paramref name="newEnd"/>, clamped to its source, its neighbours and one frame of length.</summary>
@@ -430,7 +430,54 @@ public static class TimelineOps
         }
         delta = Math.Clamp(delta, Math.Min(min, max), max);
         if (delta == 0) return project;
-        return Map(project, group, clip => clip with { Duration = clip.Duration + delta });
+        return Map(project, group, clip => ClampFades(clip with { Duration = clip.Duration + delta }));
+    }
+
+    /// <summary>True for clips that can fade: pictures, graphics and sounds, but not captions.</summary>
+    public static bool CanFade(Clip clip) => clip is not CaptionClip;
+
+    /// <summary>
+    /// How much of a clip shows (or sounds) at a timeline frame, from 0 to 1: it climbs evenly
+    /// from nothing on the clip's first frame to full after <see cref="Clip.FadeIn"/> frames, and
+    /// falls so that the frame after its last would be nothing. Zero outside the clip. The preview
+    /// multiplies a layer's opacity by this, and the export's fade filters follow the same line.
+    /// </summary>
+    public static double FadeAt(Clip clip, long frame)
+    {
+        long local = frame - clip.Start, left = clip.Duration - local;
+        if (local < 0 || left <= 0) return 0;
+        double level = 1;
+        if (clip.FadeIn > 0 && local < clip.FadeIn) level = (double)local / clip.FadeIn;
+        if (clip.FadeOut > 0 && left < clip.FadeOut) level = Math.Min(level, (double)left / clip.FadeOut);
+        return level;
+    }
+
+    /// <summary>Shortens a clip's fades so both fit inside it; the fade in keeps its length first.</summary>
+    private static Clip ClampFades(Clip clip)
+    {
+        long fadeIn = Math.Clamp(clip.FadeIn, 0, Math.Max(0, clip.Duration)), fadeOut = Math.Clamp(clip.FadeOut, 0, Math.Max(0, clip.Duration - fadeIn));
+        return fadeIn == clip.FadeIn && fadeOut == clip.FadeOut ? clip : clip with { FadeIn = fadeIn, FadeOut = fadeOut };
+    }
+
+    /// <summary>
+    /// Sets a clip's fade lengths in frames (null leaves one as it is); clips linked to it get the
+    /// same. A fade set on its own stops where the other begins; set together, the fade in is
+    /// fitted first. Returns the same project when nothing changes.
+    /// </summary>
+    public static VideoProject SetFade(VideoProject project, Guid clipId, long? fadeIn = null, long? fadeOut = null)
+    {
+        if (Find(project, clipId) is not var (_, primary) || !CanFade(primary)) return project;
+        bool changed = false;
+        var result = Map(project, WithLinked(project, new[] { clipId }), clip =>
+        {
+            if (!CanFade(clip)) return clip;
+            long newIn = Math.Max(0, fadeIn ?? clip.FadeIn), newOut = Math.Max(0, fadeOut ?? clip.FadeOut);
+            if (fadeIn != null && fadeOut == null) newIn = Math.Min(newIn, Math.Max(0, clip.Duration - newOut));
+            var faded = ClampFades(clip with { FadeIn = newIn, FadeOut = newOut });
+            changed |= faded.FadeIn != clip.FadeIn || faded.FadeOut != clip.FadeOut;
+            return faded;
+        });
+        return changed ? result : project;
     }
 
     private static VideoProject Map(VideoProject project, ISet<Guid> ids, Func<Clip, Clip> change) =>
@@ -464,8 +511,9 @@ public static class TimelineOps
                     rightLink = mapped;
                 }
                 long leftLength = frame - clip.Start;
-                result.Add(clip with { Duration = leftLength });
-                result.Add(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = Unbounded(clip) ? 0 : clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink });
+                // The left part keeps the fade in, the right part the fade out.
+                result.Add(ClampFades(clip with { Duration = leftLength, FadeOut = 0 }));
+                result.Add(ClampFades(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = Unbounded(clip) ? 0 : clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink, FadeIn = 0 }));
             }
             return WithClips(track, result);
         }).ToImmutableList();
@@ -556,11 +604,12 @@ public static class TimelineOps
                         p.X * sx, p.Y * sy, Math.Max(2, (int)Math.Round(p.Width * sx)), Math.Max(2, (int)Math.Round(p.Height * sy)))
                     {
                         Rotation = p.Rotation, Opacity = Math.Min(1, p.Opacity), IsImage = source.IsImage,
+                        FadeIn = project.Seconds(clip.FadeIn), FadeOut = project.Seconds(clip.FadeOut),
                         CropLeft = p.CropLeft, CropTop = p.CropTop, CropRight = p.CropRight, CropBottom = p.CropBottom,
                     });
                 }
                 else if (clip is AudioClip { Muted: false } sound && track.Kind == TrackKind.Audio && !track.Muted && sound.Volume > 0)
-                    audio.Add(new ExportAudioClip(source.Path, clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start), sound.Volume));
+                    audio.Add(new ExportAudioClip(source.Path, clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start), sound.Volume) { FadeIn = project.Seconds(clip.FadeIn), FadeOut = project.Seconds(clip.FadeOut) });
             }
         }
         var c = project.Background;

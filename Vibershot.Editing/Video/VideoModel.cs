@@ -115,6 +115,16 @@ public abstract record Clip
     public double SourceIn { get; init; }
     public Guid? LinkId { get; init; }
 
+    /// <summary>
+    /// Whole frames over which the clip comes in from nothing: a picture or graphic from
+    /// transparent, a sound from silence. Zero (no fade) is left out of the project file.
+    /// Captions do not fade.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public long FadeIn { get; init; }
+
+    /// <summary>Whole frames over which the clip goes out to nothing at its end. With <see cref="FadeIn"/> it never exceeds <see cref="Duration"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public long FadeOut { get; init; }
+
     [JsonIgnore] public long End => Start + Duration;
 }
 

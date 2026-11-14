@@ -23,6 +23,12 @@ public sealed record ExportVideoClip(string Path, double SourceIn, double Durati
 
     /// <summary>A still picture: looped for the clip's length instead of seeked.</summary>
     public bool IsImage { get; init; }
+
+    /// <summary>Seconds over which the picture comes in from transparent at its start.</summary>
+    public double FadeIn { get; init; }
+
+    /// <summary>Seconds over which the picture goes out to transparent at its end.</summary>
+    public double FadeOut { get; init; }
 }
 
 /// <summary>
@@ -33,7 +39,14 @@ public sealed record ExportVideoClip(string Path, double SourceIn, double Durati
 public sealed record ExportOverlayStream(string ListPath, double X, double Y);
 
 /// <summary>One audio clip on the output timeline. Times are seconds; volume 1 is unchanged.</summary>
-public sealed record ExportAudioClip(string Path, double SourceIn, double Duration, double Start, double Volume = 1);
+public sealed record ExportAudioClip(string Path, double SourceIn, double Duration, double Start, double Volume = 1)
+{
+    /// <summary>Seconds over which the sound comes in from silence at its start.</summary>
+    public double FadeIn { get; init; }
+
+    /// <summary>Seconds over which the sound goes out to silence at its end.</summary>
+    public double FadeOut { get; init; }
+}
 
 /// <summary>A flattened timeline ready to render: layers bottom to top, audio clips in any order.</summary>
 public sealed record ExportPlan
@@ -93,14 +106,20 @@ public static class ExportArguments
                 graph.Append(CultureInfo.InvariantCulture, $",crop=iw*{F(1 - clip.CropLeft - clip.CropRight)}:ih*{F(1 - clip.CropTop - clip.CropBottom)}:iw*{F(clip.CropLeft)}:ih*{F(clip.CropTop)}");
             graph.Append(CultureInfo.InvariantCulture, $",scale={clip.Width}:{clip.Height}:flags=lanczos,setsar=1");
             bool turned = Math.Abs(clip.Rotation % 360) > 0.005;
-            if (clip.Opacity < 0.999 || turned) graph.Append(",format=rgba");
+            bool faded = clip.FadeIn > 0 || clip.FadeOut > 0;
+            if (clip.Opacity < 0.999 || turned || faded) graph.Append(",format=rgba");
             if (clip.Opacity < 0.999) graph.Append(CultureInfo.InvariantCulture, $",colorchannelmixer=aa={F(clip.Opacity)}");
             if (turned)
             {
                 string angle = (clip.Rotation * Math.PI / 180).ToString("0.######", CultureInfo.InvariantCulture);
                 graph.Append(CultureInfo.InvariantCulture, $",rotate={angle}:ow=rotw({angle}):oh=roth({angle}):c=none");
             }
-            graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{N(clip.Start)}/TB[v{input}]");
+            graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{N(clip.Start)}/TB");
+            // Fades come after the shift, so their times are timeline times; only the alpha is
+            // faded, which lets the layer below (or the canvas colour) show through.
+            if (clip.FadeIn > 0) graph.Append(CultureInfo.InvariantCulture, $",fade=t=in:st={N(clip.Start)}:d={N(clip.FadeIn)}:alpha=1");
+            if (clip.FadeOut > 0) graph.Append(CultureInfo.InvariantCulture, $",fade=t=out:st={N(clip.Start + clip.Duration - clip.FadeOut)}:d={N(clip.FadeOut)}:alpha=1");
+            graph.Append(CultureInfo.InvariantCulture, $"[v{input}]");
             graph.Append(CultureInfo.InvariantCulture,
                 $";[{last}][v{input}]overlay=x={S(clip.X + clip.Width / 2.0)}-w/2:y={S(clip.Y + clip.Height / 2.0)}-h/2:eof_action=pass:enable='gte(t,{N(clip.Start)})*lt(t,{N(clip.Start + clip.Duration)})'[o{input}]");
             last = "o" + input.ToString(CultureInfo.InvariantCulture);
@@ -158,8 +177,11 @@ public static class ExportArguments
         {
             args.AddRange(new[] { "-ss", N(clip.SourceIn), "-t", N(clip.Duration), "-vn", "-i", clip.Path });
             long delay = (long)Math.Round(clip.Start * 1000);
-            graph.Append(CultureInfo.InvariantCulture,
-                $";[{input}:a]aresample={AudioRate},aformat=sample_fmts=fltp:channel_layouts=stereo,volume={N(clip.Volume)},adelay={delay}:all=1[a{input}]");
+            graph.Append(CultureInfo.InvariantCulture, $";[{input}:a]aresample={AudioRate},aformat=sample_fmts=fltp:channel_layouts=stereo,volume={N(clip.Volume)}");
+            // Faded before the delay, while the clip's own sound still starts at time zero.
+            if (clip.FadeIn > 0) graph.Append(CultureInfo.InvariantCulture, $",afade=t=in:st=0:d={N(clip.FadeIn)}");
+            if (clip.FadeOut > 0) graph.Append(CultureInfo.InvariantCulture, $",afade=t=out:st={N(clip.Duration - clip.FadeOut)}:d={N(clip.FadeOut)}");
+            graph.Append(CultureInfo.InvariantCulture, $",adelay={delay}:all=1[a{input}]");
             labels.Append(CultureInfo.InvariantCulture, $"[a{input}]");
             input++;
         }
