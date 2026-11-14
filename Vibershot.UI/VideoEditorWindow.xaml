@@ -233,6 +233,10 @@
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Start"/><TextBlock x:Name="ClipStartValue" Style="{StaticResource FieldValue}"/></Grid>
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Length"/><TextBlock x:Name="ClipLengthValue" Style="{StaticResource FieldValue}"/></Grid>
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Source in"/><TextBlock x:Name="ClipSourceValue" Style="{StaticResource FieldValue}"/></Grid>
+       <StackPanel x:Name="FadePanel">
+        <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Fade in (frames)"/><local:ValueBox x:Name="FadeInBox" Minimum="0" Maximum="1000000" Suffix="" AutomationProperties.Name="Fade in" ToolTip="Frames over which the clip comes in from nothing; also the round handle at the clip's top left corner on the timeline"/></Grid>
+        <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Fade out (frames)"/><local:ValueBox x:Name="FadeOutBox" Minimum="0" Maximum="1000000" Suffix="" AutomationProperties.Name="Fade out" ToolTip="Frames over which the clip goes out to nothing; also the round handle at the clip's top right corner on the timeline"/></Grid>
+       </StackPanel>
        <StackPanel x:Name="WordsPanel" Margin="0,10,0,0">
         <Border Style="{StaticResource Divider}" Margin="0,0,0,12"/>
         <TextBlock x:Name="WordsLabel" Style="{StaticResource PanelLabel}" Text="TEXT"/>

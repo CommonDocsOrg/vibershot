@@ -81,7 +81,8 @@ public static class GraphicExport
         Directory.CreateDirectory(folder);
         string path = Path.Combine(folder, $"g_{Hash(DocumentJson.Serialize(clip.Item) + region + width + "x" + height)}.png");
         if (!File.Exists(path)) SavePng(Render(new[] { clip.Item }, region, width, height), path);
-        return new ExportVideoClip(path, 0, project.Seconds(clip.Duration), project.Seconds(clip.Start), region.X * scaleX, region.Y * scaleY, width, height) { IsImage = true };
+        return new ExportVideoClip(path, 0, project.Seconds(clip.Duration), project.Seconds(clip.Start), region.X * scaleX, region.Y * scaleY, width, height)
+            { IsImage = true, FadeIn = project.Seconds(clip.FadeIn), FadeOut = project.Seconds(clip.FadeOut) };
     }
 
     /// <summary>

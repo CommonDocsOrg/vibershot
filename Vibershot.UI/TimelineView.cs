@@ -23,13 +23,16 @@ public sealed record Filmstrip(double Interval, IReadOnlyList<BitmapSource> Fram
 public sealed class TimelineView : FrameworkElement
 {
     public const double HeaderWidth = 148, RulerHeight = 24, VisualHeight = 52, AudioHeight = 40, CaptionHeight = 34, EdgeGrip = 7, SnapPixels = 8;
+
+    /// <summary>How far from a fade handle's centre a press still takes it, and how far in from the clip's corner the handle rests.</summary>
+    public const double FadeGrip = 7, FadeInset = 6;
     public const string SourceFormat = "Vibershot.VideoSource";
 
-    private enum Drag { None, Scrub, Move, TrimStart, TrimEnd }
+    private enum Drag { None, Scrub, Move, TrimStart, TrimEnd, FadeIn, FadeOut }
 
     private readonly Brush _well, _paper, _rule, _hover, _ink, _ink2, _ink3, _accent;
     private static readonly Brush VideoFill = Frozen("#3D4A63"), VideoEdge = Frozen("#2B3447"), AudioFill = Frozen("#1F4D3A"), AudioWave = Frozen("#50FA7B"),
-        ImageFill = Frozen("#5B4A7A"), GraphicFill = Frozen("#7A4660"), CaptionFill = Frozen("#6E5A24"), PlayheadBrush = Frozen("#FF79C6"), LabelBack = Frozen("#CC191A21"), LaneAlt = Frozen("#252631");
+        FadeShade = Frozen("#8C101116"), ImageFill = Frozen("#5B4A7A"), GraphicFill = Frozen("#7A4660"), CaptionFill = Frozen("#6E5A24"), PlayheadBrush = Frozen("#FF79C6"), LabelBack = Frozen("#CC191A21"), LaneAlt = Frozen("#252631");
     private readonly Typeface _face = new("Segoe UI"), _mono = new("Cascadia Mono, Consolas");
 
     private History<VideoProject>? _history;
@@ -39,7 +42,7 @@ public sealed class TimelineView : FrameworkElement
     private VideoProject? _dragBase;
     private string _dragKey = "";
     private Guid _dragClip;
-    private long _dragClipStart, _dragOffsetFrames;
+    private long _dragClipStart, _dragOffsetFrames, _dragFade;
     private double _dragStartX;
     private bool _dragMoved;
     private long? _snapLine;
@@ -216,6 +219,42 @@ public sealed class TimelineView : FrameworkElement
         return null;
     }
 
+    /// <summary>A fade's length on screen.</summary>
+    private double FadeWidth(long frames) => Project.Seconds(frames) * _pixelsPerSecond;
+
+    /// <summary>True when a clip shows fade handles: selected, able to fade, on an unlocked lane and wide enough to hold them.</summary>
+    private bool HasFadeHandles(Row row, Clip clip, Rect rect) =>
+        Selection.Contains(clip.Id) && TimelineOps.CanFade(clip) && !row.Track.Locked && rect.Width > FadeInset * 5;
+
+    /// <summary>The handle's centre: on the clip's top edge where the fade in ends (or the fade out begins), kept just inside the corners.</summary>
+    private Point FadeHandle(Clip clip, Rect rect, bool fadeOut)
+    {
+        double x = fadeOut ? rect.Right - FadeWidth(clip.FadeOut) : rect.Left + FadeWidth(clip.FadeIn);
+        return new Point(Math.Clamp(x, rect.Left + FadeInset, rect.Right - FadeInset), rect.Top + FadeInset);
+    }
+
+    /// <summary>
+    /// Where a selected clip's fade handle is drawn, in this control's coordinates: the fade-in
+    /// handle near its top left corner, the fade-out handle near its top right. Null when the
+    /// clip has none (not selected, a caption, a locked lane, too narrow).
+    /// </summary>
+    public Point? FadeHandlePoint(Guid clipId, bool fadeOut)
+    {
+        foreach (var row in Rows())
+            foreach (var clip in row.Track.Clips)
+                if (clip.Id == clipId) { var rect = ClipRect(row, clip); return HasFadeHandles(row, clip, rect) ? FadeHandle(clip, rect, fadeOut) : null; }
+        return null;
+    }
+
+    /// <summary>The fade handle under a point, if the clip shows handles; when both are in reach the nearer one wins.</summary>
+    private Drag FadeHandleAt(Row row, Clip clip, Point p)
+    {
+        var rect = ClipRect(row, clip);
+        if (!HasFadeHandles(row, clip, rect) || p.Y > rect.Top + FadeInset + FadeGrip) return Drag.None;
+        double toIn = Math.Abs(p.X - FadeHandle(clip, rect, false).X), toOut = Math.Abs(p.X - FadeHandle(clip, rect, true).X);
+        return Math.Min(toIn, toOut) > FadeGrip ? Drag.None : toIn <= toOut ? Drag.FadeIn : Drag.FadeOut;
+    }
+
     private static Rect ToggleRect(Row row) => new(HeaderWidth - 34, row.Top + (row.Height - 22) / 2, 24, 22);
 
     // ---- Drawing ----
@@ -321,6 +360,7 @@ public sealed class TimelineView : FrameworkElement
             dc.DrawRectangle(AudioWave, null, new Rect(rect.Left, middle - 0.5, rect.Width, 1));
             if (source != null && WaveformFor?.Invoke(source.Id) is { } wave) DrawWaveform(dc, clip, wave, rect, middle);
         }
+        DrawFades(dc, clip, rect);
         if (rect.Width > 28)
         {
             var label = Text(NameOf(project, clip), 11, Brushes.White, maxWidth: Math.Max(10, rect.Width - 16));
@@ -338,7 +378,35 @@ public sealed class TimelineView : FrameworkElement
                 dc.DrawRoundedRectangle(_accent, null, new Rect(rect.Left, rect.Top, 4, rect.Height), 2, 2);
                 dc.DrawRoundedRectangle(_accent, null, new Rect(rect.Right - 4, rect.Top, 4, rect.Height), 2, 2);
             }
+            if (HasFadeHandles(row, clip, rect))
+            {
+                var pen = new Pen(_accent, 1.5);
+                dc.DrawEllipse(Brushes.White, pen, FadeHandle(clip, rect, false), 4, 4);
+                dc.DrawEllipse(Brushes.White, pen, FadeHandle(clip, rect, true), 4, 4);
+            }
         }
+    }
+
+    /// <summary>A fade as a ramp: the part of the clip that is not yet (or no longer) there is shaded, under a line from nothing to full.</summary>
+    private void DrawFades(DrawingContext dc, Clip clip, Rect rect)
+    {
+        if (clip.FadeIn <= 0 && clip.FadeOut <= 0) return;
+        var line = new Pen(Brushes.White, 1.2);
+        void Ramp(double corner, double full)
+        {
+            var shade = new StreamGeometry();
+            using (var g = shade.Open())
+            {
+                g.BeginFigure(new Point(corner, rect.Top), true, true);
+                g.LineTo(new Point(full, rect.Top), false, false);
+                g.LineTo(new Point(corner, rect.Bottom), false, false);
+            }
+            shade.Freeze();
+            dc.DrawGeometry(FadeShade, null, shade);
+            dc.DrawLine(line, new Point(corner, rect.Bottom), new Point(full, rect.Top));
+        }
+        if (clip.FadeIn > 0) Ramp(rect.Left, rect.Left + FadeWidth(clip.FadeIn));
+        if (clip.FadeOut > 0) Ramp(rect.Right, rect.Right - FadeWidth(clip.FadeOut));
     }
 
     /// <summary>The clip's stretch of the waveform as one mirrored outline, a column every two pixels, scaled by the clip's volume.</summary>
@@ -486,6 +554,13 @@ public sealed class TimelineView : FrameworkElement
         if (!Selection.Contains(clip.Id)) Select(TimelineOps.WithLinked(Project, new[] { clip.Id }));
         if (row.Track.Locked) return false;
         var rect = ClipRect(row, clip);
+        if (FadeHandleAt(row, clip, p) is var fade && fade != Drag.None)
+        {
+            // The handle drags the fade's length; the pointer's travel is added to where it began.
+            _drag = fade; _dragFade = fade == Drag.FadeIn ? clip.FadeIn : clip.FadeOut;
+            _dragBase = Project; _dragKey = "fade:" + Guid.NewGuid(); _dragClip = clip.Id; _dragStartX = p.X; _dragMoved = false;
+            return true;
+        }
         _drag = p.X - rect.Left <= EdgeGrip && rect.Width > EdgeGrip * 2 ? Drag.TrimStart : rect.Right - p.X <= EdgeGrip && rect.Width > EdgeGrip * 2 ? Drag.TrimEnd : Drag.Move;
         _dragBase = Project; _dragKey = "drag:" + Guid.NewGuid(); _dragClip = clip.Id; _dragClipStart = clip.Start;
         _dragStartX = p.X; _dragOffsetFrames = XToFrame(p.X) - clip.Start; _dragMoved = false;
@@ -520,7 +595,13 @@ public sealed class TimelineView : FrameworkElement
         var group = TimelineOps.WithLinked(_dragBase, new[] { _dragClip });
         if (TimelineOps.Find(_dragBase, _dragClip) is not var (fromTrack, clip)) return;
         VideoProject? result = null;
-        if (_drag == Drag.TrimStart) result = TimelineOps.TrimStart(_dragBase, _dragClip, SnapFrame(XToFrame(p.X), group));
+        if (_drag == Drag.FadeIn || _drag == Drag.FadeOut)
+        {
+            // Whole frames; linked picture and sound fade together.
+            long travel = _dragBase.Frames((p.X - _dragStartX) / _pixelsPerSecond);
+            result = _drag == Drag.FadeIn ? TimelineOps.SetFade(_dragBase, _dragClip, fadeIn: Math.Max(0, _dragFade + travel)) : TimelineOps.SetFade(_dragBase, _dragClip, fadeOut: Math.Max(0, _dragFade - travel));
+        }
+        else if (_drag == Drag.TrimStart) result = TimelineOps.TrimStart(_dragBase, _dragClip, SnapFrame(XToFrame(p.X), group));
         else if (_drag == Drag.TrimEnd) result = TimelineOps.TrimEnd(_dragBase, _dragClip, SnapFrame(XToFrame(p.X), group));
         else
         {
@@ -571,6 +652,7 @@ public sealed class TimelineView : FrameworkElement
         if (HitClip(p) is not var (row, clip)) { Cursor = Cursors.Arrow; return; }
         if (Tool == TimelineTool.Razor) { Cursor = Cursors.Cross; return; }
         var rect = ClipRect(row, clip);
+        if (FadeHandleAt(row, clip, p) != Drag.None) { Cursor = Cursors.Hand; return; }
         bool edge = rect.Width > EdgeGrip * 2 && (p.X - rect.Left <= EdgeGrip || rect.Right - p.X <= EdgeGrip);
         Cursor = edge ? Cursors.SizeWE : Cursors.Arrow;
     }

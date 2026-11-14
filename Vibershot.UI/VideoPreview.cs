@@ -38,6 +38,7 @@ public sealed class VideoPreview : FrameworkElement
     private VideoProject _project = TimelineOps.Empty();
     private VideoProject? _drawn;
     private List<(Track Track, Clip Clip)> _layers = new();
+    private double[] _fades = Array.Empty<double>();
     private int _dragTarget;
     private long _frame;
     private bool _playing, _cropMode;
@@ -239,6 +240,10 @@ public sealed class VideoPreview : FrameworkElement
         foreach (var image in layers.Select(layer => layer.Clip).OfType<ImageClip>())
             if (_project.Source(image.SourceId) is { } source) LoadImage(source.Path);
         bool changed = !layers.Select(layer => layer.Clip.Id).SequenceEqual(_layers.Select(layer => layer.Clip.Id)) || !ReferenceEquals(_drawn, _project);
+        // A layer in the middle of a fade looks different on every frame.
+        var fades = layers.Select(layer => TimelineOps.FadeAt(layer.Clip, _frame)).ToArray();
+        changed |= !fades.SequenceEqual(_fades);
+        _fades = fades;
         _layers = layers; _drawn = _project;
         if (redraw || changed) InvalidateVisual();
     }
@@ -248,7 +253,7 @@ public sealed class VideoPreview : FrameworkElement
     {
         if (clip is not VideoClip) return false;
         var p = TimelineOps.PlacementOf(_project, clip);
-        return p.Opacity >= 1 && p.Rotation == 0 && p.X <= 1 && p.Y <= 1 && p.X + p.Width >= _project.Width - 1 && p.Y + p.Height >= _project.Height - 1;
+        return p.Opacity >= 1 && TimelineOps.FadeAt(clip, _frame) >= 1 && p.Rotation == 0 && p.X <= 1 && p.Y <= 1 && p.X + p.Width >= _project.Width - 1 && p.Y + p.Height >= _project.Height - 1;
     }
 
     /// <summary>Starts decoding a still picture off the UI thread; the layer appears when it is ready.</summary>
@@ -360,12 +365,15 @@ public sealed class VideoPreview : FrameworkElement
         {
             // Graphics and captions are drawn by the image editor's renderer, in canvas pixels.
             Item? item = drawn switch { GraphicClip graphic => graphic.Item, CaptionClip caption => TimelineOps.CaptionItem(_project, track, caption), _ => null };
+            // A clip fading in or out is drawn that much fainter.
+            double fade = TimelineOps.FadeAt(drawn, _frame);
             if (item != null)
             {
+                dc.PushOpacity(fade);
                 dc.PushTransform(new TranslateTransform(canvas.X, canvas.Y));
                 dc.PushTransform(new ScaleTransform(zoom, zoom));
                 DocumentRenderer.RenderItem(dc, item, NoAssets);
-                dc.Pop(); dc.Pop();
+                dc.Pop(); dc.Pop(); dc.Pop();
                 continue;
             }
             if (drawn is not VisualClip clip || PictureOf(clip) is not { } picture) continue;
@@ -379,7 +387,7 @@ public sealed class VideoPreview : FrameworkElement
                 dc.DrawImage(picture, full);
                 dc.Pop();
             }
-            dc.PushOpacity(Math.Clamp(p.Opacity, 0, 1));
+            dc.PushOpacity(Math.Clamp(p.Opacity, 0, 1) * fade);
             dc.PushClip(new RectangleGeometry(box));
             dc.DrawImage(picture, full);
             dc.Pop(); dc.Pop(); dc.Pop();

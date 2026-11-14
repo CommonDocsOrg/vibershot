@@ -91,6 +91,9 @@ public partial class VideoEditorWindow : Window
         PlaceH.Committed += value => Place(p => p with { Height = value });
         PlaceRotation.Committed += value => Place(p => p with { Rotation = value });
         foreach (var box in new[] { PlaceX, PlaceY, PlaceW, PlaceH, PlaceRotation }) box.ReturnFocusTo = Timeline;
+        FadeInBox.Committed += value => SetFade(fadeIn: (long)Math.Round(value));
+        FadeOutBox.Committed += value => SetFade(fadeOut: (long)Math.Round(value));
+        foreach (var box in new[] { FadeInBox, FadeOutBox }) box.ReturnFocusTo = Timeline;
         Timeline.FilmstripFor = id => _filmstrips.GetValueOrDefault(id);
         Timeline.WaveformFor = id => _waveforms.GetValueOrDefault(id);
         Timeline.History = _history;
@@ -488,7 +491,7 @@ public partial class VideoEditorWindow : Window
         var plan = TimelineOps.ToPlan(Project);
         var audible = plan.Audio.Where(clip => File.Exists(clip.Path)).ToList();
         plan = plan with { Audio = audible };
-        string key = plan.Duration.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "|" + string.Join("|", audible.Select(clip => $"{clip.Path}:{clip.SourceIn:0.###}:{clip.Duration:0.###}:{clip.Start:0.###}:{clip.Volume:0.##}"));
+        string key = plan.Duration.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "|" + string.Join("|", audible.Select(clip => $"{clip.Path}:{clip.SourceIn:0.###}:{clip.Duration:0.###}:{clip.Start:0.###}:{clip.Volume:0.##}" + (clip.FadeIn > 0 || clip.FadeOut > 0 ? $":{clip.FadeIn:0.###}:{clip.FadeOut:0.###}" : "")));
         if (key == _mixKey) return;
         _mixKey = key;
         if (audible.Count == 0) { _audio.Close(); _mixOpen = false; return; }
@@ -626,6 +629,9 @@ public partial class VideoEditorWindow : Window
             ClipStartValue.Text = Timecode(primary.Clip.Start);
             ClipLengthValue.Text = Timecode(primary.Clip.Duration);
             ClipSourceValue.Text = Timecode(project.Frames(primary.Clip.SourceIn));
+            // Fades: a picture, a graphic or a sound; a linked pair shares them.
+            FadePanel.Visibility = TimelineOps.CanFade(primary.Clip) ? Visibility.Visible : Visibility.Collapsed;
+            FadeInBox.Show(primary.Clip.FadeIn); FadeOutBox.Show(primary.Clip.FadeOut);
             var graphicItem = (primary.Clip as GraphicClip)?.Item;
             var captionItem = primary.Clip as CaptionClip;
             var words = graphicItem as TextItem;
@@ -711,6 +717,17 @@ public partial class VideoEditorWindow : Window
             Item moved = item with { Bounds = new Rect(box.X, box.Y, Math.Max(0, box.Width), Math.Max(0, box.Height)), Rotation = box.Rotation, Opacity = Math.Clamp(box.Opacity, 0, 1) };
             return moved is CalloutItem callout ? callout with { Targets = callout.Targets.Select(target => target + shift).ToImmutableList() } : moved;
         }), key);
+    }
+
+    /// <summary>Sets a fade, in frames, on the clip the panel is showing (and whatever is linked to it).</summary>
+    private void SetFade(long? fadeIn = null, long? fadeOut = null)
+    {
+        var selected = Project.Tracks.SelectMany(track => track.Clips).Where(clip => Timeline.Selection.Contains(clip.Id)).ToList();
+        if (selected.Count == 0) return;
+        var primary = selected.FirstOrDefault(clip => clip is not AudioClip, selected[0]);
+        var result = TimelineOps.SetFade(Project, primary.Id, fadeIn, fadeOut);
+        // A value that was cut short to fit the clip is shown as it ended up.
+        if (ReferenceEquals(result, Project)) UpdatePanel(); else _history.Push(result);
     }
 
     private GraphicClip? SelectedGraphic => Project.AllClips.OfType<GraphicClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
