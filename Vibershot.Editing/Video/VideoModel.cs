@@ -190,6 +190,23 @@ public sealed record Track
     public ImmutableList<Clip> Clips { get; init; } = ImmutableList<Clip>.Empty;
 }
 
+/// <summary>A copied clip with the track it was copied from.</summary>
+public sealed record CopiedClip(Clip Clip, Guid TrackId, TrackKind Kind);
+
+/// <summary>Clips copied off the timeline, ready to paste, with the sources they use. It lives in the app only, never on the system clipboard.</summary>
+public sealed record ClipClipboard
+{
+    /// <summary>The copied clips in track order, at the frames they were copied from.</summary>
+    public ImmutableList<CopiedClip> Clips { get; init; } = ImmutableList<CopiedClip>.Empty;
+    public ImmutableList<MediaSource> Sources { get; init; } = ImmutableList<MediaSource>.Empty;
+
+    /// <summary>The first frame of the earliest clip.</summary>
+    public long Start => Clips.Count == 0 ? 0 : Clips.Min(copied => copied.Clip.Start);
+
+    /// <summary>The frame after the last clip.</summary>
+    public long End => Clips.Count == 0 ? 0 : Clips.Max(copied => copied.Clip.End);
+}
+
 /// <summary>
 /// The whole edit: an output canvas, linked sources and tracks. Visual tracks are listed bottom
 /// layer first, so a later visual track covers an earlier one.

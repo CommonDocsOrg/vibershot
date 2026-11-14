@@ -368,6 +368,47 @@ public static class TimelineOps
         return project with { Tracks = tracks };
     }
 
+    /// <summary>
+    /// Moves a set of clips (and what is linked to them) by the same number of frames and the same
+    /// number of tracks. Tracks are counted among those of the clip's own kind in stored order, so
+    /// +1 is one video layer up or one audio lane down, and a clip never changes kind. With
+    /// <paramref name="only"/>, just the clips on tracks of that kind change track; the rest shift
+    /// in time alone. Null, changing nothing, when any clip would leave the start of the timeline,
+    /// run out of tracks, touch a locked track or overlap a clip that is not in the set.
+    /// </summary>
+    public static VideoProject? MoveMany(VideoProject project, IEnumerable<Guid> clipIds, long frameDelta, int trackDelta = 0, TrackKind? only = null)
+    {
+        var moving = WithLinked(project, clipIds);
+        var arrivals = new Dictionary<Guid, List<Clip>>();
+        var left = new HashSet<Guid>();
+        foreach (var kind in new[] { TrackKind.Visual, TrackKind.Caption, TrackKind.Audio })
+        {
+            var ofKind = project.Tracks.Where(track => track.Kind == kind).ToList();
+            int shift = only == null || only == kind ? trackDelta : 0;
+            for (int i = 0; i < ofKind.Count; i++)
+            {
+                foreach (var clip in ofKind[i].Clips.Where(clip => moving.Contains(clip.Id)))
+                {
+                    int to = i + shift;
+                    if (to < 0 || to >= ofKind.Count || ofKind[i].Locked || ofKind[to].Locked) return null;
+                    var moved = clip with { Start = clip.Start + frameDelta };
+                    if (!IsFree(ofKind[to], moved.Start, moved.Duration, moving)) return null;
+                    left.Add(ofKind[i].Id);
+                    if (!arrivals.TryGetValue(ofKind[to].Id, out var list)) arrivals[ofKind[to].Id] = list = new List<Clip>();
+                    list.Add(moved);
+                }
+            }
+        }
+        if (arrivals.Count == 0) return null;
+        if (frameDelta == 0 && trackDelta == 0) return project;
+        return project with
+        {
+            Tracks = project.Tracks.Select(track => left.Contains(track.Id) || arrivals.ContainsKey(track.Id)
+                ? WithClips(track, track.Clips.Where(clip => !moving.Contains(clip.Id)).Concat(arrivals.GetValueOrDefault(track.Id) ?? Enumerable.Empty<Clip>()))
+                : track).ToImmutableList(),
+        };
+    }
+
     /// <summary>The start frame nearest to <paramref name="desired"/> where the clip fits on the track without overlapping.</summary>
     public static long NearestFree(VideoProject project, Guid clipId, Guid trackId, long desired)
     {
@@ -489,6 +530,70 @@ public static class TimelineOps
             return WithClips(track, kept);
         }).ToImmutableList();
         return project with { Tracks = tracks };
+    }
+
+    /// <summary>Removes a set of clips and what is linked to them, leaving the gaps.</summary>
+    public static VideoProject DeleteMany(VideoProject project, IEnumerable<Guid> clipIds) => Delete(project, clipIds);
+
+    /// <summary>Removes a set of clips and what is linked to them; later clips on each track they were on slide left by what was removed before them.</summary>
+    public static VideoProject RippleDeleteMany(VideoProject project, IEnumerable<Guid> clipIds) => Delete(project, clipIds, ripple: true);
+
+    /// <summary>Copies clips (and what is linked to them) with the tracks they sit on and the sources they use. Null when none of the ids is a clip.</summary>
+    public static ClipClipboard? Copy(VideoProject project, IEnumerable<Guid> clipIds)
+    {
+        var ids = WithLinked(project, clipIds);
+        var clips = project.Tracks.SelectMany(track => track.Clips.Where(clip => ids.Contains(clip.Id)).Select(clip => new CopiedClip(clip, track.Id, track.Kind))).ToImmutableList();
+        if (clips.Count == 0) return null;
+        var used = clips.Select(copied => copied.Clip.SourceId).ToHashSet();
+        return new ClipClipboard { Clips = clips, Sources = project.Sources.Where(source => used.Contains(source.Id)).ToImmutableList() };
+    }
+
+    /// <summary>
+    /// Places copied clips so the earliest starts at <paramref name="at"/>, keeping their offsets
+    /// from one another. Every clip gets a new id, and clips that were linked to each other get a
+    /// new link of their own. The clips copied from one track go back onto it together when it has
+    /// room for all of them and is not locked; otherwise onto a new track of the same kind. (When
+    /// the track no longer exists, the first track of that kind with room is used before a new one
+    /// is made.)
+    /// </summary>
+    public static VideoProject Paste(VideoProject project, ClipClipboard clipboard, long at, out List<Guid> pastedIds)
+    {
+        pastedIds = new List<Guid>();
+        if (clipboard.Clips.Count == 0) return project;
+        long shift = Math.Max(0, at) - clipboard.Start;
+        foreach (var source in clipboard.Sources) project = AddSource(project, source);
+        // A link only means something between two clips; one copied without its partner comes in unlinked.
+        var links = clipboard.Clips.Where(copied => copied.Clip.LinkId != null).GroupBy(copied => copied.Clip.LinkId!.Value)
+            .Where(group => group.Count() > 1).ToDictionary(group => group.Key, _ => Guid.NewGuid());
+        foreach (var group in clipboard.Clips.GroupBy(copied => copied.TrackId))
+        {
+            var kind = group.First().Kind;
+            var fresh = group.Select(copied => copied.Clip with
+            {
+                Id = Guid.NewGuid(), Start = copied.Clip.Start + shift,
+                LinkId = copied.Clip.LinkId is { } link && links.TryGetValue(link, out var mapped) ? mapped : null,
+            }).ToList();
+            bool Fits(Track track) => track.Kind == kind && !track.Locked && fresh.All(clip => IsFree(track, clip.Start, clip.Duration));
+            var original = project.Tracks.FirstOrDefault(track => track.Id == group.Key);
+            var target = original != null ? (Fits(original) ? original : null) : project.Tracks.FirstOrDefault(Fits);
+            if (target == null)
+            {
+                project = AddTrack(project, kind, out var added);
+                target = project.Tracks.First(track => track.Id == added);
+                // Captions pasted onto a new track keep the look of the track they came from.
+                if (kind == TrackKind.Caption && original?.CaptionStyle != null) target = target with { CaptionStyle = original.CaptionStyle };
+            }
+            project = SetTrack(project, WithClips(target, target.Clips.AddRange(fresh)));
+            pastedIds.AddRange(fresh.Select(clip => clip.Id));
+        }
+        return project;
+    }
+
+    /// <summary>Copies clips (and what is linked to them) and pastes the copies straight after the last of them.</summary>
+    public static VideoProject Duplicate(VideoProject project, IEnumerable<Guid> clipIds, out List<Guid> pastedIds)
+    {
+        pastedIds = new List<Guid>();
+        return Copy(project, clipIds) is { } copied ? Paste(project, copied, copied.End, out pastedIds) : project;
     }
 
     /// <summary>Breaks the link between a clip and its partners so each can be edited alone.</summary>
