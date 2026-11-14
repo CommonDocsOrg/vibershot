@@ -213,8 +213,8 @@
         </GroupStyle>
        </ListBox.GroupStyle>
        <ListBox.ContextMenu>
-        <ContextMenu>
-         <MenuItem Header="Open" Click="Open_Click" InputGestureText="Enter"/>
+        <ContextMenu Opened="TileMenu_Opened">
+         <MenuItem x:Name="OpenMenu" Header="Open" Click="Open_Click" InputGestureText="Enter"/>
          <MenuItem Header="Open original" Click="OpenOriginal_Click"/>
          <MenuItem Header="Show in folder" Click="ShowInFolder_Click"/>
          <Separator/>
@@ -284,7 +284,7 @@
        </ItemsControl>
        <TextBox x:Name="DetailTagBox" Padding="10,7" Margin="0,2,0,0" KeyDown="DetailTagBox_KeyDown" AutomationProperties.Name="Add tag" ToolTip="Type a tag and press Enter"/>
        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-        <Button Content="Open" Click="Open_Click" Padding="14,8"/>
+        <Button x:Name="OpenButton" Content="Open" Click="Open_Click" Padding="14,8"/>
         <Button Content="Open original" Click="OpenOriginal_Click" Padding="14,8" Margin="8,0,0,0"/>
        </StackPanel>
       </StackPanel>

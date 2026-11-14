@@ -323,7 +323,14 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
     {
         UpdateDetail(Tiles.SelectedItem as GalleryItem ?? Tiles.SelectedItems.Cast<GalleryItem>().LastOrDefault());
         UpdateCountLabel();
+        OpenButton.Content = OpenLabel();
     }
+
+    /// <summary>What Open does to the selection, in words: an MP4 or a video project goes to the video editor.</summary>
+    private string OpenLabel() =>
+        OpenInVideoEditor is not null && Selected.Any() && Selected.All(item => item.Extension.TrimStart('.').ToLowerInvariant() is "mp4" or "vibevideo") ? "Edit video" : "Open";
+
+    private void TileMenu_Opened(object sender, RoutedEventArgs e) => OpenMenu.Header = OpenLabel();
 
     private void TileFavourite_Click(object sender, RoutedEventArgs e)
     {

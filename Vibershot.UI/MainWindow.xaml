@@ -1,7 +1,7 @@
 <Window x:Class="Vibershot.UI.MainWindow"
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
- Style="{StaticResource {x:Type Window}}" Title="Vibershot" Width="476" SizeToContent="Height"
+ Style="{StaticResource {x:Type Window}}" Title="Vibershot" Width="520" SizeToContent="Height"
  WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="CanMinimize"
  Topmost="True" WindowStartupLocation="CenterScreen" Foreground="{StaticResource Ink}">
  <Window.Resources>
@@ -141,9 +141,9 @@
     </Grid>
    </Button>
 
-   <!-- Secondary actions as three equal tiles. -->
+   <!-- Secondary actions as four equal tiles. -->
    <Grid Grid.Row="2" Margin="20,14,20,0">
-    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
     <Button Style="{StaticResource Tile}" Click="Fullscreen_Click" AutomationProperties.Name="Full desktop" ToolTip="Capture every monitor at once">
      <StackPanel>
       <Grid>
@@ -166,6 +166,13 @@
       <Border Style="{StaticResource TileIcon}"><TextBlock Style="{StaticResource TileGlyph}" Text="&#xE70F;"/></Border>
       <TextBlock Style="{StaticResource TileTitle}" Text="Editor"/>
       <TextBlock Style="{StaticResource TileHint}" Text="Annotate, crop and export"/>
+     </StackPanel>
+    </Button>
+    <Button Grid.Column="6" Style="{StaticResource Tile}" Click="VideoEditor_Click" AutomationProperties.Name="Video editor" ToolTip="Cut, layer and caption MP4 recordings, then export">
+     <StackPanel>
+      <Border Style="{StaticResource TileIcon}"><TextBlock Style="{StaticResource TileGlyph}" Text="&#xE714;"/></Border>
+      <TextBlock Style="{StaticResource TileTitle}" Text="Video editor"/>
+      <TextBlock Style="{StaticResource TileHint}" Text="Cut and caption recordings"/>
      </StackPanel>
     </Button>
    </Grid>

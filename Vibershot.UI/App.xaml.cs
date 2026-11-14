@@ -49,6 +49,7 @@ public partial class App : Application
         menu.Items.Add("Capture region", null, (_, _) => CaptureNow());
         menu.Items.Add("Full desktop", null, (_, _) => CaptureNow(false));
         menu.Items.Add("Gallery", null, (_, _) => ShowGallery());
+        menu.Items.Add("Video editor", null, (_, _) => OpenVideoEditor());
         menu.Items.Add("Check for updates…", null, (_, _) => CheckForUpdates(manual: true));
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
         _tray = new Forms.NotifyIcon { Icon = LoadTrayIcon(), Text = "Vibershot • running in tray", ContextMenuStrip = menu, Visible = true };
