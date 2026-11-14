@@ -288,6 +288,9 @@ public static class TimelineOps
     public static CaptionStyle CaptionStyleOf(VideoProject project, Track track) =>
         track.CaptionStyle ?? new CaptionStyle { FontSize = Math.Max(12, Math.Round(project.Height * 0.05)) };
 
+    /// <summary>The outline width letters of a size get when an outline is first switched on.</summary>
+    public static double DefaultOutlineWidth(double fontSize) => Math.Max(2, Math.Round(fontSize / 14));
+
     /// <summary>
     /// The text box a caption is drawn as: centred, at most four fifths of the canvas wide, a
     /// twentieth of the canvas height in from the bottom (or the top).
@@ -299,6 +302,7 @@ public static class TimelineOps
         {
             Id = clip.Id, Text = clip.Text, FontFamily = style.FontFamily, FontSize = style.FontSize, Bold = style.Bold, Color = style.Color,
             Background = style.Background, Alignment = TextAlign.Center, Padding = Math.Round(style.FontSize * 0.3),
+            OutlineColor = style.OutlineColor, OutlineWidth = Math.Max(0, style.OutlineWidth),
             Bounds = new Rect(0, 0, Math.Round(project.Width * 0.8), 10),
         };
         var size = DocumentRenderer.MeasureText(item);

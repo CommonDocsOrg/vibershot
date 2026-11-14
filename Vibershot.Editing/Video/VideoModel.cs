@@ -154,8 +154,15 @@ public sealed record CaptionStyle
     public bool Bold { get; init; } = true;
     public Color Color { get; init; } = Colors.White;
 
-    /// <summary>The box behind the words; null draws the words alone.</summary>
+    /// <summary>The box behind the words; null draws the words alone. Written even when null, or "no box" would load back as the default box.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Color? Background { get; init; } = Color.FromArgb(0xB4, 0, 0, 0);
+
+    /// <summary>Colour of the line round the letters.</summary>
+    public Color OutlineColor { get; init; } = Colors.Black;
+
+    /// <summary>Width of the line round the letters; 0 draws none.</summary>
+    public double OutlineWidth { get; init; }
 
     /// <summary>Captions sit at the bottom of the picture, or at the top when this is set.</summary>
     public bool AtTop { get; init; }

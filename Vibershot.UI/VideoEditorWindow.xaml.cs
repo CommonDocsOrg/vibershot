@@ -70,10 +70,20 @@ public partial class VideoEditorWindow : Window
         FontSizeBox.Committed += value => StyleText(text => text with { FontSize = value }, style => style with { FontSize = value });
         StrokeWidthBox.Committed += value => StyleGraphic(item => item with { StrokeWidth = value });
         TextColour.ValueChanged += colour => { if (!_updatingPanel && colour is { } c) StyleText(text => text with { Color = c }, style => style with { Color = c }); };
-        BackColour.ValueChanged += colour => { if (!_updatingPanel) StyleText(text => text with { Background = colour }, style => style with { Background = colour }); };
+        // Captions left without a box get an outline, so the words still read over a busy picture.
+        BackColour.ValueChanged += colour => { if (!_updatingPanel) StyleText(text => text with { Background = colour }, style => style with { Background = colour, OutlineWidth = colour == null && style.OutlineWidth <= 0 ? TimelineOps.DefaultOutlineWidth(style.FontSize) : style.OutlineWidth }); };
+        // No colour switches the outline off; picking one switches it on at a width that suits the letters.
+        OutlineColour.ValueChanged += colour =>
+        {
+            if (_updatingPanel) return;
+            if (colour is not { } c) StyleText(text => text with { OutlineWidth = 0 }, style => style with { OutlineWidth = 0 });
+            else StyleText(text => text with { OutlineColor = c, OutlineWidth = text.OutlineWidth > 0 ? text.OutlineWidth : TimelineOps.DefaultOutlineWidth(text.FontSize) },
+                style => style with { OutlineColor = c, OutlineWidth = style.OutlineWidth > 0 ? style.OutlineWidth : TimelineOps.DefaultOutlineWidth(style.FontSize) });
+        };
+        OutlineWidthBox.Committed += value => StyleText(text => text with { OutlineWidth = value }, style => style with { OutlineWidth = value });
         StrokeColour.ValueChanged += colour => { if (!_updatingPanel) StyleGraphic(item => item with { Stroke = colour, StrokeWidth = colour != null && item.StrokeWidth <= 0 ? Math.Max(2, Math.Round(Project.Height / 180.0)) : item.StrokeWidth }); };
         FillColour.ValueChanged += colour => { if (!_updatingPanel) StyleGraphic(item => item is TextItem ? item : item with { Fill = colour }); };
-        foreach (var box in new[] { FontSizeBox, StrokeWidthBox }) box.ReturnFocusTo = Timeline;
+        foreach (var box in new[] { FontSizeBox, StrokeWidthBox, OutlineWidthBox }) box.ReturnFocusTo = Timeline;
         BuildElements();
         PlaceX.Committed += value => Place(p => p with { X = value });
         PlaceY.Committed += value => Place(p => p with { Y = value });
@@ -593,8 +603,8 @@ public partial class VideoEditorWindow : Window
         _updatingPanel = true;
         try
         {
-            Preview.Selected = selected.Select(pair => pair.Clip).FirstOrDefault(clip => clip is GraphicClip || clip is ImageClip || clip is VideoClip)?.Id;
-            if (InlineWords.Visibility == Visibility.Visible && (SelectedGraphic is not { Item: TextItem })) EndInlineEdit();
+            Preview.Selected = selected.Select(pair => pair.Clip).FirstOrDefault(clip => clip is GraphicClip || clip is ImageClip || clip is VideoClip || clip is CaptionClip)?.Id;
+            if (InlineWords.Visibility == Visibility.Visible && InlineText == null) EndInlineEdit();
             if (selected.Count == 0)
             {
                 ClipPanel.Visibility = Visibility.Collapsed; ProjectPanel.Visibility = Visibility.Visible;
@@ -636,6 +646,12 @@ public partial class VideoEditorWindow : Window
                 BackColour.Value = words != null ? words.Background : style!.Background;
                 CaptionTopCheck.Visibility = CaptionNote.Visibility = captionItem != null ? Visibility.Visible : Visibility.Collapsed;
                 CaptionTopCheck.IsChecked = style?.AtTop ?? false;
+                double outline = words?.OutlineWidth ?? style!.OutlineWidth;
+                OutlineColour.Value = outline > 0 ? words?.OutlineColor ?? style!.OutlineColor : null;
+                OutlineWidthBox.Show(Math.Max(0, outline));
+                // Captions take only the outline from their track; the shadow is for text graphics.
+                TextShadowCheck.Visibility = words != null ? Visibility.Visible : Visibility.Collapsed;
+                TextShadowCheck.IsChecked = words?.TextShadow ?? false;
             }
             // Line and fill: shapes, arrows, lines and a callout's outline. Stamps keep their own colours unless given one.
             ShapePanel.Visibility = graphicItem != null && (graphicItem is not TextItem || graphicItem is CalloutItem) ? Visibility.Visible : Visibility.Collapsed;
@@ -852,19 +868,36 @@ public partial class VideoEditorWindow : Window
         StyleText(text => text with { Bold = bold, Italic = italic, Alignment = align }, style => style with { Bold = bold });
     }
 
+    private void TextShadow_Click(object sender, RoutedEventArgs e)
+    {
+        bool on = TextShadowCheck.IsChecked == true;
+        StyleText(text => text with { TextShadow = on }, style => style);
+    }
+
     private void CaptionTop_Click(object sender, RoutedEventArgs e)
     {
         bool top = CaptionTopCheck.IsChecked == true;
         StyleText(text => text, style => style with { AtTop = top });
     }
 
-    /// <summary>Shows a text box exactly over a text graphic so its words can be typed where they appear.</summary>
+    /// <summary>
+    /// The words being typed in place, as the box they are drawn in: the selected text graphic's
+    /// item, or the selected caption laid out by its track's style.
+    /// </summary>
+    private TextItem? InlineText =>
+        SelectedGraphic is { Item: TextItem words } ? words
+        : SelectedCaption is var (track, caption) ? TimelineOps.CaptionItem(Project, track, caption) : null;
+
+    /// <summary>Shows a text box exactly over a text graphic or a caption so its words can be typed where they appear.</summary>
     private void BeginInlineEdit(Guid clipId)
     {
-        if (TimelineOps.Find(Project, clipId) is not var (_, clip) || clip is not GraphicClip { Item: TextItem text }) return;
+        if (TimelineOps.Find(Project, clipId) is not var (_, clip)) return;
+        string? was = clip switch { GraphicClip { Item: TextItem item } => item.Text, CaptionClip caption => caption.Text, _ => null };
+        if (was == null) return;
         Timeline.Select(new[] { clipId });
+        if (InlineText is not { } text) return;
         _updatingPanel = true;
-        InlineWords.Text = text.Text;
+        InlineWords.Text = was;
         _updatingPanel = false;
         InlineWords.Visibility = Visibility.Visible;
         PositionInlineEdit();
@@ -872,10 +905,10 @@ public partial class VideoEditorWindow : Window
         InlineWords.SelectAll();
     }
 
-    /// <summary>Keeps the in-place box on its graphic, matching its letters, as the text or the window changes.</summary>
+    /// <summary>Keeps the in-place box on its graphic or caption, matching its letters, as the text or the window changes.</summary>
     private void PositionInlineEdit()
     {
-        if (SelectedGraphic is not { Item: TextItem text }) { EndInlineEdit(); return; }
+        if (InlineText is not { } text) { EndInlineEdit(); return; }
         var screen = Preview.ScreenRect(text.Bounds);
         double zoom = screen.Width / Math.Max(1, text.Bounds.Width);
         // A few pixels wider than the graphic: a text box measures a hair wider than the renderer,
