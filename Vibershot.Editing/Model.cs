@@ -109,6 +109,17 @@ public record TextItem : Item
     public TextAlign Alignment { get; init; } = TextAlign.Left;
     public Color? Background { get; init; }
     public double Padding { get; init; } = 6;
+
+    /// <summary>Colour of the line drawn round the letters.</summary>
+    public Color OutlineColor { get; init; } = Colors.Black;
+
+    /// <summary>How far the line round the letters reaches beyond them, in document pixels; 0 draws none.</summary>
+    public double OutlineWidth { get; init; }
+
+    /// <summary>A soft dark copy of the letters, down and to the right. (<see cref="Item.Shadow"/> is the shadow of the box.)</summary>
+    public bool TextShadow { get; init; }
+
+    [JsonIgnore] public bool HasOutline => OutlineColor.A > 0 && OutlineWidth > 0;
 }
 
 public enum CalloutKind { Label, Speech, Oval, Thought }

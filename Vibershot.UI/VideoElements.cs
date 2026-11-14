@@ -87,9 +87,10 @@ public static class VideoElements
             CalloutItem callout => callout with
             {
                 FontSize = callout.FontSize * factor, Padding = callout.Padding * factor, CornerRadius = callout.CornerRadius * factor, HeadSize = callout.HeadSize * factor,
+                OutlineWidth = callout.OutlineWidth * factor,
                 Targets = callout.Targets.Select(Map).ToImmutableList(),
             },
-            TextItem text => text with { FontSize = text.FontSize * factor, Padding = text.Padding * factor },
+            TextItem text => text with { FontSize = text.FontSize * factor, Padding = text.Padding * factor, OutlineWidth = text.OutlineWidth * factor },
             RectItem rect => rect with { CornerRadius = rect.CornerRadius * factor },
             ArrowItem arrow => arrow with { HeadSize = arrow.HeadSize * factor },
             _ => scaled,
