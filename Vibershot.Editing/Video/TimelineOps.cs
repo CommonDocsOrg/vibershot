@@ -25,6 +25,7 @@ public static class TimelineOps
     /// <summary>A project sized and timed like its first clip (capped at 3840 on the long side), with that clip placed at the start.</summary>
     public static VideoProject ForSource(MediaSource source)
     {
+        if (source.IsImage) return Append(Empty(), source);
         int width = source.Width > 0 ? source.Width : 1920, height = source.Height > 0 ? source.Height : 1080;
         double scale = Math.Min(1, (double)VideoProject.MaxDimension / Math.Max(width, height));
         var project = Empty(FrameReader.Even((int)Math.Round(width * scale)), FrameReader.Even((int)Math.Round(height * scale)), source.FrameRate ?? "30");
@@ -88,12 +89,15 @@ public static class TimelineOps
 
     /// <summary>Whole frames of the source left after <paramref name="sourceIn"/> seconds.</summary>
     private static long SourceFrames(VideoProject project, MediaSource source, double sourceIn) =>
-        Math.Max(1, (long)Math.Floor((source.Duration - sourceIn) * project.Rate.Value + 1e-6));
+        source.IsImage ? long.MaxValue / 4 : Math.Max(1, (long)Math.Floor((source.Duration - sourceIn) * project.Rate.Value + 1e-6));
+
+    /// <summary>How long a still picture stays on screen when it is first placed.</summary>
+    public const double ImageSeconds = 5;
 
     /// <summary>Places a source at the end of the bottom video track.</summary>
     public static VideoProject Append(VideoProject project, MediaSource source)
     {
-        var kind = source.HasVideo ? TrackKind.Visual : TrackKind.Audio;
+        var kind = source.HasPicture ? TrackKind.Visual : TrackKind.Audio;
         var first = project.Tracks.FirstOrDefault(track => track.Kind == kind);
         return Insert(project, source, first?.Id, first == null ? 0 : EndOf(first), out _);
     }
@@ -102,16 +106,20 @@ public static class TimelineOps
     /// Places a source at <paramref name="start"/>: its picture on the given visual track (or the
     /// lowest free one, or a new one on top) and its sound, linked, on the first free audio track.
     /// </summary>
-    public static VideoProject Insert(VideoProject project, MediaSource source, Guid? trackId, long start, out Guid clipId)
+    public static VideoProject Insert(VideoProject project, MediaSource source, Guid? trackId, long start, out Guid clipId, Placement? placement = null)
     {
         project = AddSource(project, source);
         start = Math.Max(0, start);
-        long duration = SourceFrames(project, source, 0);
+        long duration = source.IsImage ? Math.Max(1, project.Frames(ImageSeconds)) : SourceFrames(project, source, 0);
+        // A small still (a logo) keeps its own size instead of being blown up to the canvas.
+        if (source.IsImage && placement == null && source.Width <= project.Width && source.Height <= project.Height) placement = Natural(project, source.Width, source.Height);
         Guid? link = source.HasVideo && source.HasAudio ? Guid.NewGuid() : null;
         clipId = Guid.Empty;
-        if (source.HasVideo)
+        if (source.HasPicture)
         {
-            var clip = new VideoClip { SourceId = source.Id, Start = start, Duration = duration, LinkId = link };
+            VisualClip clip = source.IsImage
+                ? new ImageClip { SourceId = source.Id, Start = start, Duration = duration, Placement = placement }
+                : new VideoClip { SourceId = source.Id, Start = start, Duration = duration, LinkId = link, Placement = placement };
             project = Place(project, clip, TrackKind.Visual, trackId);
             clipId = clip.Id;
         }
@@ -123,6 +131,69 @@ public static class TimelineOps
         }
         return project;
     }
+
+    /// <summary>
+    /// Places a source at <paramref name="start"/> above everything showing during its span: on
+    /// the first free layer over the highest one in use there, or on a new top layer.
+    /// </summary>
+    public static VideoProject InsertOnTop(VideoProject project, MediaSource source, long start, out Guid clipId, Placement? placement = null)
+    {
+        project = AddSource(project, source);
+        start = Math.Max(0, start);
+        long duration = source.IsImage ? Math.Max(1, project.Frames(ImageSeconds)) : SourceFrames(project, source, 0);
+        var visual = project.Tracks.Where(track => track.Kind == TrackKind.Visual).ToList();
+        int highestBusy = visual.FindLastIndex(track => !IsFree(track, start, duration));
+        var target = visual.Skip(highestBusy + 1).FirstOrDefault(track => !track.Locked);
+        Guid? trackId = target?.Id;
+        if (target == null && source.HasPicture) { project = AddTrack(project, TrackKind.Visual, out var added); trackId = added; }
+        return Insert(project, source, trackId, start, out clipId, placement);
+    }
+
+    /// <summary>Places only a source's sound, unlinked, on the first free audio track.</summary>
+    public static VideoProject InsertAudioOnly(VideoProject project, MediaSource source, long start, out Guid clipId)
+    {
+        clipId = Guid.Empty;
+        if (!source.HasAudio) return project;
+        project = AddSource(project, source);
+        var clip = new AudioClip { SourceId = source.Id, Start = Math.Max(0, start), Duration = SourceFrames(project, source, 0) };
+        clipId = clip.Id;
+        return Place(project, clip, TrackKind.Audio, null);
+    }
+
+    /// <summary>The placement that fits a picture of this size inside the canvas, centred, on even pixels.</summary>
+    public static Placement Fit(VideoProject project, int sourceWidth, int sourceHeight)
+    {
+        var (w, h) = FrameReader.Fit(sourceWidth, sourceHeight, project.Width, project.Height);
+        return new Placement { X = (project.Width - w) / 2.0, Y = (project.Height - h) / 2.0, Width = w, Height = h };
+    }
+
+    /// <summary>A picture at its own size when that fits the canvas, otherwise fitted; centred either way.</summary>
+    public static Placement Natural(VideoProject project, int sourceWidth, int sourceHeight)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 || sourceWidth > project.Width || sourceHeight > project.Height) return Fit(project, sourceWidth, sourceHeight);
+        return new Placement { X = Math.Round((project.Width - sourceWidth) / 2.0), Y = Math.Round((project.Height - sourceHeight) / 2.0), Width = sourceWidth, Height = sourceHeight };
+    }
+
+    /// <summary>The placement that covers the whole canvas, cropping what overhangs.</summary>
+    public static Placement Fill(VideoProject project, int sourceWidth, int sourceHeight)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0) return new Placement { Width = project.Width, Height = project.Height };
+        double canvas = (double)project.Width / project.Height, picture = (double)sourceWidth / sourceHeight;
+        // A wider picture loses its sides, a taller one its top and bottom.
+        double cropX = picture > canvas ? (1 - canvas / picture) / 2 : 0, cropY = picture < canvas ? (1 - picture / canvas) / 2 : 0;
+        return new Placement { Width = project.Width, Height = project.Height, CropLeft = cropX, CropRight = cropX, CropTop = cropY, CropBottom = cropY };
+    }
+
+    /// <summary>A clip's placement: its own, or the fitted default.</summary>
+    public static Placement PlacementOf(VideoProject project, VisualClip clip)
+    {
+        if (clip.Placement is { } own) return own;
+        var source = project.Source(clip.SourceId);
+        return Fit(project, source?.Width ?? project.Width, source?.Height ?? project.Height);
+    }
+
+    public static VideoProject SetPlacement(VideoProject project, Guid clipId, Placement? placement) =>
+        Update(project, clipId, clip => clip is VisualClip visual ? visual with { Placement = placement } : clip);
 
     private static VideoProject Place(VideoProject project, Clip clip, TrackKind kind, Guid? preferred)
     {
@@ -202,14 +273,14 @@ public static class TimelineOps
             foreach (var clip in track.Clips.Where(clip => group.Contains(clip.Id)))
             {
                 long previousEnd = track.Clips.Where(other => other.End <= clip.Start && !group.Contains(other.Id)).Select(other => other.End).DefaultIfEmpty(0).Max();
-                long sourceRoom = (long)Math.Floor(clip.SourceIn * project.Rate.Value + 1e-6);
+                long sourceRoom = clip is ImageClip ? long.MaxValue / 4 : (long)Math.Floor(clip.SourceIn * project.Rate.Value + 1e-6);
                 min = Math.Max(min, Math.Max(previousEnd - clip.Start, -sourceRoom));
                 max = Math.Min(max, clip.Duration - 1);
             }
         }
         delta = Math.Clamp(delta, min, Math.Max(min, max));
         if (delta == 0) return project;
-        return Map(project, group, clip => clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = Math.Max(0, clip.SourceIn + project.Seconds(delta)) });
+        return Map(project, group, clip => clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = clip is ImageClip ? 0 : Math.Max(0, clip.SourceIn + project.Seconds(delta)) });
     }
 
     /// <summary>Drags a clip's right edge to <paramref name="newEnd"/>, clamped to its source, its neighbours and one frame of length.</summary>
@@ -265,7 +336,7 @@ public static class TimelineOps
                 }
                 long leftLength = frame - clip.Start;
                 result.Add(clip with { Duration = leftLength });
-                result.Add(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink });
+                result.Add(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = clip is ImageClip ? 0 : clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink });
             }
             return WithClips(track, result);
         }).ToImmutableList();
@@ -308,14 +379,14 @@ public static class TimelineOps
         return points.ToList();
     }
 
-    /// <summary>The video clips showing at a frame, bottom layer first, skipping hidden tracks.</summary>
-    public static List<VideoClip> VisibleAt(VideoProject project, long frame)
+    /// <summary>The pictures showing at a frame, bottom layer first, skipping hidden tracks.</summary>
+    public static List<VisualClip> VisibleAt(VideoProject project, long frame)
     {
-        var result = new List<VideoClip>();
+        var result = new List<VisualClip>();
         foreach (var track in project.Tracks)
         {
             if (track.Kind != TrackKind.Visual || track.Hidden) continue;
-            if (track.Clips.FirstOrDefault(clip => clip.Start <= frame && frame < clip.End) is VideoClip clip) result.Add(clip);
+            if (track.Clips.FirstOrDefault(clip => clip.Start <= frame && frame < clip.End) is VisualClip clip) result.Add(clip);
         }
         return result;
     }
@@ -324,9 +395,12 @@ public static class TimelineOps
     /// Flattens the project for ffmpeg. <paramref name="resolvePath"/> can swap a source for a
     /// stand-in (a proxy); by default the linked original is used.
     /// </summary>
-    public static ExportPlan ToPlan(VideoProject project, Func<MediaSource, string>? resolvePath = null)
+    public static ExportPlan ToPlan(VideoProject project, Func<MediaSource, string>? resolvePath = null, int? width = null, int? height = null)
     {
         string PathOf(MediaSource source) => resolvePath?.Invoke(source) ?? source.Path;
+        int outWidth = width ?? project.Width, outHeight = height ?? project.Height;
+        // Placements are in canvas pixels; a smaller or larger output scales them with the canvas.
+        double sx = (double)outWidth / project.Width, sy = (double)outHeight / project.Height;
         var video = new List<ExportVideoClip>();
         var audio = new List<ExportAudioClip>();
         foreach (var track in project.Tracks)
@@ -334,8 +408,17 @@ public static class TimelineOps
             foreach (var clip in track.Clips)
             {
                 if (project.Source(clip.SourceId) is not { } source) continue;
-                if (clip is VideoClip && track.Kind == TrackKind.Visual && !track.Hidden)
-                    video.Add(new ExportVideoClip(PathOf(source), clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start)));
+                if (clip is VisualClip visual && track.Kind == TrackKind.Visual && !track.Hidden)
+                {
+                    var p = PlacementOf(project, visual);
+                    if (p.Opacity <= 0 || p.Width < 1 || p.Height < 1) continue;
+                    video.Add(new ExportVideoClip(source.IsImage ? source.Path : PathOf(source), clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start),
+                        p.X * sx, p.Y * sy, Math.Max(2, (int)Math.Round(p.Width * sx)), Math.Max(2, (int)Math.Round(p.Height * sy)))
+                    {
+                        Rotation = p.Rotation, Opacity = Math.Min(1, p.Opacity), IsImage = source.IsImage,
+                        CropLeft = p.CropLeft, CropTop = p.CropTop, CropRight = p.CropRight, CropBottom = p.CropBottom,
+                    });
+                }
                 else if (clip is AudioClip { Muted: false } sound && track.Kind == TrackKind.Audio && !track.Muted && sound.Volume > 0)
                     audio.Add(new ExportAudioClip(source.Path, clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start), sound.Volume));
             }
@@ -343,8 +426,8 @@ public static class TimelineOps
         var c = project.Background;
         return new ExportPlan
         {
-            Width = project.Width,
-            Height = project.Height,
+            Width = outWidth,
+            Height = outHeight,
             FrameRate = project.Rate,
             Duration = project.Seconds(project.Duration),
             Background = $"0x{c.R:X2}{c.G:X2}{c.B:X2}",

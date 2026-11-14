@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.IO;
+using System.Windows;
 using System.Text.Json.Serialization;
 using System.Windows.Media;
 using Vibershot.Media;
@@ -26,7 +28,13 @@ public sealed record MediaSource
     public string? FrameRate { get; init; }
     public bool HasVideo { get; init; } = true;
     public bool HasAudio { get; init; }
+
+    /// <summary>A still picture (PNG, JPEG…): no duration of its own, so its clips can be any length.</summary>
+    public bool IsImage { get; init; }
     public long FileSize { get; init; }
+
+    /// <summary>True when the source can go on a visual track.</summary>
+    [JsonIgnore] public bool HasPicture => HasVideo || IsImage;
 
     [JsonIgnore] public string Name => System.IO.Path.GetFileName(Path);
 
@@ -41,6 +49,50 @@ public sealed record MediaSource
         HasAudio = info.HasAudio,
         FileSize = info.FileSize,
     };
+
+    public static MediaSource ForImage(string path, int width, int height) => new()
+    {
+        Path = path, Width = width, Height = height, HasVideo = false, HasAudio = false, IsImage = true,
+        FileSize = File.Exists(path) ? new FileInfo(path).Length : 0,
+    };
+}
+
+/// <summary>
+/// Where a picture sits on the canvas, in canvas pixels: the box the visible (cropped) part of
+/// the picture is stretched into, turned about its centre. Crop values are fractions of the
+/// source picture cut from each side.
+/// </summary>
+public sealed record Placement
+{
+    public double X { get; init; }
+    public double Y { get; init; }
+    public double Width { get; init; }
+    public double Height { get; init; }
+
+    /// <summary>Degrees clockwise.</summary>
+    public double Rotation { get; init; }
+
+    public double Opacity { get; init; } = 1;
+    public double CropLeft { get; init; }
+    public double CropTop { get; init; }
+    public double CropRight { get; init; }
+    public double CropBottom { get; init; }
+
+    [JsonIgnore] public Rect Bounds => new(X, Y, Math.Max(0, Width), Math.Max(0, Height));
+    [JsonIgnore] public Point Center => new(X + Width / 2, Y + Height / 2);
+    [JsonIgnore] public bool IsCropped => CropLeft > 0 || CropTop > 0 || CropRight > 0 || CropBottom > 0;
+
+    /// <summary>The box the whole uncropped picture would cover, before rotation.</summary>
+    [JsonIgnore] public Rect FullBounds
+    {
+        get
+        {
+            double w = Width / Math.Max(0.01, 1 - CropLeft - CropRight), h = Height / Math.Max(0.01, 1 - CropTop - CropBottom);
+            return new Rect(X - CropLeft * w, Y - CropTop * h, w, h);
+        }
+    }
+
+    public Placement WithBounds(Rect bounds) => this with { X = bounds.X, Y = bounds.Y, Width = bounds.Width, Height = bounds.Height };
 }
 
 /// <summary>
@@ -50,6 +102,7 @@ public sealed record MediaSource
 /// </summary>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(VideoClip), "video")]
+[JsonDerivedType(typeof(ImageClip), "image")]
 [JsonDerivedType(typeof(AudioClip), "audio")]
 public abstract record Clip
 {
@@ -63,7 +116,16 @@ public abstract record Clip
     [JsonIgnore] public long End => Start + Duration;
 }
 
-public sealed record VideoClip : Clip;
+/// <summary>A clip that draws on the canvas. Without a <see cref="Placement"/> it is fitted inside the canvas and centred.</summary>
+public abstract record VisualClip : Clip
+{
+    public Placement? Placement { get; init; }
+}
+
+public sealed record VideoClip : VisualClip;
+
+/// <summary>A still picture held on screen for the clip's length.</summary>
+public sealed record ImageClip : VisualClip;
 
 public sealed record AudioClip : Clip
 {

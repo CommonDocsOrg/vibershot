@@ -112,19 +112,23 @@ static class VideoEditorChecks
         var plan = new ExportPlan
         {
             Width = 1280, Height = 720, FrameRate = FrameRate.Fps30, Duration = 4, Background = "0x000000",
-            Video = new[] { new ExportVideoClip(@"C:\a.mp4", 1.5, 2, 0), new ExportVideoClip(@"C:\b.mp4", 0, 1, 2.5) },
+            Video = new[]
+            {
+                new ExportVideoClip(@"C:\a.mp4", 1.5, 2, 0, 0, 0, 1280, 720),
+                new ExportVideoClip(@"C:\b.png", 0, 1, 2.5, 900, 500, 320, 180) { Rotation = 90, Opacity = 0.5, CropLeft = 0.25, IsImage = true },
+            },
             Audio = new[] { new ExportAudioClip(@"C:\a.mp4", 1.5, 2, 0, 0.5) },
         };
-        const string fit = "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1";
         string graph = "color=c=0x000000:s=1280x720:r=30:d=4,format=yuv420p[bg]"
-            + $";[0:v]fps=30,{fit},setpts=PTS-STARTPTS+0/TB[v0];[bg][v0]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='gte(t,0)*lt(t,2)'[o0]"
-            + $";[1:v]fps=30,{fit},setpts=PTS-STARTPTS+2.5/TB[v1];[o0][v1]overlay=x=(W-w)/2:y=(H-h)/2:eof_action=pass:enable='gte(t,2.5)*lt(t,3.5)'[o1]"
+            + ";[0:v]fps=30,scale=1280:720:flags=lanczos,setsar=1,setpts=PTS-STARTPTS+0/TB[v0];[bg][v0]overlay=x=640-w/2:y=360-h/2:eof_action=pass:enable='gte(t,0)*lt(t,2)'[o0]"
+            + ";[1:v]fps=30,crop=iw*0.75:ih*1:iw*0.25:ih*0,scale=320:180:flags=lanczos,setsar=1,format=rgba,colorchannelmixer=aa=0.5,rotate=1.570796:ow=rotw(1.570796):oh=roth(1.570796):c=none,setpts=PTS-STARTPTS+2.5/TB[v1]"
+            + ";[o0][v1]overlay=x=1060-w/2:y=590-h/2:eof_action=pass:enable='gte(t,2.5)*lt(t,3.5)'[o1]"
             + ";[o1]format=yuv420p[vout]"
             + ";[2:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=0.5,adelay=0:all=1[a2];[a2]amix=inputs=1:normalize=0:duration=longest,apad,atrim=0:4[aout]";
-        Same(new[] { "-hide_banner", "-nostats", "-progress", "pipe:1", "-ss", "1.5", "-t", "2", "-i", @"C:\a.mp4", "-ss", "0", "-t", "1", "-i", @"C:\b.mp4", "-ss", "1.5", "-t", "2", "-vn", "-i", @"C:\a.mp4",
+        Same(new[] { "-hide_banner", "-nostats", "-progress", "pipe:1", "-ss", "1.5", "-t", "2", "-i", @"C:\a.mp4", "-loop", "1", "-framerate", "30", "-t", "1", "-i", @"C:\b.png", "-ss", "1.5", "-t", "2", "-vn", "-i", @"C:\a.mp4",
                 "-filter_complex", graph, "-map", "[vout]", "-map", "[aout]", "-c:v", "h264_nvenc", "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", "23", "-b:v", "0", "-g", "30",
                 "-r", "30", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-t", "4", "-movflags", "+faststart", "-f", "mp4", "-y", @"C:\out.mp4" },
-            ExportArguments.Build(plan, EncoderProbe.Hardware[0], 75, @"C:\out.mp4"), "export arguments");
+            ExportArguments.Build(plan, EncoderProbe.Hardware[0], 75, @"C:\out.mp4"), "export arguments: a full-canvas video and a cropped, faded, turned still");
         Check(!ExportArguments.Build(plan, EncoderProbe.Hardware[0], 75, @"C:\out.mp4", includeAudio: false).Contains("[aout]"), "export without audio maps no audio");
         Same(new[] { "-hide_banner", "-nostats", "-progress", "pipe:1", "-ss", "1.5", "-t", "2", "-vn", "-i", @"C:\a.mp4", "-filter_complex",
                 "[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=0.5,adelay=0:all=1[a0];[a0]amix=inputs=1:normalize=0:duration=longest,apad,atrim=0:4[aout]",
@@ -140,6 +144,192 @@ static class VideoEditorChecks
         Check(TimelineOps.ToPlan(layered, s => s.Path + ".proxy").Video[0].Path.EndsWith(".proxy") && TimelineOps.ToPlan(layered, s => s.Path + ".proxy").Audio[0].Path == a.Path, "proxy swap applies to pictures only");
         TimelineGestures();
         Console.WriteLine("PASS: video editor timeline edits and mouse gestures, project file and relink, frame reader/proxy/export/audio mix arguments.");
+        Overlays();
+        PreviewGestures();
+        Console.WriteLine("PASS: video editor overlays (placement, stills, on-top insert, audio-only, scaled plans, waveform peaks) and preview handles (pick, move, snap, resize, turn, crop).");
+    }
+
+    /// <summary>
+    /// Opens the video editor window on its own, outside the tray app and its single-instance
+    /// pipe, so it can be looked at while another Vibershot is running:
+    /// <c>CaptureChecks --editor file [canvasX,canvasY]</c>. The optional point is clicked in the
+    /// preview once the window has settled, to select the picture there.
+    /// </summary>
+    public static void ShowEditor(string path, string? pick)
+    {
+        App.Hosted = true;
+        var app = new App();
+        app.InitializeComponent();
+        // Application.Run would install this; without it, awaits in the window resume on pool threads.
+        System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext());
+        var window = VideoEditorWindow.Open(app.Config, path);
+        window.ShowActivated = false;
+        window.Closed += (_, _) => app.Shutdown();
+        if (pick != null && window.FindName("Preview") is VideoPreview preview)
+        {
+            var parts = pick.Split(',').Select(part => double.Parse(part, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+            timer.Tick += (_, _) => { timer.Stop(); preview.PointerDown(preview.CanvasToScreen(new Point(parts[0], parts[1]))); preview.PointerUp(); };
+            timer.Start();
+        }
+        app.Run(window);
+    }
+
+
+    static bool Near(double a, double b, double tolerance = 1e-6) => Math.Abs(a - b) <= tolerance;
+
+    /// <summary>Stage 2 model work: where pictures sit, stills, layering on top, sound on its own.</summary>
+    static void Overlays()
+    {
+        var a = Source(@"C:\media\a.mp4", 10);
+        var project = TimelineOps.ForSource(a);
+        var clip = (VideoClip)project.Tracks[0].Clips[0];
+
+        // Default placement fits and centres; Fill covers the canvas and crops the overhang.
+        var fit = TimelineOps.Fit(project, 640, 480);
+        Check(fit.Width == 1440 && fit.Height == 1080 && fit.X == 240 && fit.Y == 0 && !fit.IsCropped, "4:3 fitted into 16:9 is pillarboxed");
+        var fill = TimelineOps.Fill(project, 640, 480);
+        Check(fill.Width == 1920 && fill.Height == 1080 && fill.CropLeft == 0 && Near(fill.CropTop, 0.125) && Near(fill.CropBottom, 0.125), "4:3 filling 16:9 loses an eighth top and bottom");
+        Check(Near(fill.FullBounds.Height, 1440) && Near(fill.FullBounds.Y, -180), "the whole picture of a filled clip overhangs the canvas");
+        Check(clip.Placement == null && TimelineOps.PlacementOf(project, clip).Bounds == new Rect(0, 0, 1920, 1080), "an unplaced clip fills its matching canvas");
+        var natural = TimelineOps.Natural(project, 400, 200);
+        Check(natural.Bounds == new Rect(760, 440, 400, 200) && TimelineOps.Natural(project, 4000, 2000).Width == 1920, "a small picture keeps its size, a large one is fitted");
+
+        // Placing a clip, and a plan for a half-size export scales the boxes with the canvas.
+        var placed = TimelineOps.SetPlacement(project, clip.Id, new Placement { X = 100, Y = 50, Width = 960, Height = 540, Rotation = 30, Opacity = 0.8, CropRight = 0.1 });
+        var half = TimelineOps.ToPlan(placed, null, 960, 540).Video.Single();
+        Check(half.X == 50 && half.Y == 25 && half.Width == 480 && half.Height == 270 && half.Rotation == 30 && half.Opacity == 0.8 && half.CropRight == 0.1 && !half.IsImage, "plan scales a placement to the output size");
+        var full = TimelineOps.ToPlan(project).Video.Single();
+        Check(full.X == 0 && full.Y == 0 && full.Width == 1920 && full.Height == 1080 && full.Rotation == 0 && full.Opacity == 1, "plan gives an unplaced clip its fitted box");
+        Check(TimelineOps.ToPlan(TimelineOps.SetPlacement(project, clip.Id, fit with { Opacity = 0 })).Video.Count == 0, "a fully transparent clip is left out");
+        Check(TimelineOps.SetPlacement(placed, clip.Id, null).Tracks[0].Clips[0] is VideoClip { Placement: null }, "placement can be reset");
+
+        // Stills: five seconds at their own size, any length, never a source offset.
+        var logo = MediaSource.ForImage(@"C:\media\logo.png", 400, 200);
+        Check(logo.IsImage && logo.HasPicture && !logo.HasVideo && !logo.HasAudio, "an image source is a picture without video or sound");
+        var withLogo = TimelineOps.InsertOnTop(project, logo, 30, out var logoId);
+        var found = TimelineOps.Find(withLogo, logoId)!.Value;
+        Check(found.Clip is ImageClip { Start: 30, Duration: 150 } still && still.Placement!.Bounds == new Rect(760, 440, 400, 200) && found.Track.Name == "V2", "a still lands on a new top layer for five seconds at its own size");
+        Check(TimelineOps.VisibleAt(withLogo, 60).Select(c => c.Id).SequenceEqual(new[] { clip.Id, logoId }) && TimelineOps.VisibleAt(withLogo, 200).Count == 1, "the still shows over the video only during its span");
+        var longer = TimelineOps.TrimEnd(withLogo, logoId, 900);
+        Check(TimelineOps.Find(longer, logoId)!.Value.Clip.End == 900, "a still can be stretched past any source length");
+        var earlier = TimelineOps.TrimStart(longer, logoId, 0);
+        Check(TimelineOps.Find(earlier, logoId)!.Value.Clip is { Start: 0, Duration: 900, SourceIn: 0 }, "a still can be stretched left and has no source offset");
+        var cut = TimelineOps.Split(earlier, 300, new[] { logoId });
+        Check(cut.Tracks[1].Clips.Count == 2 && cut.Tracks[1].Clips.All(c => c is ImageClip { SourceIn: 0 }), "a split still is two stills");
+        var again = TimelineOps.InsertOnTop(withLogo, logo, 60, out var secondLogo);
+        Check(TimelineOps.Find(again, secondLogo)!.Value.Track.Name == "V3" && again.Sources.Count == 2, "a second overlapping still goes one layer higher, sharing the source");
+        Check(TimelineOps.Find(TimelineOps.InsertOnTop(withLogo, logo, 600, out var later), later)!.Value.Track.Name == "V1", "past the end of everything the lowest layer is free");
+        var stillFirst = TimelineOps.ForSource(logo);
+        Check(stillFirst.Width == 1920 && stillFirst.Tracks[0].Clips.Single() is ImageClip, "a project started from a still gets the default canvas");
+
+        // The project file keeps stills and placements.
+        var json = DocumentJson.Serialize(TimelineOps.SetPlacement(withLogo, clip.Id, new Placement { X = 1, Y = 2, Width = 300, Height = 200, Rotation = 45, Opacity = 0.5, CropTop = 0.2 }));
+        var back = DocumentJson.Deserialize<VideoProject>(json)!;
+        Check(back.Tracks[0].Clips[0] is VideoClip { Placement: { X: 1, Y: 2, Width: 300, Height: 200, Rotation: 45, Opacity: 0.5, CropTop: 0.2 } }
+            && back.Tracks[1].Clips[0] is ImageClip { Placement.Width: 400 } && back.Sources[1].IsImage, "placements and stills survive the project file");
+        var planned = TimelineOps.ToPlan(back, s => s.Path + ".proxy");
+        Check(planned.Video.Count == 2 && planned.Video[1].IsImage && planned.Video[1].Path == logo.Path && planned.Video[0].Path.EndsWith(".proxy"), "a still is never swapped for a proxy");
+
+        // Sound on its own: unlinked, on a free audio lane.
+        var soundOnly = TimelineOps.InsertAudioOnly(project, a, 0, out var soundId);
+        var lane = TimelineOps.Find(soundOnly, soundId)!.Value;
+        Check(lane.Clip is AudioClip { LinkId: null, Duration: 300 } && lane.Track.Name == "A2" && soundOnly.Tracks[0].Clips.Count == 1, "audio-only insert adds an unlinked clip on a new lane");
+        Check(ReferenceEquals(TimelineOps.InsertAudioOnly(project, logo, 0, out _), project), "a still has no sound to add");
+
+        // Waveform: argument string and peak lookup.
+        Same(new[] { "-hide_banner", "-loglevel", "error", "-nostdin", "-i", @"C:\v.mp4", "-vn", "-sn", "-ac", "1", "-ar", "8000", "-f", "s16le", "-" }, WaveformCache.Arguments(@"C:\v.mp4"), "waveform arguments");
+        var wave = new Waveform(0.01, new byte[] { 0, 51, 255, 102, 0 });
+        Check(Near(wave.PeakBetween(0, 0.005), 0) && Near(wave.PeakBetween(0.011, 0.012), 0.2) && Near(wave.PeakBetween(0, 0.04), 1) && Near(wave.PeakBetween(0.035, 9), 0.4) && new Waveform(0.01, Array.Empty<byte>()).PeakBetween(0, 1) == 0, "waveform peak lookup");
+
+        // Handle geometry shared with the image editor.
+        var box = new Rect(100, 100, 200, 100);
+        Check(HandleMath.Resize(box, BoxEdges.Right | BoxEdges.Bottom, new Vector(100, 0), true) == new Rect(100, 100, 300, 150), "corner resize keeps the shape");
+        Check(HandleMath.Resize(box, BoxEdges.Left, new Vector(50, 30), false) == new Rect(150, 100, 150, 100), "side resize moves one edge");
+        Check(HandleMath.Resize(box, BoxEdges.Right, new Vector(-300, 0), false) == new Rect(0, 100, 100, 100), "dragging through the opposite edge flips, never negative");
+        var turned = HandleMath.ResizeRotated(box, 90, BoxEdges.Right, new Point(200, 200), new Point(200, 260), false);
+        Check(Near(turned.Width, 260, 1e-6) && Near(turned.Height, 100, 1e-6) && Near(turned.X + turned.Width / 2, 200, 1e-6) && Near(turned.Y + turned.Height / 2, 180, 1e-6), "a box turned 90° grows along its own axis and keeps the far edge still: " + turned);
+        Check(Near(HandleMath.AngleTo(new Point(0, 0), new Point(0, -10), false), 0) && Near(HandleMath.AngleTo(new Point(0, 0), new Point(10, 0), false), 90) && Near(HandleMath.AngleTo(new Point(0, 0), new Point(-10, 0), false), -90)
+            && Near(HandleMath.AngleTo(new Point(0, 0), new Point(10, -9), true), 45) && Near(HandleMath.AngleTo(new Point(0, 0), new Point(0, 10), false), 180), "pointer angle is clockwise from straight up");
+    }
+
+    /// <summary>Drives the preview's handles through its pointer methods: the same code the mouse reaches.</summary>
+    static void PreviewGestures()
+    {
+        var a = Source(@"C:\media\a.mp4", 10);
+        var logo = MediaSource.ForImage(@"C:\media\logo.png", 400, 200);
+        var history = new History<VideoProject>(TimelineOps.InsertOnTop(TimelineOps.ForSource(a), logo, 0, out var logoId));
+        var videoId = history.Current.Tracks[0].Clips[0].Id;
+        // 992 x 572 leaves a 960 x 540 picture at (16, 16): one screen pixel is two canvas pixels.
+        var view = new VideoPreview { History = history };
+        view.Measure(new Size(992, 572)); view.Arrange(new Rect(0, 0, 992, 572));
+        void Refresh() => view.Show(history.Current, 0, false);
+        Point At(double canvasX, double canvasY) => view.CanvasToScreen(new Point(canvasX, canvasY));
+        Placement Logo() => ((ImageClip)TimelineOps.Find(history.Current, logoId)!.Value.Clip).Placement!;
+        Refresh();
+        Check(At(0, 0) == new Point(16, 16) && At(1920, 1080) == new Point(976, 556) && view.ScreenToCanvas(new Point(496, 286)) == new Point(960, 540), "canvas and screen coordinates");
+        Guid? picked = Guid.Empty; int picks = 0; view.ClipPicked += id => { picked = id; picks++; };
+
+        // A click takes the top picture under the pointer; the video shows through beside it.
+        Check(view.PointerDown(At(960, 540)), "press on the still starts a move"); view.PointerUp();
+        Check(picked == logoId && view.Selected == logoId && picks == 1, "the still on top is picked");
+        view.PointerDown(At(200, 200)); view.PointerUp();
+        Check(picked == videoId && view.Selected == videoId, "beside the still the video is picked");
+        view.PointerDown(new Point(4, 4));
+        Check(picked == null && view.Selected == null, "a click off the canvas clears the pick");
+
+        // Move: one undo step, whole pixels, and it snaps back to the canvas centre.
+        view.PointerDown(At(960, 540)); int depth = history.UndoDepth;
+        for (int dx = 20; dx <= 300; dx += 20) view.PointerMove(At(960 + dx, 540 + 100));
+        view.PointerUp(); Refresh();
+        Check(Logo().Bounds == new Rect(1060, 540, 400, 200) && history.UndoDepth == depth + 1, "dragging the still moves it in one step: " + Logo().Bounds);
+        view.PointerDown(At(1260, 640)); view.PointerMove(At(1100, 600)); view.PointerMove(At(967, 536)); view.PointerUp(); Refresh();
+        Check(Logo().Bounds == new Rect(760, 440, 400, 200), "near the middle the still snaps to the canvas centre: " + Logo().Bounds);
+        view.PointerDown(At(960, 540)); view.PointerMove(At(900, 500)); view.PointerMove(At(210, 107)); view.PointerUp(); Refresh();
+        Check(Logo().X == 0 && Logo().Y == 0, "near the corner the still snaps to the canvas edges: " + Logo().Bounds);
+        view.PointerDown(At(200, 100)); view.PointerMove(At(300, 150)); view.PointerMove(At(207, 104), ModifierKeys.Alt); view.PointerUp(); Refresh();
+        Check(Logo().X == 7 && Logo().Y == 4, "Alt turns snapping off: " + Logo().Bounds);
+        view.PointerDown(At(207, 104)); view.PointerMove(At(300, 150)); view.PointerMove(At(507, 204), ModifierKeys.Shift); view.PointerUp(); Refresh();
+        Check(Logo().X == 307 && Logo().Y == 4, "Shift keeps a move on one axis: " + Logo().Bounds);
+        history.Push(TimelineOps.SetPlacement(history.Current, logoId, new Placement { X = 760, Y = 440, Width = 400, Height = 200 })); Refresh();
+
+        // Resize from the corner keeps the shape; Shift frees it; a side handle stretches.
+        var corner = view.HandlePoint(BoxEdges.Right | BoxEdges.Bottom)!.Value;
+        Check(corner == At(1160, 640), "bottom right handle sits on the corner");
+        view.PointerDown(corner); view.PointerMove(At(1200, 650)); view.PointerMove(At(1260, 640)); view.PointerUp(); Refresh();
+        Check(Logo().Bounds == new Rect(760, 440, 500, 250), "corner drag keeps 2:1: " + Logo().Bounds);
+        view.PointerDown(view.HandlePoint(BoxEdges.Right | BoxEdges.Bottom)!.Value); view.PointerMove(At(1300, 700), ModifierKeys.Shift); view.PointerMove(At(1260, 740), ModifierKeys.Shift); view.PointerUp(); Refresh();
+        Check(Logo().Bounds == new Rect(760, 440, 500, 300), "Shift frees the shape: " + Logo().Bounds);
+        view.PointerDown(view.HandlePoint(BoxEdges.Top)!.Value); view.PointerMove(At(1010, 460)); view.PointerMove(At(1010, 490)); view.PointerUp(); Refresh();
+        Check(Logo().Bounds == new Rect(760, 490, 500, 250), "top handle moves only the top edge: " + Logo().Bounds);
+
+        // Crop: the edges move inside the picture, which stays where it is.
+        view.CropMode = true;
+        Check(view.HandlePoint(BoxEdges.None) == null, "no rotate handle while cropping");
+        view.PointerDown(view.HandlePoint(BoxEdges.Left)!.Value); view.PointerMove(At(800, 615)); view.PointerMove(At(860, 615)); view.PointerUp(); Refresh();
+        var cropped = Logo();
+        Check(cropped.Bounds == new Rect(860, 490, 400, 250) && Near(cropped.CropLeft, 0.2) && Near(cropped.FullBounds.X, 760, 1e-6) && Near(cropped.FullBounds.Width, 500, 1e-6), "cropping a fifth off the left: " + cropped.Bounds + " " + cropped.CropLeft);
+        view.PointerDown(view.HandlePoint(BoxEdges.Left)!.Value); view.PointerMove(At(800, 615)); view.PointerMove(At(500, 615)); view.PointerUp(); Refresh();
+        Check(Logo().Bounds == new Rect(760, 490, 500, 250) && Logo().CropLeft == 0, "dragging back out stops at the picture's own edge: " + Logo().Bounds);
+        Check(!view.PointerDown(At(1000, 600)), "the picture does not move while cropping");
+        view.CropMode = false;
+
+        // Rotate: the handle above the top edge turns the picture about its centre.
+        var knob = view.HandlePoint(BoxEdges.None)!.Value;
+        Check(Near(knob.X, At(1010, 0).X) && Near(knob.Y, At(0, 490).Y - VideoPreview.RotateHandleDistance), "rotate handle floats above the top edge");
+        var centre = At(1010, 615);
+        view.PointerDown(knob); view.PointerMove(new Point(centre.X + 80, centre.Y - 80)); view.PointerMove(new Point(centre.X + 120, centre.Y + 1)); view.PointerUp(); Refresh();
+        Check(Logo().Rotation == 90 && Logo().Bounds == new Rect(760, 490, 500, 250), "turning to the right settles on 90°: " + Logo().Rotation);
+        // Turned a quarter, the 500 x 250 box covers 250 x 500 on screen: a point above its centre is inside, one to the side is not.
+        view.PointerDown(At(1010, 400)); view.PointerUp();
+        Check(view.Selected == logoId, "hit test follows the rotation");
+        view.PointerDown(At(800, 615)); view.PointerUp();
+        Check(view.Selected == videoId, "beside the turned still the video is picked");
+
+        // A locked layer shows its outline but cannot be dragged.
+        var locked = history.Current.Tracks[1] with { Locked = true };
+        history.Push(TimelineOps.SetTrack(history.Current, locked)); Refresh();
+        Check(!view.PointerDown(At(1010, 615)) && view.Selected == logoId && view.HandlePoint(BoxEdges.Left) != null, "a locked layer can be picked but not moved");
     }
 
     /// <summary>Drives the timeline control through its pointer methods: the same code the mouse reaches.</summary>
@@ -277,5 +467,66 @@ static class VideoEditorChecks
         var proxy = cache.GetOrCreateAsync(Ffprobe.ProbeAsync(red).GetAwaiter().GetResult()).GetAwaiter().GetResult();
         Check(proxy != null && cache.TryGet(red) == proxy && Ffprobe.ProbeAsync(proxy).GetAwaiter().GetResult() is { Height: 180, HasAudio: false }, "proxy built and cached");
         Console.WriteLine("PASS: live layered export (frame-exact overlay, 90 frames, sound), audio mix, proxy cache.");
+
+        // Picture in picture: blue in the top-left corner for the middle second, a green still in
+        // the bottom-right corner throughout, both at explicit boxes over the red video.
+        string green = Path.Combine(dir, "green.png"), placedOut = Path.Combine(dir, "placed.mp4"), fancyOut = Path.Combine(dir, "fancy.mp4");
+        made = runner.RunAsync(new List<string>(FfmpegRunner.StandardPrefix) { "-f", "lavfi", "-i", "color=c=0x00FF00:s=40x40", "-frames:v", "1", "-y", green }.ToArray()).GetAwaiter().GetResult();
+        Check(made.Succeeded && File.Exists(green), "green test still: " + made.ErrorText());
+        var stillSource = MediaSource.ForImage(green, 40, 40);
+        var pip = TimelineOps.SetPlacement(project, blueClip, new Placement { X = 0, Y = 0, Width = 80, Height = 60 });
+        pip = TimelineOps.InsertOnTop(pip, stillSource, 0, out var stillClip, new Placement { X = 240, Y = 120, Width = 80, Height = 60 });
+        pip = TimelineOps.TrimEnd(pip, stillClip, 90);
+        Check(pip.Duration == 90 && TimelineOps.Find(pip, stillClip)!.Value.Clip.Duration == 90, "the still is shortened to the three-second project");
+        result = runner.RunAsync(ExportArguments.Build(TimelineOps.ToPlan(pip), encoder, 90, placedOut)).GetAwaiter().GetResult();
+        Check(result.Succeeded, "picture-in-picture export: " + result.ErrorText());
+        using (var reader = new FrameReader(runner, new FrameReaderOptions { Path = placedOut, Width = 320, Height = 180, FrameRate = FrameRate.Fps30 }))
+        {
+            var frame = new byte[reader.FrameBytes];
+            int count = 0;
+            string Colour(int x, int y) { int i = (y * 320 + x) * 4; byte b = frame[i], g = frame[i + 1], r = frame[i + 2]; return r > 170 && g < 90 && b < 90 ? "red" : b > 170 && r < 90 && g < 90 ? "blue" : g > 170 && r < 90 && b < 90 ? "green" : $"({r},{g},{b})"; }
+            while (reader.ReadFrameAsync(frame).AsTask().GetAwaiter().GetResult())
+            {
+                bool overlay = count >= 30 && count < 60;
+                string corner = Colour(40, 30), outside = Colour(90, 30), below = Colour(40, 70), middle = Colour(160, 90), still = Colour(280, 150), beside = Colour(230, 150);
+                Check(corner == (overlay ? "blue" : "red"), $"frame {count}: top-left box is {corner}");
+                Check(outside == "red" && below == "red" && middle == "red" && beside == "red", $"frame {count}: outside the boxes stays red, got {outside} {below} {middle} {beside}");
+                Check(still == "green", $"frame {count}: the still's box is {still}");
+                count++;
+            }
+            Check(count == 90, "picture-in-picture export has exactly 90 frames, got " + count);
+        }
+
+        // Turned, faded and cropped: ffmpeg accepts the graph, the length is unchanged, and the
+        // half-transparent blue tints the red under it at the box's centre.
+        var fancy = TimelineOps.SetPlacement(pip, blueClip, new Placement { X = 110, Y = 40, Width = 100, Height = 100, Rotation = 45, Opacity = 0.5, CropLeft = 0.1, CropRight = 0.1 });
+        result = runner.RunAsync(ExportArguments.Build(TimelineOps.ToPlan(fancy, null, 640, 360), encoder, 90, fancyOut)).GetAwaiter().GetResult();
+        Check(result.Succeeded, "turned, faded, cropped export at twice the size: " + result.ErrorText());
+        var fancyInfo = Ffprobe.ProbeAsync(fancyOut).GetAwaiter().GetResult();
+        Check(fancyInfo.Width == 640 && fancyInfo.Height == 360 && Math.Abs(fancyInfo.Duration.TotalSeconds - 3) < 0.08, "scaled export is 640x360 and 3 s: " + fancyInfo);
+        using (var reader = new FrameReader(runner, new FrameReaderOptions { Path = fancyOut, Start = 1.5, Width = 320, Height = 180, FrameRate = FrameRate.Fps30, MaxFrames = 1 }))
+        {
+            var frame = new byte[reader.FrameBytes];
+            Check(reader.ReadFrameAsync(frame).AsTask().GetAwaiter().GetResult(), "a frame from the scaled export");
+            (int R, int B) At(int x, int y) { int i = (y * 320 + x) * 4; return (frame[i + 2], frame[i]); }
+            var mixed = At(160, 90); var tip = At(160, 28); var clear = At(105, 35); var stillBox = At(280, 150);
+            Check(mixed.R is > 80 and < 190 && mixed.B is > 80 and < 190, $"half-transparent blue over red is purple at the centre, got {mixed}");
+            Check(tip.B > 60 && clear.R > 170 && clear.B < 90, $"the turned box reaches its top point and leaves its old corner clear, got {tip} and {clear}");
+            Check(stillBox.R < 90 && stillBox.B < 90, $"the still scales with the output, got {stillBox}");
+        }
+
+        // Waveform: three seconds of sine is 300 loud buckets, cached on the second ask.
+        var waves = new WaveformCache(runner, Path.Combine(dir, "waves"));
+        if (Directory.Exists(waves.Folder)) Directory.Delete(waves.Folder, true);
+        var wave = waves.GetOrCreateAsync(red).GetAwaiter().GetResult();
+        Check(wave != null && Math.Abs(wave.Peaks.Length - 300) <= 12 && wave.Peaks.Skip(5).Take(280).All(peak => peak > 20) && Math.Abs(wave.BucketSeconds - 0.01) < 1e-9, "sine waveform: " + (wave == null ? "none" : wave.Peaks.Length + " buckets, lowest " + wave.Peaks.Skip(5).Take(280).Min()));
+        Check(Directory.GetFiles(waves.Folder, "*.peaks").Length == 1 && waves.GetOrCreateAsync(red).GetAwaiter().GetResult()!.Peaks.SequenceEqual(wave!.Peaks), "waveform cached on disk");
+        Check(waves.GetOrCreateAsync(blue).GetAwaiter().GetResult() == null, "a silent file has no waveform");
+        // The gallery's ffmpeg thumbnail: a red frame no larger than the asked edge.
+        var thumb = new FfmpegVideoThumbnailer().FromFfmpeg(red, 160);
+        var thumbPixel = new byte[4];
+        thumb?.CopyPixels(new Int32Rect(80, 45, 1, 1), thumbPixel, 4, 0);
+        Check(thumb is { PixelWidth: 160, PixelHeight: 90 } && thumbPixel[2] > 170 && thumbPixel[0] < 90 && new FfmpegVideoThumbnailer().FromFfmpeg(green + ".missing", 160) == null, "ffmpeg gallery thumbnail");
+        Console.WriteLine("PASS: live picture-in-picture export (placed video and still, frame by frame), turned/faded/cropped export at another size, waveforms, gallery thumbnail.");
     }
 }

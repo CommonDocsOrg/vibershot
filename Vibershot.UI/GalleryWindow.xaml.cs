@@ -102,7 +102,7 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
 
         Action<Action> post = action => Dispatcher.BeginInvoke(action);
         _index = new GalleryIndex(GalleryIndex.DefaultFolders(config), post);
-        _thumbs = new ThumbnailCache(ThumbnailCache.DefaultFolder, post, new ShellVideoThumbnailer());
+        _thumbs = new ThumbnailCache(ThumbnailCache.DefaultFolder, post, new FfmpegVideoThumbnailer());
         _index.Changed += RefreshView;
         _index.Watch();
 
