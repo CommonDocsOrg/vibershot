@@ -22,7 +22,7 @@ public static class GraphicExport
 
     /// <summary>
     /// The whole-pixel part of the canvas an item can paint on: its turned box, its pointers, its
-    /// line width and shadow. Empty when it lies entirely off the canvas.
+    /// line width and shadow, and the outline and shadow of its letters. Empty when it lies entirely off the canvas.
     /// </summary>
     public static Rect Extent(Item item, int canvasWidth, int canvasHeight)
     {
@@ -34,6 +34,8 @@ public static class GraphicExport
         if (item is CalloutItem callout) foreach (var target in callout.Targets) extent.Union(target);
         double head = item switch { ArrowItem arrow => arrow.HeadSize, CalloutItem pointer => pointer.HeadSize, _ => 0 };
         double margin = item.StrokeWidth + head + 12;
+        // The letters' outline and shadow reach past the box when the padding is small.
+        if (item is TextItem words) margin += DocumentRenderer.TextOverhang(words);
         extent.Inflate(margin, margin);
         extent.Intersect(new Rect(0, 0, canvasWidth, canvasHeight));
         if (extent.IsEmpty) return Rect.Empty;
@@ -79,7 +81,8 @@ public static class GraphicExport
         Directory.CreateDirectory(folder);
         string path = Path.Combine(folder, $"g_{Hash(DocumentJson.Serialize(clip.Item) + region + width + "x" + height)}.png");
         if (!File.Exists(path)) SavePng(Render(new[] { clip.Item }, region, width, height), path);
-        return new ExportVideoClip(path, 0, project.Seconds(clip.Duration), project.Seconds(clip.Start), region.X * scaleX, region.Y * scaleY, width, height) { IsImage = true };
+        return new ExportVideoClip(path, 0, project.Seconds(clip.Duration), project.Seconds(clip.Start), region.X * scaleX, region.Y * scaleY, width, height)
+            { IsImage = true, FadeIn = project.Seconds(clip.FadeIn), FadeOut = project.Seconds(clip.FadeOut) };
     }
 
     /// <summary>

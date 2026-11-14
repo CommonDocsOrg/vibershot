@@ -178,10 +178,48 @@ public static class DocumentRenderer
         var area = TextArea(item);
         var formatted = FormatText(item, Frozen(new SolidColorBrush(item.Color)));
         double y = centred ? area.Y + Math.Max(0, (area.Height - formatted.Height) / 2) : area.Y;
+        if (item.HasOutline || item.TextShadow) DrawTextEffects(dc, item, formatted.BuildGeometry(new Point(area.X, y)));
         dc.PushClip(new RectangleGeometry(item.Bounds));
         dc.DrawText(formatted, new Point(area.X, y));
         dc.Pop();
     }
+
+    /// <summary>
+    /// The outline and the shadow of the letters, drawn before the letters themselves. Both are
+    /// plain strokes of the letter shapes, so they stay sharp at any zoom and cost no blur: the
+    /// outline is a round pen twice its width (the inner half ends up under the letters), the
+    /// shadow a faint wide copy under a darker tight one, which reads as a soft edge.
+    /// </summary>
+    private static void DrawTextEffects(DrawingContext dc, TextItem item, Geometry letters)
+    {
+        double outline = item.HasOutline ? item.OutlineWidth : 0, reach = TextOverhang(item);
+        var clip = item.Bounds;
+        clip.Inflate(reach, reach);
+        dc.PushClip(new RectangleGeometry(clip));
+        if (item.TextShadow)
+        {
+            double offset = TextShadowOffset(item);
+            dc.PushTransform(new TranslateTransform(offset, offset));
+            // Each pass is drawn solid and faded as a whole, so a stroke never darkens the fill it overlaps.
+            dc.PushOpacity(0.22);
+            dc.DrawGeometry(Brushes.Black, RoundPen(Brushes.Black, (outline + offset * 0.5) * 2), letters);
+            dc.Pop();
+            dc.PushOpacity(0.4);
+            dc.DrawGeometry(Brushes.Black, outline > 0 ? RoundPen(Brushes.Black, outline * 2) : null, letters);
+            dc.Pop();
+            dc.Pop();
+        }
+        if (outline > 0) dc.DrawGeometry(null, RoundPen(Frozen(new SolidColorBrush(item.OutlineColor)), outline * 2), letters);
+        dc.Pop();
+    }
+
+    private static Pen RoundPen(Brush brush, double thickness) => Frozen(new Pen(brush, thickness) { LineJoin = PenLineJoin.Round });
+
+    /// <summary>How far down and right the letters' shadow sits: it grows with the letters.</summary>
+    public static double TextShadowOffset(TextItem item) => Math.Max(1.5, item.FontSize * 0.06);
+
+    /// <summary>How far the outline and the shadow of the letters can paint beyond the letters themselves.</summary>
+    public static double TextOverhang(TextItem item) => (item.HasOutline ? item.OutlineWidth : 0) + (item.TextShadow ? TextShadowOffset(item) * 1.5 : 0);
 
     /// <summary>Share of each side an oval or cloud body keeps clear so the text stays inside the curve.</summary>
     private const double RoundBodyInset = 0.146;

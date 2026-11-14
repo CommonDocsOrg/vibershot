@@ -70,10 +70,20 @@ public partial class VideoEditorWindow : Window
         FontSizeBox.Committed += value => StyleText(text => text with { FontSize = value }, style => style with { FontSize = value });
         StrokeWidthBox.Committed += value => StyleGraphic(item => item with { StrokeWidth = value });
         TextColour.ValueChanged += colour => { if (!_updatingPanel && colour is { } c) StyleText(text => text with { Color = c }, style => style with { Color = c }); };
-        BackColour.ValueChanged += colour => { if (!_updatingPanel) StyleText(text => text with { Background = colour }, style => style with { Background = colour }); };
+        // Captions left without a box get an outline, so the words still read over a busy picture.
+        BackColour.ValueChanged += colour => { if (!_updatingPanel) StyleText(text => text with { Background = colour }, style => style with { Background = colour, OutlineWidth = colour == null && style.OutlineWidth <= 0 ? TimelineOps.DefaultOutlineWidth(style.FontSize) : style.OutlineWidth }); };
+        // No colour switches the outline off; picking one switches it on at a width that suits the letters.
+        OutlineColour.ValueChanged += colour =>
+        {
+            if (_updatingPanel) return;
+            if (colour is not { } c) StyleText(text => text with { OutlineWidth = 0 }, style => style with { OutlineWidth = 0 });
+            else StyleText(text => text with { OutlineColor = c, OutlineWidth = text.OutlineWidth > 0 ? text.OutlineWidth : TimelineOps.DefaultOutlineWidth(text.FontSize) },
+                style => style with { OutlineColor = c, OutlineWidth = style.OutlineWidth > 0 ? style.OutlineWidth : TimelineOps.DefaultOutlineWidth(style.FontSize) });
+        };
+        OutlineWidthBox.Committed += value => StyleText(text => text with { OutlineWidth = value }, style => style with { OutlineWidth = value });
         StrokeColour.ValueChanged += colour => { if (!_updatingPanel) StyleGraphic(item => item with { Stroke = colour, StrokeWidth = colour != null && item.StrokeWidth <= 0 ? Math.Max(2, Math.Round(Project.Height / 180.0)) : item.StrokeWidth }); };
         FillColour.ValueChanged += colour => { if (!_updatingPanel) StyleGraphic(item => item is TextItem ? item : item with { Fill = colour }); };
-        foreach (var box in new[] { FontSizeBox, StrokeWidthBox }) box.ReturnFocusTo = Timeline;
+        foreach (var box in new[] { FontSizeBox, StrokeWidthBox, OutlineWidthBox }) box.ReturnFocusTo = Timeline;
         BuildElements();
         PlaceX.Committed += value => Place(p => p with { X = value });
         PlaceY.Committed += value => Place(p => p with { Y = value });
@@ -81,6 +91,9 @@ public partial class VideoEditorWindow : Window
         PlaceH.Committed += value => Place(p => p with { Height = value });
         PlaceRotation.Committed += value => Place(p => p with { Rotation = value });
         foreach (var box in new[] { PlaceX, PlaceY, PlaceW, PlaceH, PlaceRotation }) box.ReturnFocusTo = Timeline;
+        FadeInBox.Committed += value => SetFade(fadeIn: (long)Math.Round(value));
+        FadeOutBox.Committed += value => SetFade(fadeOut: (long)Math.Round(value));
+        foreach (var box in new[] { FadeInBox, FadeOutBox }) box.ReturnFocusTo = Timeline;
         Timeline.FilmstripFor = id => _filmstrips.GetValueOrDefault(id);
         Timeline.WaveformFor = id => _waveforms.GetValueOrDefault(id);
         Timeline.History = _history;
@@ -478,7 +491,7 @@ public partial class VideoEditorWindow : Window
         var plan = TimelineOps.ToPlan(Project);
         var audible = plan.Audio.Where(clip => File.Exists(clip.Path)).ToList();
         plan = plan with { Audio = audible };
-        string key = plan.Duration.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "|" + string.Join("|", audible.Select(clip => $"{clip.Path}:{clip.SourceIn:0.###}:{clip.Duration:0.###}:{clip.Start:0.###}:{clip.Volume:0.##}"));
+        string key = plan.Duration.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "|" + string.Join("|", audible.Select(clip => $"{clip.Path}:{clip.SourceIn:0.###}:{clip.Duration:0.###}:{clip.Start:0.###}:{clip.Volume:0.##}" + (clip.FadeIn > 0 || clip.FadeOut > 0 ? $":{clip.FadeIn:0.###}:{clip.FadeOut:0.###}" : "")));
         if (key == _mixKey) return;
         _mixKey = key;
         if (audible.Count == 0) { _audio.Close(); _mixOpen = false; return; }
@@ -527,9 +540,13 @@ public partial class VideoEditorWindow : Window
 
     private void DeleteSelection(bool ripple)
     {
-        if (Timeline.Selection.Count == 0) { ShowStatus("Select a clip first."); return; }
-        _history.Push(TimelineOps.Delete(Project, Timeline.Selection.ToList(), ripple));
+        if (!Timeline.DeleteSelection(ripple)) ShowStatus("Select a clip first.");
     }
+
+    private void Cut_Click(object sender, RoutedEventArgs e) { if (!Timeline.CutSelection()) ShowStatus("Select a clip first."); }
+    private void Copy_Click(object sender, RoutedEventArgs e) { if (!Timeline.CopySelection()) ShowStatus("Select a clip first."); }
+    private void Paste_Click(object sender, RoutedEventArgs e) { if (!Timeline.Paste()) ShowStatus("Nothing to paste: copy a clip first."); }
+    private void Duplicate_Click(object sender, RoutedEventArgs e) { if (!Timeline.DuplicateSelection()) ShowStatus("Select a clip first."); }
 
     private void Detach_Click(object sender, RoutedEventArgs e)
     {
@@ -539,7 +556,7 @@ public partial class VideoEditorWindow : Window
         _history.Push(project);
     }
 
-    private void SelectAll_Click(object sender, RoutedEventArgs e) => Timeline.Select(Project.AllClips.Select(clip => clip.Id).ToList());
+    private void SelectAll_Click(object sender, RoutedEventArgs e) => Timeline.SelectAll();
     private void AddVideoTrack_Click(object sender, RoutedEventArgs e) => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Visual, out _));
     private void AddAudioTrack_Click(object sender, RoutedEventArgs e) => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Audio, out _));
 
@@ -547,7 +564,8 @@ public partial class VideoEditorWindow : Window
     {
         bool any = Timeline.Selection.Count > 0;
         UndoMenu.IsEnabled = _history.CanUndo; RedoMenu.IsEnabled = _history.CanRedo;
-        DeleteMenu.IsEnabled = RippleMenu.IsEnabled = any;
+        DeleteMenu.IsEnabled = RippleMenu.IsEnabled = CutMenu.IsEnabled = CopyMenu.IsEnabled = DuplicateMenu.IsEnabled = any;
+        PasteMenu.IsEnabled = TimelineView.Clipboard != null;
         DetachMenu.IsEnabled = Project.AllClips.Any(clip => Timeline.Selection.Contains(clip.Id) && clip.LinkId != null);
         SplitMenu.IsEnabled = Project.AllClips.Any(clip => clip.Start < _playhead && _playhead < clip.End);
     }
@@ -589,12 +607,12 @@ public partial class VideoEditorWindow : Window
     private void UpdatePanel()
     {
         var project = Project;
-        var selected = project.Tracks.SelectMany(track => track.Clips.Select(clip => (Track: track, Clip: clip))).Where(pair => Timeline.Selection.Contains(pair.Clip.Id)).ToList();
+        var selected = project.Tracks.SelectMany(track => track.Clips.Select(clip => (Track: track, Clip: clip))).Where(pair => Timeline.Selection.Contains(pair.Clip.Id)).OrderBy(pair => SelectionRank(pair.Clip)).ToList();
         _updatingPanel = true;
         try
         {
-            Preview.Selected = selected.Select(pair => pair.Clip).FirstOrDefault(clip => clip is GraphicClip || clip is ImageClip || clip is VideoClip)?.Id;
-            if (InlineWords.Visibility == Visibility.Visible && (SelectedGraphic is not { Item: TextItem })) EndInlineEdit();
+            Preview.Selected = selected.Select(pair => pair.Clip).FirstOrDefault(clip => clip is GraphicClip || clip is ImageClip || clip is VideoClip || clip is CaptionClip)?.Id;
+            if (InlineWords.Visibility == Visibility.Visible && InlineText == null) EndInlineEdit();
             if (selected.Count == 0)
             {
                 ClipPanel.Visibility = Visibility.Collapsed; ProjectPanel.Visibility = Visibility.Visible;
@@ -616,6 +634,9 @@ public partial class VideoEditorWindow : Window
             ClipStartValue.Text = Timecode(primary.Clip.Start);
             ClipLengthValue.Text = Timecode(primary.Clip.Duration);
             ClipSourceValue.Text = Timecode(project.Frames(primary.Clip.SourceIn));
+            // Fades: a picture, a graphic or a sound; a linked pair shares them.
+            FadePanel.Visibility = TimelineOps.CanFade(primary.Clip) ? Visibility.Visible : Visibility.Collapsed;
+            FadeInBox.Show(primary.Clip.FadeIn); FadeOutBox.Show(primary.Clip.FadeOut);
             var graphicItem = (primary.Clip as GraphicClip)?.Item;
             var captionItem = primary.Clip as CaptionClip;
             var words = graphicItem as TextItem;
@@ -636,6 +657,12 @@ public partial class VideoEditorWindow : Window
                 BackColour.Value = words != null ? words.Background : style!.Background;
                 CaptionTopCheck.Visibility = CaptionNote.Visibility = captionItem != null ? Visibility.Visible : Visibility.Collapsed;
                 CaptionTopCheck.IsChecked = style?.AtTop ?? false;
+                double outline = words?.OutlineWidth ?? style!.OutlineWidth;
+                OutlineColour.Value = outline > 0 ? words?.OutlineColor ?? style!.OutlineColor : null;
+                OutlineWidthBox.Show(Math.Max(0, outline));
+                // Captions take only the outline from their track; the shadow is for text graphics.
+                TextShadowCheck.Visibility = words != null ? Visibility.Visible : Visibility.Collapsed;
+                TextShadowCheck.IsChecked = words?.TextShadow ?? false;
             }
             // Line and fill: shapes, arrows, lines and a callout's outline. Stamps keep their own colours unless given one.
             ShapePanel.Visibility = graphicItem != null && (graphicItem is not TextItem || graphicItem is CalloutItem) ? Visibility.Visible : Visibility.Collapsed;
@@ -679,7 +706,18 @@ public partial class VideoEditorWindow : Window
         finally { _updatingPanel = false; }
     }
 
-    private VisualClip? SelectedPicture => Project.AllClips.OfType<VisualClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+    /// <summary>Orders selected clips for the panel: the primary clip, then what is linked to it, then the rest as the tracks list them.</summary>
+    private int SelectionRank(Clip clip)
+    {
+        if (clip.Id == Timeline.Primary) return 0;
+        var primary = Timeline.Primary is { } id ? TimelineOps.Find(Project, id)?.Clip : null;
+        return primary?.LinkId != null && primary.LinkId == clip.LinkId ? 1 : 2;
+    }
+
+    /// <summary>The selected clips, the primary one and its partners first, so the panel edits the clip it shows.</summary>
+    private IEnumerable<Clip> SelectedClips => Project.AllClips.Where(clip => Timeline.Selection.Contains(clip.Id)).OrderBy(SelectionRank);
+
+    private VisualClip? SelectedPicture => SelectedClips.OfType<VisualClip>().FirstOrDefault();
 
     /// <summary>Changes the selected picture's placement, starting from the one it shows now.</summary>
     private void Place(Func<Placement, Placement> change, string? key = null)
@@ -697,14 +735,24 @@ public partial class VideoEditorWindow : Window
         }), key);
     }
 
-    private GraphicClip? SelectedGraphic => Project.AllClips.OfType<GraphicClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+    /// <summary>Sets a fade, in frames, on the clip the panel is showing (and whatever is linked to it).</summary>
+    private void SetFade(long? fadeIn = null, long? fadeOut = null)
+    {
+        var selected = SelectedClips.ToList();
+        if (selected.Count == 0) return;
+        var primary = selected.FirstOrDefault(clip => clip is not AudioClip, selected[0]);
+        var result = TimelineOps.SetFade(Project, primary.Id, fadeIn, fadeOut);
+        // A value that was cut short to fit the clip is shown as it ended up.
+        if (ReferenceEquals(result, Project)) UpdatePanel(); else _history.Push(result);
+    }
+
+    private GraphicClip? SelectedGraphic => SelectedClips.OfType<GraphicClip>().FirstOrDefault();
 
     private (Vibershot.Editing.Video.Track Track, CaptionClip Clip)? SelectedCaption
     {
         get
         {
-            foreach (var track in Project.Tracks)
-                if (track.Clips.OfType<CaptionClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id)) is { } clip) return (track, clip);
+            if (SelectedClips.OfType<CaptionClip>().FirstOrDefault() is { } clip && TimelineOps.Find(Project, clip.Id) is var (track, _)) return (track, clip);
             return null;
         }
     }
@@ -852,19 +900,36 @@ public partial class VideoEditorWindow : Window
         StyleText(text => text with { Bold = bold, Italic = italic, Alignment = align }, style => style with { Bold = bold });
     }
 
+    private void TextShadow_Click(object sender, RoutedEventArgs e)
+    {
+        bool on = TextShadowCheck.IsChecked == true;
+        StyleText(text => text with { TextShadow = on }, style => style);
+    }
+
     private void CaptionTop_Click(object sender, RoutedEventArgs e)
     {
         bool top = CaptionTopCheck.IsChecked == true;
         StyleText(text => text, style => style with { AtTop = top });
     }
 
-    /// <summary>Shows a text box exactly over a text graphic so its words can be typed where they appear.</summary>
+    /// <summary>
+    /// The words being typed in place, as the box they are drawn in: the selected text graphic's
+    /// item, or the selected caption laid out by its track's style.
+    /// </summary>
+    private TextItem? InlineText =>
+        SelectedGraphic is { Item: TextItem words } ? words
+        : SelectedCaption is var (track, caption) ? TimelineOps.CaptionItem(Project, track, caption) : null;
+
+    /// <summary>Shows a text box exactly over a text graphic or a caption so its words can be typed where they appear.</summary>
     private void BeginInlineEdit(Guid clipId)
     {
-        if (TimelineOps.Find(Project, clipId) is not var (_, clip) || clip is not GraphicClip { Item: TextItem text }) return;
+        if (TimelineOps.Find(Project, clipId) is not var (_, clip)) return;
+        string? was = clip switch { GraphicClip { Item: TextItem item } => item.Text, CaptionClip caption => caption.Text, _ => null };
+        if (was == null) return;
         Timeline.Select(new[] { clipId });
+        if (InlineText is not { } text) return;
         _updatingPanel = true;
-        InlineWords.Text = text.Text;
+        InlineWords.Text = was;
         _updatingPanel = false;
         InlineWords.Visibility = Visibility.Visible;
         PositionInlineEdit();
@@ -872,10 +937,10 @@ public partial class VideoEditorWindow : Window
         InlineWords.SelectAll();
     }
 
-    /// <summary>Keeps the in-place box on its graphic, matching its letters, as the text or the window changes.</summary>
+    /// <summary>Keeps the in-place box on its graphic or caption, matching its letters, as the text or the window changes.</summary>
     private void PositionInlineEdit()
     {
-        if (SelectedGraphic is not { Item: TextItem text }) { EndInlineEdit(); return; }
+        if (InlineText is not { } text) { EndInlineEdit(); return; }
         var screen = Preview.ScreenRect(text.Bounds);
         double zoom = screen.Width / Math.Max(1, text.Bounds.Width);
         // A few pixels wider than the graphic: a text box measures a hair wider than the renderer,
@@ -979,7 +1044,7 @@ public partial class VideoEditorWindow : Window
 
     private void Crop_Click(object sender, RoutedEventArgs e) => Preview.CropMode = CropButton.IsChecked == true;
 
-    private AudioClip? SelectedSound => Project.AllClips.OfType<AudioClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+    private AudioClip? SelectedSound => SelectedClips.OfType<AudioClip>().FirstOrDefault();
 
     private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -1111,7 +1176,7 @@ public partial class VideoEditorWindow : Window
 
     private void Shortcuts_Click(object sender, RoutedEventArgs e) => MessageBox.Show(this,
         "Space\tPlay / pause\nLeft / Right or , / .\tStep one frame (Shift: one second)\nHome / End\tStart / end\nJ / K / L\tBack one second / pause / play\n\n" +
-        "V / C\tSelect tool / Razor tool\nS or Ctrl+K\tSplit at the playhead\nDelete\tDelete the selection\nShift+Delete\tRipple delete\nN\tSnap on / off (hold Alt while dragging to snap off)\n\n" +
+        "V / C\tSelect tool / Razor tool\nS or Ctrl+K\tSplit at the playhead\nDelete\tDelete the selection\nShift+Delete\tRipple delete\nCtrl+C / Ctrl+X / Ctrl+V\tCopy / cut / paste at the playhead\nCtrl+D\tDuplicate\nCtrl+click / Shift+click\tAdd a clip / a run of clips to the selection\nDrag on an empty lane\tSelect every clip the box touches\nCtrl+A / Esc\tSelect all / none\nN\tSnap on / off (hold Alt while dragging to snap off)\n\n" +
         "T\tAdd a caption at the playhead\nDouble-click text in the preview\tType in place (Esc to finish)\nDrag a picture in the preview\tMove it (Shift: one axis, Alt: no snapping)\nDouble-click a picture\tCrop it (Enter or Esc to finish)\n\n+ / -\tZoom the timeline\n\\\tFit the timeline\nCtrl + wheel\tZoom at the pointer\n\nCtrl+Z / Ctrl+Y\tUndo / redo\nCtrl+S\tSave project\nCtrl+I\tImport media\nCtrl+E\tExport MP4",
         "Keyboard shortcuts");
 
@@ -1136,6 +1201,10 @@ public partial class VideoEditorWindow : Window
                 case Key.W: Close(); break;
                 case Key.A: SelectAll_Click(this, e); break;
                 case Key.K: Split_Click(this, e); break;
+                case Key.C: Copy_Click(this, e); break;
+                case Key.X: Cut_Click(this, e); break;
+                case Key.V: Paste_Click(this, e); break;
+                case Key.D: Duplicate_Click(this, e); break;
                 default: handled = false; break;
             }
         }
@@ -1146,7 +1215,7 @@ public partial class VideoEditorWindow : Window
                 case Key.Space: if (_playing) Pause(); else Play(); break;
                 case Key.V: SetTool(TimelineTool.Select); break;
                 case Key.C: SetTool(TimelineTool.Razor); break;
-                case Key.Escape: if (Preview.CropMode) Preview.CropMode = false; else SetTool(TimelineTool.Select); break;
+                case Key.Escape: if (Preview.CropMode) Preview.CropMode = false; else if (Timeline.Tool != TimelineTool.Select) SetTool(TimelineTool.Select); else Timeline.ClearSelection(); break;
                 case Key.Enter when Preview.CropMode: Preview.CropMode = false; break;
                 case Key.S: Split_Click(this, e); break;
                 case Key.T: AddCaptionAt(null, _playhead); break;

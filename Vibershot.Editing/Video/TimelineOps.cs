@@ -288,6 +288,9 @@ public static class TimelineOps
     public static CaptionStyle CaptionStyleOf(VideoProject project, Track track) =>
         track.CaptionStyle ?? new CaptionStyle { FontSize = Math.Max(12, Math.Round(project.Height * 0.05)) };
 
+    /// <summary>The outline width letters of a size get when an outline is first switched on.</summary>
+    public static double DefaultOutlineWidth(double fontSize) => Math.Max(2, Math.Round(fontSize / 14));
+
     /// <summary>
     /// The text box a caption is drawn as: centred, at most four fifths of the canvas wide, a
     /// twentieth of the canvas height in from the bottom (or the top).
@@ -299,6 +302,7 @@ public static class TimelineOps
         {
             Id = clip.Id, Text = clip.Text, FontFamily = style.FontFamily, FontSize = style.FontSize, Bold = style.Bold, Color = style.Color,
             Background = style.Background, Alignment = TextAlign.Center, Padding = Math.Round(style.FontSize * 0.3),
+            OutlineColor = style.OutlineColor, OutlineWidth = Math.Max(0, style.OutlineWidth),
             Bounds = new Rect(0, 0, Math.Round(project.Width * 0.8), 10),
         };
         var size = DocumentRenderer.MeasureText(item);
@@ -368,6 +372,47 @@ public static class TimelineOps
         return project with { Tracks = tracks };
     }
 
+    /// <summary>
+    /// Moves a set of clips (and what is linked to them) by the same number of frames and the same
+    /// number of tracks. Tracks are counted among those of the clip's own kind in stored order, so
+    /// +1 is one video layer up or one audio lane down, and a clip never changes kind. With
+    /// <paramref name="only"/>, just the clips on tracks of that kind change track; the rest shift
+    /// in time alone. Null, changing nothing, when any clip would leave the start of the timeline,
+    /// run out of tracks, touch a locked track or overlap a clip that is not in the set.
+    /// </summary>
+    public static VideoProject? MoveMany(VideoProject project, IEnumerable<Guid> clipIds, long frameDelta, int trackDelta = 0, TrackKind? only = null)
+    {
+        var moving = WithLinked(project, clipIds);
+        var arrivals = new Dictionary<Guid, List<Clip>>();
+        var left = new HashSet<Guid>();
+        foreach (var kind in new[] { TrackKind.Visual, TrackKind.Caption, TrackKind.Audio })
+        {
+            var ofKind = project.Tracks.Where(track => track.Kind == kind).ToList();
+            int shift = only == null || only == kind ? trackDelta : 0;
+            for (int i = 0; i < ofKind.Count; i++)
+            {
+                foreach (var clip in ofKind[i].Clips.Where(clip => moving.Contains(clip.Id)))
+                {
+                    int to = i + shift;
+                    if (to < 0 || to >= ofKind.Count || ofKind[i].Locked || ofKind[to].Locked) return null;
+                    var moved = clip with { Start = clip.Start + frameDelta };
+                    if (!IsFree(ofKind[to], moved.Start, moved.Duration, moving)) return null;
+                    left.Add(ofKind[i].Id);
+                    if (!arrivals.TryGetValue(ofKind[to].Id, out var list)) arrivals[ofKind[to].Id] = list = new List<Clip>();
+                    list.Add(moved);
+                }
+            }
+        }
+        if (arrivals.Count == 0) return null;
+        if (frameDelta == 0 && trackDelta == 0) return project;
+        return project with
+        {
+            Tracks = project.Tracks.Select(track => left.Contains(track.Id) || arrivals.ContainsKey(track.Id)
+                ? WithClips(track, track.Clips.Where(clip => !moving.Contains(clip.Id)).Concat(arrivals.GetValueOrDefault(track.Id) ?? Enumerable.Empty<Clip>()))
+                : track).ToImmutableList(),
+        };
+    }
+
     /// <summary>The start frame nearest to <paramref name="desired"/> where the clip fits on the track without overlapping.</summary>
     public static long NearestFree(VideoProject project, Guid clipId, Guid trackId, long desired)
     {
@@ -409,7 +454,7 @@ public static class TimelineOps
         }
         delta = Math.Clamp(delta, min, Math.Max(min, max));
         if (delta == 0) return project;
-        return Map(project, group, clip => clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = Unbounded(clip) ? 0 : Math.Max(0, clip.SourceIn + project.Seconds(delta)) });
+        return Map(project, group, clip => ClampFades(clip with { Start = clip.Start + delta, Duration = clip.Duration - delta, SourceIn = Unbounded(clip) ? 0 : Math.Max(0, clip.SourceIn + project.Seconds(delta)) }));
     }
 
     /// <summary>Drags a clip's right edge to <paramref name="newEnd"/>, clamped to its source, its neighbours and one frame of length.</summary>
@@ -430,7 +475,54 @@ public static class TimelineOps
         }
         delta = Math.Clamp(delta, Math.Min(min, max), max);
         if (delta == 0) return project;
-        return Map(project, group, clip => clip with { Duration = clip.Duration + delta });
+        return Map(project, group, clip => ClampFades(clip with { Duration = clip.Duration + delta }));
+    }
+
+    /// <summary>True for clips that can fade: pictures, graphics and sounds, but not captions.</summary>
+    public static bool CanFade(Clip clip) => clip is not CaptionClip;
+
+    /// <summary>
+    /// How much of a clip shows (or sounds) at a timeline frame, from 0 to 1: it climbs evenly
+    /// from nothing on the clip's first frame to full after <see cref="Clip.FadeIn"/> frames, and
+    /// falls so that the frame after its last would be nothing. Zero outside the clip. The preview
+    /// multiplies a layer's opacity by this, and the export's fade filters follow the same line.
+    /// </summary>
+    public static double FadeAt(Clip clip, long frame)
+    {
+        long local = frame - clip.Start, left = clip.Duration - local;
+        if (local < 0 || left <= 0) return 0;
+        double level = 1;
+        if (clip.FadeIn > 0 && local < clip.FadeIn) level = (double)local / clip.FadeIn;
+        if (clip.FadeOut > 0 && left < clip.FadeOut) level = Math.Min(level, (double)left / clip.FadeOut);
+        return level;
+    }
+
+    /// <summary>Shortens a clip's fades so both fit inside it; the fade in keeps its length first.</summary>
+    private static Clip ClampFades(Clip clip)
+    {
+        long fadeIn = Math.Clamp(clip.FadeIn, 0, Math.Max(0, clip.Duration)), fadeOut = Math.Clamp(clip.FadeOut, 0, Math.Max(0, clip.Duration - fadeIn));
+        return fadeIn == clip.FadeIn && fadeOut == clip.FadeOut ? clip : clip with { FadeIn = fadeIn, FadeOut = fadeOut };
+    }
+
+    /// <summary>
+    /// Sets a clip's fade lengths in frames (null leaves one as it is); clips linked to it get the
+    /// same. A fade set on its own stops where the other begins; set together, the fade in is
+    /// fitted first. Returns the same project when nothing changes.
+    /// </summary>
+    public static VideoProject SetFade(VideoProject project, Guid clipId, long? fadeIn = null, long? fadeOut = null)
+    {
+        if (Find(project, clipId) is not var (_, primary) || !CanFade(primary)) return project;
+        bool changed = false;
+        var result = Map(project, WithLinked(project, new[] { clipId }), clip =>
+        {
+            if (!CanFade(clip)) return clip;
+            long newIn = Math.Max(0, fadeIn ?? clip.FadeIn), newOut = Math.Max(0, fadeOut ?? clip.FadeOut);
+            if (fadeIn != null && fadeOut == null) newIn = Math.Min(newIn, Math.Max(0, clip.Duration - newOut));
+            var faded = ClampFades(clip with { FadeIn = newIn, FadeOut = newOut });
+            changed |= faded.FadeIn != clip.FadeIn || faded.FadeOut != clip.FadeOut;
+            return faded;
+        });
+        return changed ? result : project;
     }
 
     private static VideoProject Map(VideoProject project, ISet<Guid> ids, Func<Clip, Clip> change) =>
@@ -464,8 +556,9 @@ public static class TimelineOps
                     rightLink = mapped;
                 }
                 long leftLength = frame - clip.Start;
-                result.Add(clip with { Duration = leftLength });
-                result.Add(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = Unbounded(clip) ? 0 : clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink });
+                // The left part keeps the fade in, the right part the fade out.
+                result.Add(ClampFades(clip with { Duration = leftLength, FadeOut = 0 }));
+                result.Add(ClampFades(clip with { Id = Guid.NewGuid(), Start = frame, Duration = clip.Duration - leftLength, SourceIn = Unbounded(clip) ? 0 : clip.SourceIn + project.Seconds(leftLength), LinkId = rightLink, FadeIn = 0 }));
             }
             return WithClips(track, result);
         }).ToImmutableList();
@@ -489,6 +582,70 @@ public static class TimelineOps
             return WithClips(track, kept);
         }).ToImmutableList();
         return project with { Tracks = tracks };
+    }
+
+    /// <summary>Removes a set of clips and what is linked to them, leaving the gaps.</summary>
+    public static VideoProject DeleteMany(VideoProject project, IEnumerable<Guid> clipIds) => Delete(project, clipIds);
+
+    /// <summary>Removes a set of clips and what is linked to them; later clips on each track they were on slide left by what was removed before them.</summary>
+    public static VideoProject RippleDeleteMany(VideoProject project, IEnumerable<Guid> clipIds) => Delete(project, clipIds, ripple: true);
+
+    /// <summary>Copies clips (and what is linked to them) with the tracks they sit on and the sources they use. Null when none of the ids is a clip.</summary>
+    public static ClipClipboard? Copy(VideoProject project, IEnumerable<Guid> clipIds)
+    {
+        var ids = WithLinked(project, clipIds);
+        var clips = project.Tracks.SelectMany(track => track.Clips.Where(clip => ids.Contains(clip.Id)).Select(clip => new CopiedClip(clip, track.Id, track.Kind))).ToImmutableList();
+        if (clips.Count == 0) return null;
+        var used = clips.Select(copied => copied.Clip.SourceId).ToHashSet();
+        return new ClipClipboard { Clips = clips, Sources = project.Sources.Where(source => used.Contains(source.Id)).ToImmutableList() };
+    }
+
+    /// <summary>
+    /// Places copied clips so the earliest starts at <paramref name="at"/>, keeping their offsets
+    /// from one another. Every clip gets a new id, and clips that were linked to each other get a
+    /// new link of their own. The clips copied from one track go back onto it together when it has
+    /// room for all of them and is not locked; otherwise onto a new track of the same kind. (When
+    /// the track no longer exists, the first track of that kind with room is used before a new one
+    /// is made.)
+    /// </summary>
+    public static VideoProject Paste(VideoProject project, ClipClipboard clipboard, long at, out List<Guid> pastedIds)
+    {
+        pastedIds = new List<Guid>();
+        if (clipboard.Clips.Count == 0) return project;
+        long shift = Math.Max(0, at) - clipboard.Start;
+        foreach (var source in clipboard.Sources) project = AddSource(project, source);
+        // A link only means something between two clips; one copied without its partner comes in unlinked.
+        var links = clipboard.Clips.Where(copied => copied.Clip.LinkId != null).GroupBy(copied => copied.Clip.LinkId!.Value)
+            .Where(group => group.Count() > 1).ToDictionary(group => group.Key, _ => Guid.NewGuid());
+        foreach (var group in clipboard.Clips.GroupBy(copied => copied.TrackId))
+        {
+            var kind = group.First().Kind;
+            var fresh = group.Select(copied => copied.Clip with
+            {
+                Id = Guid.NewGuid(), Start = copied.Clip.Start + shift,
+                LinkId = copied.Clip.LinkId is { } link && links.TryGetValue(link, out var mapped) ? mapped : null,
+            }).ToList();
+            bool Fits(Track track) => track.Kind == kind && !track.Locked && fresh.All(clip => IsFree(track, clip.Start, clip.Duration));
+            var original = project.Tracks.FirstOrDefault(track => track.Id == group.Key);
+            var target = original != null ? (Fits(original) ? original : null) : project.Tracks.FirstOrDefault(Fits);
+            if (target == null)
+            {
+                project = AddTrack(project, kind, out var added);
+                target = project.Tracks.First(track => track.Id == added);
+                // Captions pasted onto a new track keep the look of the track they came from.
+                if (kind == TrackKind.Caption && original?.CaptionStyle != null) target = target with { CaptionStyle = original.CaptionStyle };
+            }
+            project = SetTrack(project, WithClips(target, target.Clips.AddRange(fresh)));
+            pastedIds.AddRange(fresh.Select(clip => clip.Id));
+        }
+        return project;
+    }
+
+    /// <summary>Copies clips (and what is linked to them) and pastes the copies straight after the last of them.</summary>
+    public static VideoProject Duplicate(VideoProject project, IEnumerable<Guid> clipIds, out List<Guid> pastedIds)
+    {
+        pastedIds = new List<Guid>();
+        return Copy(project, clipIds) is { } copied ? Paste(project, copied, copied.End, out pastedIds) : project;
     }
 
     /// <summary>Breaks the link between a clip and its partners so each can be edited alone.</summary>
@@ -556,11 +713,12 @@ public static class TimelineOps
                         p.X * sx, p.Y * sy, Math.Max(2, (int)Math.Round(p.Width * sx)), Math.Max(2, (int)Math.Round(p.Height * sy)))
                     {
                         Rotation = p.Rotation, Opacity = Math.Min(1, p.Opacity), IsImage = source.IsImage,
+                        FadeIn = project.Seconds(clip.FadeIn), FadeOut = project.Seconds(clip.FadeOut),
                         CropLeft = p.CropLeft, CropTop = p.CropTop, CropRight = p.CropRight, CropBottom = p.CropBottom,
                     });
                 }
                 else if (clip is AudioClip { Muted: false } sound && track.Kind == TrackKind.Audio && !track.Muted && sound.Volume > 0)
-                    audio.Add(new ExportAudioClip(source.Path, clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start), sound.Volume));
+                    audio.Add(new ExportAudioClip(source.Path, clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start), sound.Volume) { FadeIn = project.Seconds(clip.FadeIn), FadeOut = project.Seconds(clip.FadeOut) });
             }
         }
         var c = project.Background;

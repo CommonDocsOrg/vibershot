@@ -399,14 +399,14 @@ static class VideoEditorChecks
         Refresh();
         Guid? picked = null; view.ClipPicked += id => picked = id;
 
-        // Graphics are picked over the video; a flat line has enough thickness to hit; captions are left alone.
+        // Graphics are picked over the video; a flat line has enough thickness to hit; a caption is picked where it is drawn.
         view.PointerDown(At(1050, 350)); view.PointerUp();
         Check(picked == calloutId, "the callout is picked");
         view.PointerDown(At(1550, 906)); view.PointerUp();
         Check(picked == lineId, "a level line can be clicked");
         var captionBox = TimelineOps.CaptionItem(history.Current, history.Current.Tracks.Single(t => t.Kind == TrackKind.Caption), (CaptionClip)TimelineOps.Find(history.Current, captionId)!.Value.Clip).Bounds;
         view.PointerDown(At(captionBox.X + captionBox.Width / 2, captionBox.Y + captionBox.Height / 2)); view.PointerUp();
-        Check(picked == videoId, "a click on a caption reaches the video under it");
+        Check(picked == captionId && view.HandlePoint(BoxEdges.Right) == null, "a click on a caption picks it, without handles");
 
         // Moving a callout takes its pointer with it; dragging the tip moves only the tip.
         view.PointerDown(At(1050, 350)); view.PointerMove(At(1100, 400)); view.PointerMove(At(1150, 450)); view.PointerUp(); Refresh();
@@ -643,6 +643,22 @@ static class VideoEditorChecks
                 count++;
             }
             Check(count == 90, "export has exactly 90 frames, got " + count);
+        }
+
+        // The preview stops a reader from the UI thread while its reading task disposes it too.
+        // Two closes at the same moment once threw out of Process.Close and took the app down.
+        for (int round = 0; round < 40; round++)
+        {
+            var reader = new FrameReader(runner, new FrameReaderOptions { Path = output, Width = 320, Height = 180, FrameRate = FrameRate.Fps30 });
+            var frame = new byte[reader.FrameBytes];
+            if (round % 2 == 0) reader.ReadFrameAsync(frame).AsTask().GetAwaiter().GetResult();
+            using var go = new System.Threading.ManualResetEventSlim();
+            Exception? thrown = null;
+            var threads = Enumerable.Range(0, 4).Select(_ => new System.Threading.Thread(() => { go.Wait(); try { reader.Dispose(); } catch (Exception ex) { thrown = ex; } })).ToList();
+            threads.ForEach(thread => thread.Start());
+            go.Set();
+            threads.ForEach(thread => thread.Join());
+            Check(thrown == null, "a reader stopped from several threads at once closes quietly: " + thrown);
         }
 
         // The audio-only mix used for preview playback.

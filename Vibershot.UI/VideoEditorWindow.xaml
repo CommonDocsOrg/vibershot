@@ -71,6 +71,11 @@
        <MenuItem x:Name="UndoMenu" Header="Undo" InputGestureText="Ctrl+Z" Click="Undo_Click"/>
        <MenuItem x:Name="RedoMenu" Header="Redo" InputGestureText="Ctrl+Y" Click="Redo_Click"/>
        <Separator/>
+       <MenuItem x:Name="CutMenu" Header="Cut" InputGestureText="Ctrl+X" Click="Cut_Click"/>
+       <MenuItem x:Name="CopyMenu" Header="Copy" InputGestureText="Ctrl+C" Click="Copy_Click"/>
+       <MenuItem x:Name="PasteMenu" Header="Paste at playhead" InputGestureText="Ctrl+V" Click="Paste_Click"/>
+       <MenuItem x:Name="DuplicateMenu" Header="Duplicate" InputGestureText="Ctrl+D" Click="Duplicate_Click"/>
+       <Separator/>
        <MenuItem x:Name="SplitMenu" Header="Split at playhead" InputGestureText="S" Click="Split_Click"/>
        <MenuItem x:Name="DeleteMenu" Header="Delete" InputGestureText="Del" Click="Delete_Click"/>
        <MenuItem x:Name="RippleMenu" Header="Ripple delete" InputGestureText="Shift+Del" Click="RippleDelete_Click"/>
@@ -191,7 +196,7 @@
    <Grid Grid.Column="1">
     <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <local:VideoPreview x:Name="Preview"/>
-    <!-- Shown over a text graphic while its words are edited in place. -->
+    <!-- Shown over a text graphic or a caption while its words are edited in place. -->
     <TextBox x:Name="InlineWords" Visibility="Collapsed" TextOptions.TextFormattingMode="Ideal" HorizontalAlignment="Left" VerticalAlignment="Top" AcceptsReturn="True" TextWrapping="Wrap" BorderThickness="1" BorderBrush="{StaticResource Accent}" Padding="0" TextChanged="Words_Changed" LostKeyboardFocus="InlineWords_LostFocus" PreviewKeyDown="Words_KeyDown" AutomationProperties.Name="Edit text in place">
      <!-- A bare template: the themed text box's own padding and corners would shift the words off the ones drawn underneath. -->
      <TextBox.Template><ControlTemplate TargetType="TextBox"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"><ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden"/></Border></ControlTemplate></TextBox.Template>
@@ -233,6 +238,10 @@
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Start"/><TextBlock x:Name="ClipStartValue" Style="{StaticResource FieldValue}"/></Grid>
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Length"/><TextBlock x:Name="ClipLengthValue" Style="{StaticResource FieldValue}"/></Grid>
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Source in"/><TextBlock x:Name="ClipSourceValue" Style="{StaticResource FieldValue}"/></Grid>
+       <StackPanel x:Name="FadePanel">
+        <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Fade in (frames)"/><local:ValueBox x:Name="FadeInBox" Minimum="0" Maximum="1000000" Suffix="" AutomationProperties.Name="Fade in" ToolTip="Frames over which the clip comes in from nothing; also the round handle at the clip's top left corner on the timeline"/></Grid>
+        <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Fade out (frames)"/><local:ValueBox x:Name="FadeOutBox" Minimum="0" Maximum="1000000" Suffix="" AutomationProperties.Name="Fade out" ToolTip="Frames over which the clip goes out to nothing; also the round handle at the clip's top right corner on the timeline"/></Grid>
+       </StackPanel>
        <StackPanel x:Name="WordsPanel" Margin="0,10,0,0">
         <Border Style="{StaticResource Divider}" Margin="0,0,0,12"/>
         <TextBlock x:Name="WordsLabel" Style="{StaticResource PanelLabel}" Text="TEXT"/>
@@ -248,6 +257,10 @@
         <local:ColorStrip x:Name="TextColour"/>
         <TextBlock Style="{StaticResource FieldLabel}" Text="Box behind the text" Margin="0,10,0,6"/>
         <local:ColorStrip x:Name="BackColour" AllowNone="True"/>
+        <TextBlock Style="{StaticResource FieldLabel}" Text="Outline round the letters" Margin="0,10,0,6"/>
+        <local:ColorStrip x:Name="OutlineColour" AllowNone="True"/>
+        <Grid Margin="0,4,0,0"><TextBlock Style="{StaticResource FieldLabel}" Text="Outline width"/><local:ValueBox x:Name="OutlineWidthBox" Minimum="0" Maximum="200" Suffix="" Decimals="1" AutomationProperties.Name="Outline width"/></Grid>
+        <CheckBox x:Name="TextShadowCheck" Content="Soft shadow under the letters" Margin="0,10,0,0" Click="TextShadow_Click"/>
         <TextBlock x:Name="CaptionNote" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,8,0,0" Text="Size, colours and position apply to every caption on this track."/>
        </StackPanel>
        <StackPanel x:Name="ShapePanel" Margin="0,10,0,0">

@@ -38,6 +38,7 @@ public sealed class VideoPreview : FrameworkElement
     private VideoProject _project = TimelineOps.Empty();
     private VideoProject? _drawn;
     private List<(Track Track, Clip Clip)> _layers = new();
+    private double[] _fades = Array.Empty<double>();
     private int _dragTarget;
     private long _frame;
     private bool _playing, _cropMode;
@@ -78,7 +79,7 @@ public sealed class VideoPreview : FrameworkElement
     /// <summary>Raised when an element from the palette is dropped on the picture: its key and the canvas point.</summary>
     public event Action<string, Point>? ElementDropped;
 
-    /// <summary>Raised by a double-click on a text or callout graphic: the clip whose words should be edited.</summary>
+    /// <summary>Raised by a double-click on a text or callout graphic, or on a caption: the clip whose words should be edited.</summary>
     public event Action<Guid>? TextEditRequested;
 
     public VideoPreview()
@@ -239,6 +240,10 @@ public sealed class VideoPreview : FrameworkElement
         foreach (var image in layers.Select(layer => layer.Clip).OfType<ImageClip>())
             if (_project.Source(image.SourceId) is { } source) LoadImage(source.Path);
         bool changed = !layers.Select(layer => layer.Clip.Id).SequenceEqual(_layers.Select(layer => layer.Clip.Id)) || !ReferenceEquals(_drawn, _project);
+        // A layer in the middle of a fade looks different on every frame.
+        var fades = layers.Select(layer => TimelineOps.FadeAt(layer.Clip, _frame)).ToArray();
+        changed |= !fades.SequenceEqual(_fades);
+        _fades = fades;
         _layers = layers; _drawn = _project;
         if (redraw || changed) InvalidateVisual();
     }
@@ -248,7 +253,7 @@ public sealed class VideoPreview : FrameworkElement
     {
         if (clip is not VideoClip) return false;
         var p = TimelineOps.PlacementOf(_project, clip);
-        return p.Opacity >= 1 && p.Rotation == 0 && p.X <= 1 && p.Y <= 1 && p.X + p.Width >= _project.Width - 1 && p.Y + p.Height >= _project.Height - 1;
+        return p.Opacity >= 1 && TimelineOps.FadeAt(clip, _frame) >= 1 && p.Rotation == 0 && p.X <= 1 && p.Y <= 1 && p.X + p.Width >= _project.Width - 1 && p.Y + p.Height >= _project.Height - 1;
     }
 
     /// <summary>Starts decoding a still picture off the UI thread; the layer appears when it is ready.</summary>
@@ -281,12 +286,32 @@ public sealed class VideoPreview : FrameworkElement
         return _players.TryGetValue(clip.Id, out var player) && player.HasFrame ? player.Bitmap : null;
     }
 
-    /// <summary>The selected picture or graphic, when it is showing at this frame. Captions are edited on the timeline, not here.</summary>
+    /// <summary>The selected picture or graphic, when it is showing at this frame. A caption has no handles: its place comes from its track.</summary>
     private (Track Track, Clip Clip)? SelectedLayer()
     {
         if (_selected is not Guid id) return null;
         foreach (var layer in _layers)
             if (layer.Clip.Id == id && layer.Clip is Vibershot.Editing.Video.VisualClip or GraphicClip) return layer;
+        return null;
+    }
+
+    /// <summary>The selected caption, when it is showing at this frame.</summary>
+    private (Vibershot.Editing.Video.Track Track, CaptionClip Clip)? SelectedCaption()
+    {
+        if (_selected is not Guid id) return null;
+        foreach (var (track, clip) in _layers)
+            if (clip.Id == id && clip is CaptionClip caption) return (track, caption);
+        return null;
+    }
+
+    /// <summary>The box a caption is drawn in, in canvas pixels.</summary>
+    private Rect CaptionBox(Vibershot.Editing.Video.Track track, CaptionClip caption) => TimelineOps.CaptionItem(_project, track, caption).Bounds;
+
+    /// <summary>Where a caption showing at this frame is drawn, in this control's coordinates; null when it is not showing.</summary>
+    public Rect? CaptionRect(Guid clipId)
+    {
+        foreach (var (track, clip) in _layers)
+            if (clip.Id == clipId && clip is CaptionClip caption) return CanvasToScreen(CaptionBox(track, caption));
         return null;
     }
 
@@ -317,7 +342,7 @@ public sealed class VideoPreview : FrameworkElement
             }
             if (item is TextItem text && !moved)
             {
-                if (Math.Abs(fontScale - 1) > 1e-6) text = text with { FontSize = Math.Max(4, Math.Round(text.FontSize * fontScale, 1)), Padding = Math.Round(text.Padding * fontScale, 1) };
+                if (Math.Abs(fontScale - 1) > 1e-6) text = text with { FontSize = Math.Max(4, Math.Round(text.FontSize * fontScale, 1)), Padding = Math.Round(text.Padding * fontScale, 1), OutlineWidth = Math.Round(text.OutlineWidth * fontScale, 1) };
                 double needed = DocumentRenderer.MeasureText(text).Height;
                 item = text.Bounds.Height < needed ? text with { Bounds = new Rect(text.Bounds.X, text.Bounds.Y, text.Bounds.Width, needed) } : text;
             }
@@ -340,12 +365,15 @@ public sealed class VideoPreview : FrameworkElement
         {
             // Graphics and captions are drawn by the image editor's renderer, in canvas pixels.
             Item? item = drawn switch { GraphicClip graphic => graphic.Item, CaptionClip caption => TimelineOps.CaptionItem(_project, track, caption), _ => null };
+            // A clip fading in or out is drawn that much fainter.
+            double fade = TimelineOps.FadeAt(drawn, _frame);
             if (item != null)
             {
+                dc.PushOpacity(fade);
                 dc.PushTransform(new TranslateTransform(canvas.X, canvas.Y));
                 dc.PushTransform(new ScaleTransform(zoom, zoom));
                 DocumentRenderer.RenderItem(dc, item, NoAssets);
-                dc.Pop(); dc.Pop();
+                dc.Pop(); dc.Pop(); dc.Pop();
                 continue;
             }
             if (drawn is not VisualClip clip || PictureOf(clip) is not { } picture) continue;
@@ -359,7 +387,7 @@ public sealed class VideoPreview : FrameworkElement
                 dc.DrawImage(picture, full);
                 dc.Pop();
             }
-            dc.PushOpacity(Math.Clamp(p.Opacity, 0, 1));
+            dc.PushOpacity(Math.Clamp(p.Opacity, 0, 1) * fade);
             dc.PushClip(new RectangleGeometry(box));
             dc.DrawImage(picture, full);
             dc.Pop(); dc.Pop(); dc.Pop();
@@ -376,6 +404,13 @@ public sealed class VideoPreview : FrameworkElement
 
     private void DrawSelection(DrawingContext dc, Rect canvas)
     {
+        if (SelectedCaption() is var (lane, caption))
+        {
+            // A caption is only outlined: the track's style places it, so there is nothing to drag.
+            var box = CanvasToScreen(CaptionBox(lane, caption));
+            dc.DrawRectangle(null, new Pen(_accent, 1.5), new Rect(Math.Round(box.X) - 0.5, Math.Round(box.Y) - 0.5, Math.Round(box.Width) + 1, Math.Round(box.Height) + 1));
+            return;
+        }
         if (SelectedLayer() is not var (track, clip)) return;
         var p = BoxOf(clip);
         var guide = new Pen(GuideBrush, 1) { DashStyle = DashStyles.Dash };
@@ -485,14 +520,29 @@ public sealed class VideoPreview : FrameworkElement
         // Take the keyboard from a number box so Delete and the other shortcuts act on the picture.
         Focus();
         var p = e.GetPosition(this);
-        if (e.ClickCount == 2 && SelectedLayer() is var (track, clip) && !track.Locked && Hit(clip, ScreenToCanvas(p)))
-        {
-            // A second click on a picture crops it; on words it edits them.
-            if (clip is Vibershot.Editing.Video.VisualClip) CropMode = !CropMode;
-            else if (clip is GraphicClip { Item: TextItem }) TextEditRequested?.Invoke(clip.Id);
-            return;
-        }
+        if (e.ClickCount == 2 && PointerDoubleClick(p)) return;
         if (PointerDown(p, Keyboard.Modifiers)) CaptureMouse();
+    }
+
+    /// <summary>
+    /// The second press of a double-click at a point in this control (the first has already
+    /// selected what is there). On a picture it switches cropping; on words, a caption's included,
+    /// it asks for them to be edited. True when the selected clip was under the point.
+    /// </summary>
+    public bool PointerDoubleClick(Point screen)
+    {
+        var canvas = ScreenToCanvas(screen);
+        if (SelectedCaption() is var (lane, caption))
+        {
+            if (lane.Locked || !CaptionBox(lane, caption).Contains(canvas)) return false;
+            TextEditRequested?.Invoke(caption.Id);
+            return true;
+        }
+        if (SelectedLayer() is not var (track, clip) || track.Locked || !Hit(clip, canvas)) return false;
+        // A second click on a picture crops it; on words it edits them.
+        if (clip is Vibershot.Editing.Video.VisualClip) CropMode = !CropMode;
+        else if (clip is GraphicClip { Item: TextItem }) TextEditRequested?.Invoke(clip.Id);
+        return true;
     }
 
     protected override void OnMouseMove(MouseEventArgs e) => PointerMove(e.GetPosition(this), Keyboard.Modifiers);
@@ -529,10 +579,17 @@ public sealed class VideoPreview : FrameworkElement
                 return true;
             }
         }
-        // The topmost picture or graphic under the pointer takes the click; captions are not picked here.
+        // The topmost thing under the pointer takes the click. Captions sit above everything, and
+        // take it only inside their drawn box; they are selected but never dragged.
         for (int i = _layers.Count - 1; i >= 0; i--)
         {
             var (owner, clip) = _layers[i];
+            if (clip is CaptionClip caption)
+            {
+                if (!CaptionBox(owner, caption).Contains(canvas)) continue;
+                if (_selected != clip.Id) { Selected = clip.Id; ClipPicked?.Invoke(clip.Id); }
+                return false;
+            }
             if (clip is not (Vibershot.Editing.Video.VisualClip or GraphicClip) || !Hit(clip, canvas)) continue;
             var placement = BoxOf(clip);
             if (_selected != clip.Id) { Selected = clip.Id; ClipPicked?.Invoke(clip.Id); }

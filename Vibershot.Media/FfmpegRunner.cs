@@ -141,11 +141,20 @@ public sealed class RawFfmpegProcess : IDisposable
 
     public string ErrorText { get { lock (_stderr) return string.Join(Environment.NewLine, _stderr); } }
 
+    private int _disposed;
+
+    /// <summary>
+    /// Safe to call more than once and from two threads at once: the preview stops a reader from
+    /// the UI thread while the reading task disposes the same reader as it unwinds, and closing a
+    /// Process twice at the same moment throws from inside its stdin writer.
+    /// </summary>
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         try { if (!_process.HasExited) _process.Kill(entireProcessTree: true); }
         catch (Exception) { }
-        _process.Dispose();
+        try { _process.Dispose(); }
+        catch (Exception) { }
     }
 }
 
@@ -276,9 +285,13 @@ public sealed class FfmpegProcess : IDisposable
         }
     }
 
+    private int _disposed;
+
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         Kill();
-        _process.Dispose();
+        try { _process.Dispose(); }
+        catch (Exception) { }
     }
 }
