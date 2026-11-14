@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
@@ -23,7 +24,12 @@ public sealed class VideoPreview : FrameworkElement
 {
     public const double HandleRadius = 8, RotateHandleDistance = 26, SnapPixels = 6, MinimumSize = 8;
 
-    private enum Drag { None, Move, Resize, Rotate }
+    private enum Drag { None, Move, Resize, Rotate, Target }
+
+    /// <summary>Drag format for something from the elements palette; the data is the element's key.</summary>
+    public const string ElementFormat = "Vibershot.Element";
+
+    private static readonly AssetStore NoAssets = new();
 
     private readonly Dictionary<Guid, LayerPlayer> _players = new();
     private readonly Dictionary<string, BitmapSource?> _images = new(StringComparer.OrdinalIgnoreCase);
@@ -31,7 +37,8 @@ public sealed class VideoPreview : FrameworkElement
     private static readonly Brush Shade = Frozen(Color.FromArgb(0x99, 0x19, 0x1A, 0x21)), GuideBrush = Frozen(Color.FromRgb(0xFF, 0x79, 0xC6));
     private VideoProject _project = TimelineOps.Empty();
     private VideoProject? _drawn;
-    private List<VisualClip> _layers = new();
+    private List<(Track Track, Clip Clip)> _layers = new();
+    private int _dragTarget;
     private long _frame;
     private bool _playing, _cropMode;
     private Guid? _selected;
@@ -68,6 +75,12 @@ public sealed class VideoPreview : FrameworkElement
 
     public event Action? CropModeChanged;
 
+    /// <summary>Raised when an element from the palette is dropped on the picture: its key and the canvas point.</summary>
+    public event Action<string, Point>? ElementDropped;
+
+    /// <summary>Raised by a double-click on a text or callout graphic: the clip whose words should be edited.</summary>
+    public event Action<Guid>? TextEditRequested;
+
     public VideoPreview()
     {
         ClipToBounds = true; AllowDrop = true; Focusable = true;
@@ -102,7 +115,13 @@ public sealed class VideoPreview : FrameworkElement
     public bool CropMode
     {
         get => _cropMode;
-        set { if (_cropMode == value) return; _cropMode = value; CropModeChanged?.Invoke(); InvalidateVisual(); }
+        set
+        {
+            // Only pictures have edges to cut; graphics are resized instead.
+            if (value && SelectedLayer() is not (_, Vibershot.Editing.Video.VisualClip)) value = false;
+            if (_cropMode == value) { if (!value) CropModeChanged?.Invoke(); return; }
+            _cropMode = value; CropModeChanged?.Invoke(); InvalidateVisual();
+        }
     }
 
     /// <summary>Shows a project at a frame. Call on every edit, seek and playback tick.</summary>
@@ -149,6 +168,9 @@ public sealed class VideoPreview : FrameworkElement
 
     private Rect CanvasToScreen(Rect canvas) => new(CanvasToScreen(canvas.TopLeft), CanvasToScreen(canvas.BottomRight));
 
+    /// <summary>A canvas rectangle in this control's coordinates (for laying an editor over a graphic).</summary>
+    public Rect ScreenRect(Rect canvas) => CanvasToScreen(canvas);
+
     private double ScaleNow()
     {
         double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
@@ -172,15 +194,15 @@ public sealed class VideoPreview : FrameworkElement
     {
         if (ActualWidth < 1) return;
         CurrentScale = ScaleNow();
-        var visible = TimelineOps.VisibleAt(_project, _frame);
+        var visible = TimelineOps.DrawnAt(_project, _frame);
         // A layer that fills the canvas hides everything under it: do not decode what cannot be seen.
         int firstNeeded = 0;
         for (int i = visible.Count - 1; i > 0; i--)
         {
-            if (Covers(visible[i])) { firstNeeded = i; break; }
+            if (visible[i].Clip is VisualClip picture && Covers(picture)) { firstNeeded = i; break; }
         }
         var layers = visible.Skip(firstNeeded).ToList();
-        var wanted = layers.OfType<VideoClip>().ToList();
+        var wanted = layers.Select(layer => layer.Clip).OfType<VideoClip>().ToList();
         if (_playing)
         {
             // Warm up the clip that starts within the next half second so the cut does not stall.
@@ -214,9 +236,9 @@ public sealed class VideoPreview : FrameworkElement
             player.Advance(Math.Max(_frame, clip.Start));
             redraw |= !had && player.HasFrame;
         }
-        foreach (var image in layers.OfType<ImageClip>())
+        foreach (var image in layers.Select(layer => layer.Clip).OfType<ImageClip>())
             if (_project.Source(image.SourceId) is { } source) LoadImage(source.Path);
-        bool changed = !layers.Select(clip => clip.Id).SequenceEqual(_layers.Select(clip => clip.Id)) || !ReferenceEquals(_drawn, _project);
+        bool changed = !layers.Select(layer => layer.Clip.Id).SequenceEqual(_layers.Select(layer => layer.Clip.Id)) || !ReferenceEquals(_drawn, _project);
         _layers = layers; _drawn = _project;
         if (redraw || changed) InvalidateVisual();
     }
@@ -259,11 +281,51 @@ public sealed class VideoPreview : FrameworkElement
         return _players.TryGetValue(clip.Id, out var player) && player.HasFrame ? player.Bitmap : null;
     }
 
-    private (Track Track, VisualClip Clip)? SelectedLayer()
+    /// <summary>The selected picture or graphic, when it is showing at this frame. Captions are edited on the timeline, not here.</summary>
+    private (Track Track, Clip Clip)? SelectedLayer()
     {
-        if (_selected is not Guid id || _layers.FirstOrDefault(clip => clip.Id == id) is not { } layer) return null;
-        return TimelineOps.Find(_project, id) is var (track, _) ? (track, layer) : null;
+        if (_selected is not Guid id) return null;
+        foreach (var layer in _layers)
+            if (layer.Clip.Id == id && layer.Clip is Vibershot.Editing.Video.VisualClip or GraphicClip) return layer;
+        return null;
     }
+
+    /// <summary>A clip's box on the canvas in one shape, whether it is a picture's placement or a graphic's bounds.</summary>
+    private Placement BoxOf(Clip clip) => clip switch
+    {
+        VisualClip picture => TimelineOps.PlacementOf(_project, picture),
+        GraphicClip { Item: var item } => new Placement { X = item.Bounds.X, Y = item.Bounds.Y, Width = item.Bounds.Width, Height = item.Bounds.Height, Rotation = item.Rotation, Opacity = item.Opacity },
+        _ => new Placement(),
+    };
+
+    /// <summary>
+    /// Writes a dragged box back to its clip. A moved callout takes its pointers with it; a text
+    /// box never gets shorter than its words, and <paramref name="fontScale"/> grows or shrinks
+    /// its letters when a corner is dragged.
+    /// </summary>
+    private static VideoProject WithBox(VideoProject project, Clip original, Placement box, bool moved, double fontScale = 1)
+    {
+        if (original is Vibershot.Editing.Video.VisualClip) return TimelineOps.SetPlacement(project, original.Id, box);
+        if (original is not GraphicClip { Item: var was }) return project;
+        return TimelineOps.UpdateItem(project, original.Id, _ =>
+        {
+            Item item = was with { Bounds = box.Bounds, Rotation = box.Rotation };
+            if (item is CalloutItem callout && moved)
+            {
+                var shift = new Vector(box.X - was.Bounds.X, box.Y - was.Bounds.Y);
+                item = callout with { Targets = callout.Targets.Select(target => target + shift).ToImmutableList() };
+            }
+            if (item is TextItem text && !moved)
+            {
+                if (Math.Abs(fontScale - 1) > 1e-6) text = text with { FontSize = Math.Max(4, Math.Round(text.FontSize * fontScale, 1)), Padding = Math.Round(text.Padding * fontScale, 1) };
+                double needed = DocumentRenderer.MeasureText(text).Height;
+                item = text.Bounds.Height < needed ? text with { Bounds = new Rect(text.Bounds.X, text.Bounds.Y, text.Bounds.Width, needed) } : text;
+            }
+            return item;
+        });
+    }
+
+    private static bool IsLine(Clip clip) => clip is GraphicClip { Item: LineItem };
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -273,9 +335,20 @@ public sealed class VideoPreview : FrameworkElement
         var background = new SolidColorBrush(_project.Background); background.Freeze();
         dc.DrawRectangle(background, new Pen(_rule, 1), canvas);
         dc.PushClip(new RectangleGeometry(canvas));
-        foreach (var clip in _layers)
+        double zoom = canvas.Width / Math.Max(1, _project.Width);
+        foreach (var (track, drawn) in _layers)
         {
-            if (PictureOf(clip) is not { } picture) continue;
+            // Graphics and captions are drawn by the image editor's renderer, in canvas pixels.
+            Item? item = drawn switch { GraphicClip graphic => graphic.Item, CaptionClip caption => TimelineOps.CaptionItem(_project, track, caption), _ => null };
+            if (item != null)
+            {
+                dc.PushTransform(new TranslateTransform(canvas.X, canvas.Y));
+                dc.PushTransform(new ScaleTransform(zoom, zoom));
+                DocumentRenderer.RenderItem(dc, item, NoAssets);
+                dc.Pop(); dc.Pop();
+                continue;
+            }
+            if (drawn is not VisualClip clip || PictureOf(clip) is not { } picture) continue;
             var p = TimelineOps.PlacementOf(_project, clip);
             Rect box = CanvasToScreen(p.Bounds), full = CanvasToScreen(p.FullBounds);
             dc.PushTransform(new RotateTransform(p.Rotation, box.X + box.Width / 2, box.Y + box.Height / 2));
@@ -304,7 +377,7 @@ public sealed class VideoPreview : FrameworkElement
     private void DrawSelection(DrawingContext dc, Rect canvas)
     {
         if (SelectedLayer() is not var (track, clip)) return;
-        var p = TimelineOps.PlacementOf(_project, clip);
+        var p = BoxOf(clip);
         var guide = new Pen(GuideBrush, 1) { DashStyle = DashStyles.Dash };
         if (_guideX is { } gx) { double x = Math.Round(CanvasToScreen(new Point(gx, 0)).X) + 0.5; dc.DrawLine(guide, new Point(x, canvas.Top), new Point(x, canvas.Bottom)); }
         if (_guideY is { } gy) { double y = Math.Round(CanvasToScreen(new Point(0, gy)).Y) + 0.5; dc.DrawLine(guide, new Point(canvas.Left, y), new Point(canvas.Right, y)); }
@@ -319,6 +392,8 @@ public sealed class VideoPreview : FrameworkElement
         dc.DrawGeometry(null, new Pen(_accent, 1.5) { DashStyle = _cropMode ? DashStyles.Dash : DashStyles.Solid }, outline);
         if (track.Locked) return;
         var pen = new Pen(_accent, 1.5);
+        // A callout's pointer tips can be dragged on their own.
+        foreach (var tip in TargetPoints(clip)) dc.DrawEllipse(_accent, new Pen(Brushes.White, 1.5), tip, 5.5, 5.5);
         foreach (var (edges, point) in Handles(p))
         {
             if (edges == BoxEdges.None)
@@ -378,9 +453,26 @@ public sealed class VideoPreview : FrameworkElement
     public Point? HandlePoint(BoxEdges edges)
     {
         if (SelectedLayer() is not var (_, clip)) return null;
-        foreach (var (candidate, point) in Handles(TimelineOps.PlacementOf(_project, clip)))
+        foreach (var (candidate, point) in Handles(BoxOf(clip)))
             if (candidate == edges) return point;
         return null;
+    }
+
+    /// <summary>The screen positions of the selected callout's pointer tips.</summary>
+    private List<Point> TargetPoints(Clip clip) =>
+        clip is GraphicClip { Item: CalloutItem callout } ? callout.Targets.Select(CanvasToScreen).ToList() : new List<Point>();
+
+    /// <summary>True when a canvas point is on the clip. A line is given some thickness to be clickable.</summary>
+    private bool Hit(Clip clip, Point canvas)
+    {
+        var box = BoxOf(clip);
+        if (IsLine(clip) || clip is GraphicClip)
+        {
+            double slack = (IsLine(clip) ? 8 : 2) / Math.Max(1e-6, Zoom);
+            var grown = box.Bounds; grown.Inflate(slack, slack);
+            box = box.WithBounds(grown);
+        }
+        return Inside(box, canvas);
     }
 
     private static bool Inside(Placement p, Point canvas) =>
@@ -393,9 +485,11 @@ public sealed class VideoPreview : FrameworkElement
         // Take the keyboard from a number box so Delete and the other shortcuts act on the picture.
         Focus();
         var p = e.GetPosition(this);
-        if (e.ClickCount == 2 && SelectedLayer() is var (track, clip) && !track.Locked && Inside(TimelineOps.PlacementOf(_project, clip), ScreenToCanvas(p)))
+        if (e.ClickCount == 2 && SelectedLayer() is var (track, clip) && !track.Locked && Hit(clip, ScreenToCanvas(p)))
         {
-            CropMode = !CropMode;
+            // A second click on a picture crops it; on words it edits them.
+            if (clip is Vibershot.Editing.Video.VisualClip) CropMode = !CropMode;
+            else if (clip is GraphicClip { Item: TextItem }) TextEditRequested?.Invoke(clip.Id);
             return;
         }
         if (PointerDown(p, Keyboard.Modifiers)) CaptureMouse();
@@ -419,7 +513,15 @@ public sealed class VideoPreview : FrameworkElement
         var canvas = ScreenToCanvas(screen);
         if (SelectedLayer() is var (track, selected) && !track.Locked)
         {
-            var placement = TimelineOps.PlacementOf(_project, selected);
+            var placement = BoxOf(selected);
+            var tips = TargetPoints(selected);
+            for (int i = 0; i < tips.Count; i++)
+            {
+                if ((screen - tips[i]).Length > HandleRadius) continue;
+                Begin(Drag.Target, BoxEdges.None, placement, canvas);
+                _dragTarget = i;
+                return true;
+            }
             foreach (var (edges, point) in Handles(placement))
             {
                 if ((screen - point).Length > HandleRadius) continue;
@@ -427,14 +529,14 @@ public sealed class VideoPreview : FrameworkElement
                 return true;
             }
         }
-        // The topmost picture under the pointer takes the click.
+        // The topmost picture or graphic under the pointer takes the click; captions are not picked here.
         for (int i = _layers.Count - 1; i >= 0; i--)
         {
-            var clip = _layers[i];
-            var placement = TimelineOps.PlacementOf(_project, clip);
-            if (!Inside(placement, canvas)) continue;
+            var (owner, clip) = _layers[i];
+            if (clip is not (Vibershot.Editing.Video.VisualClip or GraphicClip) || !Hit(clip, canvas)) continue;
+            var placement = BoxOf(clip);
             if (_selected != clip.Id) { Selected = clip.Id; ClipPicked?.Invoke(clip.Id); }
-            if (TimelineOps.Find(_project, clip.Id) is not var (owner, _) || owner.Locked) return false;
+            if (owner.Locked) return false;
             // In crop mode the picture stays put: only its edges move.
             if (_cropMode) return false;
             Begin(Drag.Move, BoxEdges.None, placement, canvas);
@@ -460,6 +562,17 @@ public sealed class VideoPreview : FrameworkElement
         _dragMoved = true;
         bool shift = modifiers.HasFlag(ModifierKeys.Shift), alt = modifiers.HasFlag(ModifierKeys.Alt);
         var p = _dragPlacement;
+        if (TimelineOps.Find(_dragBase, id) is not var (_, original)) return;
+        if (_drag == Drag.Target)
+        {
+            // One pointer tip of a callout follows the mouse; the body stays where it is.
+            int index = _dragTarget;
+            var tip = new Point(Math.Round(canvas.X), Math.Round(canvas.Y));
+            History.Push(TimelineOps.UpdateItem(_dragBase, id, item => item is CalloutItem callout && index < callout.Targets.Count ? callout with { Targets = callout.Targets.SetItem(index, tip) } : item), _dragKey);
+            InvalidateVisual();
+            return;
+        }
+        double fontScale = 1;
         Placement result;
         _guideX = _guideY = null;
         switch (_drag)
@@ -498,13 +611,17 @@ public sealed class VideoPreview : FrameworkElement
             default:
                 bool corner = (_dragEdges & (BoxEdges.Left | BoxEdges.Right)) != 0 && (_dragEdges & (BoxEdges.Top | BoxEdges.Bottom)) != 0;
                 // Corners keep the picture's shape unless Shift is held; side handles stretch it.
-                var bounds = HandleMath.ResizeRotated(p.Bounds, p.Rotation, _dragEdges, _dragStart, canvas, corner && !shift);
-                if (bounds.Width < MinimumSize || bounds.Height < MinimumSize) return;
-                if (p.Rotation == 0) bounds = new Rect(Math.Round(bounds.X), Math.Round(bounds.Y), Math.Max(MinimumSize, Math.Round(bounds.Width)), Math.Max(MinimumSize, Math.Round(bounds.Height)));
+                bool flat = IsLine(original);
+                var bounds = HandleMath.ResizeRotated(p.Bounds, p.Rotation, _dragEdges, _dragStart, canvas, corner && !shift && !flat);
+                // A line may be flat or upright; everything else keeps some size.
+                if (!flat && (bounds.Width < MinimumSize || bounds.Height < MinimumSize)) return;
+                // Dragging a corner of a text box scales its letters with it.
+                if (corner && !shift && original is GraphicClip { Item: TextItem } && p.Width > 0) fontScale = bounds.Width / p.Width;
+                if (p.Rotation == 0) bounds = new Rect(Math.Round(bounds.X), Math.Round(bounds.Y), Math.Max(flat ? 0 : MinimumSize, Math.Round(bounds.Width)), Math.Max(flat ? 0 : MinimumSize, Math.Round(bounds.Height)));
                 result = p.WithBounds(bounds);
                 break;
         }
-        History.Push(TimelineOps.SetPlacement(_dragBase, id, result), _dragKey);
+        History.Push(WithBox(_dragBase, original, result, _drag == Drag.Move, fontScale), _dragKey);
         InvalidateVisual();
     }
 
@@ -545,14 +662,15 @@ public sealed class VideoPreview : FrameworkElement
     {
         if (SelectedLayer() is var (track, clip) && !track.Locked)
         {
-            var placement = TimelineOps.PlacementOf(_project, clip);
+            var placement = BoxOf(clip);
+            foreach (var tip in TargetPoints(clip)) if ((screen - tip).Length <= HandleRadius) { Cursor = Cursors.Cross; return; }
             foreach (var (edges, point) in Handles(placement))
             {
                 if ((screen - point).Length > HandleRadius) continue;
                 Cursor = edges == BoxEdges.None ? Cursors.Hand : HandleCursor(edges, placement.Rotation);
                 return;
             }
-            if (!_cropMode && Inside(placement, ScreenToCanvas(screen))) { Cursor = Cursors.SizeAll; return; }
+            if (!_cropMode && Hit(clip, ScreenToCanvas(screen))) { Cursor = Cursors.SizeAll; return; }
         }
         Cursor = Cursors.Arrow;
     }
@@ -575,15 +693,17 @@ public sealed class VideoPreview : FrameworkElement
 
     protected override void OnDragOver(DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(TimelineView.SourceFormat)) return;
+        if (!e.Data.GetDataPresent(TimelineView.SourceFormat) && !e.Data.GetDataPresent(ElementFormat)) return;
         e.Effects = DragDropEffects.Copy;
         e.Handled = true;
     }
 
     protected override void OnDrop(DragEventArgs e)
     {
+        var at = ScreenToCanvas(e.GetPosition(this));
+        if (e.Data.GetData(ElementFormat) is string element) { ElementDropped?.Invoke(element, at); e.Handled = true; return; }
         if (e.Data.GetData(TimelineView.SourceFormat) is not string text || !Guid.TryParse(text, out var sourceId)) return;
-        SourceDropped?.Invoke(sourceId, ScreenToCanvas(e.GetPosition(this)));
+        SourceDropped?.Invoke(sourceId, at);
         e.Handled = true;
     }
 

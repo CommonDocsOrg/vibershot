@@ -8,6 +8,7 @@ using Vibershot.UI;
 using System.Windows;
 using System.Windows.Input;
 using Vibershot.Editing;
+using System.Windows.Media;
 
 /// <summary>Checks for the video editor: timeline edits, the project file, ffmpeg arguments and a real layered export.</summary>
 static class VideoEditorChecks
@@ -147,15 +148,20 @@ static class VideoEditorChecks
         Overlays();
         PreviewGestures();
         Console.WriteLine("PASS: video editor overlays (placement, stills, on-top insert, audio-only, scaled plans, waveform peaks) and preview handles (pick, move, snap, resize, turn, crop).");
+        Graphics();
+        GraphicGestures();
+        Console.WriteLine("PASS: video editor graphics and captions (caption tracks, SRT, elements palette, drawing order, PNG export plan) and their handles (pick, move, pointer tips, text scaling, caption lane).");
     }
 
     /// <summary>
     /// Opens the video editor window on its own, outside the tray app and its single-instance
     /// pipe, so it can be looked at while another Vibershot is running:
-    /// <c>CaptureChecks --editor file [canvasX,canvasY]</c>. The optional point is clicked in the
-    /// preview once the window has settled, to select the picture there.
+    /// <c>CaptureChecks --editor file [action…]</c>. Once the window has settled the actions run
+    /// in turn: <c>pick:x,y</c> clicks the preview at a canvas point, <c>element:Key@x,y</c> adds
+    /// a palette element there at the playhead, <c>caption</c> presses Add caption and
+    /// <c>elements</c> shows the Elements tab, <c>edit</c> starts typing in place on the selected text.
     /// </summary>
-    public static void ShowEditor(string path, string? pick)
+    public static void ShowEditor(string path, string[] actions)
     {
         App.Hosted = true;
         var app = new App();
@@ -165,16 +171,24 @@ static class VideoEditorChecks
         var window = VideoEditorWindow.Open(app.Config, path);
         window.ShowActivated = false;
         window.Closed += (_, _) => app.Shutdown();
-        if (pick != null && window.FindName("Preview") is VideoPreview preview)
+        static Point Parse(string text) { var parts = text.Split(',').Select(part => double.Parse(part, System.Globalization.CultureInfo.InvariantCulture)).ToArray(); return new Point(parts[0], parts[1]); }
+        var queue = new Queue<string>(actions);
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        timer.Tick += (_, _) =>
         {
-            var parts = pick.Split(',').Select(part => double.Parse(part, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
-            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
-            timer.Tick += (_, _) => { timer.Stop(); preview.PointerDown(preview.CanvasToScreen(new Point(parts[0], parts[1]))); preview.PointerUp(); };
-            timer.Start();
-        }
+            timer.Interval = TimeSpan.FromSeconds(0.5);
+            if (queue.Count == 0) { timer.Stop(); return; }
+            string action = queue.Dequeue();
+            var preview = (VideoPreview)window.FindName("Preview");
+            if (action.StartsWith("pick:")) { preview.PointerDown(preview.CanvasToScreen(Parse(action[5..]))); preview.PointerUp(); }
+            else if (action.StartsWith("element:")) { var parts = action[8..].Split('@'); window.AddElement(parts[0], Parse(parts[1]), null, 0); }
+            else if (action == "caption") ((System.Windows.Controls.Button)System.Windows.LogicalTreeHelper.FindLogicalNode(window, "AddCaptionButton")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            else if (action == "edit" && preview.Selected is Guid editing) typeof(VideoEditorWindow).GetMethod("BeginInlineEdit", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(window, new object[] { editing });
+            else if (action == "elements") ((System.Windows.Controls.RadioButton)window.FindName("ElementsTab")).IsChecked = true;
+        };
+        timer.Start();
         app.Run(window);
     }
-
 
     static bool Near(double a, double b, double tolerance = 1e-6) => Math.Abs(a - b) <= tolerance;
 
@@ -251,6 +265,183 @@ static class VideoEditorChecks
         Check(Near(turned.Width, 260, 1e-6) && Near(turned.Height, 100, 1e-6) && Near(turned.X + turned.Width / 2, 200, 1e-6) && Near(turned.Y + turned.Height / 2, 180, 1e-6), "a box turned 90° grows along its own axis and keeps the far edge still: " + turned);
         Check(Near(HandleMath.AngleTo(new Point(0, 0), new Point(0, -10), false), 0) && Near(HandleMath.AngleTo(new Point(0, 0), new Point(10, 0), false), 90) && Near(HandleMath.AngleTo(new Point(0, 0), new Point(-10, 0), false), -90)
             && Near(HandleMath.AngleTo(new Point(0, 0), new Point(10, -9), true), 45) && Near(HandleMath.AngleTo(new Point(0, 0), new Point(0, 10), false), 180), "pointer angle is clockwise from straight up");
+    }
+
+    /// <summary>Stage 3 model work: graphics, captions, subtitles, the palette and the pictures the export draws.</summary>
+    static void Graphics()
+    {
+        var a = Source(@"C:\media\a.mp4", 10);
+        var project = TimelineOps.ForSource(a);
+        var videoId = project.Tracks[0].Clips[0].Id;
+
+        // Caption tracks sit between the video layers and the audio lanes, and can all be removed.
+        var withTrack = TimelineOps.AddTrack(project, TrackKind.Caption, out var c1);
+        Check(withTrack.Tracks.Select(t => t.Name).SequenceEqual(new[] { "V1", "C1", "A1" }) && withTrack.Tracks[1].Kind == TrackKind.Caption, "caption track goes between video and audio");
+        Check(TimelineOps.RemoveTrack(withTrack, c1).Tracks.Count == 2, "the only caption track can be removed");
+
+        // Captions: three seconds or up to the next one; never two on one frame.
+        var captioned = TimelineOps.AddCaption(project, null, 0, "Hello", out var hello);
+        var lane = captioned.Tracks.Single(t => t.Kind == TrackKind.Caption);
+        Check(hello != Guid.Empty && lane.Clips.Single() is CaptionClip { Start: 0, Duration: 90, Text: "Hello" } && captioned.Tracks.Count == 3, "a caption makes its track and lasts three seconds");
+        Check(ReferenceEquals(TimelineOps.AddCaption(captioned, null, 60, "x", out var none), captioned) && none == Guid.Empty, "no second caption on a covered frame");
+        captioned = TimelineOps.AddCaption(captioned, lane.Id, 200, "Later", out _);
+        captioned = TimelineOps.AddCaption(captioned, null, 150, "Between", out var between);
+        Check(TimelineOps.Find(captioned, between)!.Value.Clip is { Start: 150, Duration: 50 } && captioned.Tracks.Count(t => t.Kind == TrackKind.Caption) == 1, "a caption stops where the next begins");
+        Check(TimelineOps.TrimEnd(captioned, hello, 149).Tracks[1].Clips[0].End == 149 && TimelineOps.TrimEnd(captioned, hello, 400).Tracks[1].Clips[0].End == 150, "a caption stretches to any length up to its neighbour");
+
+        // How a caption is drawn: centred, a twentieth up from the bottom, no wider than four fifths.
+        lane = captioned.Tracks[1];
+        var drawn = TimelineOps.CaptionItem(captioned, lane, (CaptionClip)lane.Clips[0]);
+        Check(drawn.Text == "Hello" && drawn.FontSize == 54 && drawn.Bold && drawn.Alignment == TextAlign.Center && Near(drawn.Bounds.X + drawn.Bounds.Width / 2, 960, 1) && Near(drawn.Bounds.Bottom, 1080 - 54, 0.01) && drawn.Bounds.Width < 400, "caption box: " + drawn.Bounds);
+        var longText = TimelineOps.CaptionItem(captioned, lane, new CaptionClip { Text = string.Join(" ", Enumerable.Repeat("a long caption that has to wrap", 6)) });
+        Check(longText.Bounds.Width is > 1300 and <= 1536 && Near(longText.Bounds.X + longText.Bounds.Width / 2, 960, 1) && longText.Bounds.Height > drawn.Bounds.Height * 1.8 && Near(longText.Bounds.Bottom, 1026, 0.01), "a long caption wraps inside four fifths of the canvas: " + longText.Bounds);
+        var top = TimelineOps.SetTrack(captioned, lane with { CaptionStyle = new CaptionStyle { FontSize = 30, AtTop = true, Background = null } });
+        var atTop = TimelineOps.CaptionItem(top, top.Tracks[1], (CaptionClip)top.Tracks[1].Clips[0]);
+        Check(atTop.Bounds.Y == 54 && atTop.FontSize == 30 && atTop.Background == null && !atTop.Shadow, "a track style moves its captions to the top");
+
+        // Subtitles in and out.
+        const string srt = "\uFEFF1\r\n00:00:01,000 --> 00:00:02,500\r\n<i>First</i> line\r\nsecond line\r\n\r\n2\r\n00:00:02.000 --> 00:00:04.000\r\n{\\an8}Overlaps the first\r\n\r\nnot a cue\r\n\r\n00:01:00,5 --> 00:01:01,2\r\nNo number\r\n";
+        var cues = Srt.Parse(srt);
+        Check(cues.Count == 3 && cues[0] == new SrtCue(1, 2.5, "First line\nsecond line") && cues[1].Text == "Overlaps the first" && Near(cues[2].Start, 60.5) && Near(cues[2].End, 61.2), "srt parsing: " + string.Join(" | ", cues));
+        var imported = TimelineOps.ImportCaptions(project, cues, out var importedTrack);
+        var importedClips = imported.Tracks.First(t => t.Id == importedTrack).Clips;
+        Check(importedClips.Count == 3 && importedClips[0] is CaptionClip { Start: 30, Duration: 45 } && importedClips[1] is { Start: 75, End: 120 } && importedClips[2].Start == 1815, "imported cues become captions; an overlap starts where the one before ends");
+        string written = Srt.Write(TimelineOps.CaptionCues(imported));
+        Check(written == "1\r\n00:00:01,000 --> 00:00:02,500\r\nFirst line\r\nsecond line\r\n\r\n2\r\n00:00:02,500 --> 00:00:04,000\r\nOverlaps the first\r\n\r\n3\r\n00:01:00,500 --> 00:01:01,200\r\nNo number\r\n\r\n", "srt writing: " + written.Replace("\r\n", "/"));
+        Check(Srt.Parse(written).Count == 3 && Srt.Parse("nothing here").Count == 0, "written subtitles read back");
+        Check(TimelineOps.CaptionCues(TimelineOps.SetTrack(imported, imported.Tracks.First(t => t.Id == importedTrack) with { Hidden = true })).Count == 0, "a hidden caption track is not exported");
+
+        // Graphics: on top of what is showing, any length, drawn between the video and the captions.
+        var box = new RectItem { Bounds = new Rect(100, 100, 200, 100), Fill = Colors.Lime, Stroke = Colors.White, StrokeWidth = 4 };
+        var withBox = TimelineOps.InsertGraphic(captioned, box, null, 30, out var boxId);
+        var boxAt = TimelineOps.Find(withBox, boxId)!.Value;
+        Check(boxAt.Track.Name == "V2" && boxAt.Clip is GraphicClip { Start: 30, Duration: 150 } && withBox.Tracks.Select(t => t.Name).SequenceEqual(new[] { "V1", "V2", "C1", "A1" }), "a graphic goes on a new layer above the video");
+        Check(TimelineOps.DrawnAt(withBox, 60).Select(l => l.Clip.Id).SequenceEqual(new[] { videoId, boxId, hello }) && TimelineOps.DrawnAt(withBox, 100).Count == 2, "drawing order is video, graphic, caption");
+        Check(TimelineOps.VisibleAt(withBox, 60).Single().Id == videoId, "pictures are still listed on their own");
+        Check(TimelineOps.Find(TimelineOps.InsertGraphic(withBox, box, boxAt.Track.Id, 400, out var second), second)!.Value.Track.Name == "V2", "a free layer that was asked for is used");
+        var stretched = TimelineOps.TrimStart(TimelineOps.TrimEnd(withBox, boxId, 2000), boxId, 0);
+        Check(TimelineOps.Find(stretched, boxId)!.Value.Clip is { Start: 0, End: 2000, SourceIn: 0 }, "a graphic can be any length");
+        Check(TimelineOps.Split(withBox, 90, new[] { boxId }).Tracks[1].Clips.Count == 2, "a graphic can be split");
+        var recoloured = TimelineOps.UpdateItem(withBox, boxId, item => item with { Fill = Colors.Red });
+        Check(TimelineOps.Find(recoloured, boxId)!.Value.Clip is GraphicClip { Item: RectItem { Fill: var fill } } && fill == Colors.Red, "a graphic's item can be changed");
+        var callout = new CalloutItem { Text = "Look", Bounds = new Rect(500, 300, 200, 60), Targets = System.Collections.Immutable.ImmutableList.Create(new Point(400, 500)), Background = Colors.White, Stroke = Colors.Black, StrokeWidth = 2 };
+        var styled = TimelineOps.SetTrack(TimelineOps.InsertGraphic(withBox, callout, null, 30, out var calloutId), withBox.Tracks[2] with { CaptionStyle = new CaptionStyle { FontSize = 40, AtTop = true } });
+        var back = DocumentJson.Deserialize<VideoProject>(DocumentJson.Serialize(styled))!;
+        Check(TimelineOps.Find(back, boxId)!.Value.Clip is GraphicClip { Item: RectItem { StrokeWidth: 4 } } && TimelineOps.Find(back, calloutId)!.Value.Clip is GraphicClip { Item: CalloutItem { Text: "Look", Targets.Count: 1 } }
+            && TimelineOps.Find(back, hello)!.Value.Clip is CaptionClip { Text: "Hello" } && back.Tracks.Single(t => t.Kind == TrackKind.Caption).CaptionStyle is { FontSize: 40, AtTop: true }, "graphics, captions and caption styles survive the project file");
+
+        // The palette: every entry makes an item, sized for the canvas.
+        Check(VideoElements.All.Count > 20 && VideoElements.All.Select(e => e.Key).Distinct().Count() == VideoElements.All.Count && VideoElements.All.Select(e => e.Group).Distinct().Count() == 5, "palette entries are unique, in five groups");
+        var uhd = TimelineOps.Empty(3840, 2160);
+        foreach (var element in VideoElements.All)
+        {
+            var hd = VideoElements.Create(project, element.Key, new Point(960, 540)); var big = VideoElements.Create(uhd, element.Key, new Point(1920, 1080));
+            Check(hd != null && big != null && hd.GetType() == big.GetType(), "palette entry makes an item: " + element.Key);
+            if (hd is LineItem || hd is CalloutItem { Targets.Count: > 0 }) continue;
+            Check(Near(hd!.Center.X, 960, 2) && Near(hd.Center.Y, 540, 2) && Near(big!.Bounds.Width, hd.Bounds.Width * 2, 4) && hd.Bounds.Width > 20, $"{element.Key} is centred and scales with the canvas: {hd.Bounds} and {big.Bounds}");
+        }
+        Check(VideoElements.Create(project, "Text:plain", new Point(0, 0)) is TextItem { FontSize: 66, Text: "Text" } && VideoElements.Create(uhd, "Shapes:outline", new Point(0, 0)) is RectItem { Bounds.Width: 648, StrokeWidth: 12 }, "palette sizes are designed at 720 lines");
+        Check(VideoElements.Create(project, "Shapes:nope", default) == null && VideoElements.Create(project, "nonsense", default) == null, "unknown palette keys make nothing");
+        var doubled = (CalloutItem)VideoElements.Scale(callout, 2, new Point(500, 300));
+        Check(doubled.Bounds == new Rect(500, 300, 400, 120) && doubled.Targets[0] == new Point(300, 700) && doubled.StrokeWidth == 4 && doubled.FontSize == 36, "scaling a callout scales its box, line, letters and pointer");
+
+        // What the export draws: the part of the canvas an item can touch.
+        Check(GraphicExport.Extent(box, 1920, 1080) == new Rect(84, 84, 232, 132), "extent adds line width and margin: " + GraphicExport.Extent(box, 1920, 1080));
+        Check(GraphicExport.Extent(box with { Bounds = new Rect(-50, -50, 100, 100) }, 1920, 1080) == new Rect(0, 0, 66, 66) && GraphicExport.Extent(box with { Bounds = new Rect(3000, 100, 50, 50) }, 1920, 1080).IsEmpty, "extent is clipped to the canvas");
+        var calloutExtent = GraphicExport.Extent(callout, 1920, 1080);
+        Check(calloutExtent.Contains(new Point(400, 500)) && calloutExtent.Contains(new Rect(500, 300, 200, 60)), "a callout's extent reaches its pointer");
+        Check(TimelineOps.ToPlan(withBox).Video.Count == 1 && TimelineOps.ToPlan(withBox).Overlays.Count == 0, "without a folder to draw into, a plan leaves graphics and captions out");
+
+        // With a folder: the graphic is a PNG at its extent, the captions one timed list.
+        string folder = Path.Combine(AppContext.BaseDirectory, "videochecks", "graphics");
+        if (Directory.Exists(folder)) Directory.Delete(folder, true);
+        var plan = TimelineOps.ToPlan(withBox, null, 960, 540, folder);
+        var png = plan.Video[1];
+        Check(plan.Video.Count == 2 && png.IsImage && png.X == 42 && png.Y == 42 && png.Width == 116 && png.Height == 66 && Near(png.Start, 1) && Near(png.Duration, 5) && File.Exists(png.Path), "the graphic is planned as a still at half size");
+        var decoded = new System.Windows.Media.Imaging.PngBitmapDecoder(new Uri(png.Path), System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad).Frames[0];
+        var pixel = new byte[4]; var corner = new byte[4];
+        new System.Windows.Media.Imaging.FormatConvertedBitmap(decoded, PixelFormats.Bgra32, null, 0).CopyPixels(new Int32Rect(58, 33, 1, 1), pixel, 4, 0);
+        new System.Windows.Media.Imaging.FormatConvertedBitmap(decoded, PixelFormats.Bgra32, null, 0).CopyPixels(new Int32Rect(1, 1, 1, 1), corner, 4, 0);
+        Check(decoded.PixelWidth == 116 && decoded.PixelHeight == 66 && pixel[1] == 255 && pixel[0] == 0 && pixel[3] == 255 && corner[3] == 0, "the PNG is the lime box on transparency");
+        var stream = plan.Overlays.Single();
+        string[] list = File.ReadAllLines(stream.ListPath);
+        var files = list.Where(line => line.StartsWith("file '")).Select(line => line[6..^1]).ToList();
+        // Hello, a gap, Between, Later, the tail, and the last entry named once more; every picture read at the project rate.
+        Check(list[0] == "ffconcat version 1.0" && list.Length == 18 && list.Where(line => line.StartsWith("duration ")).SequenceEqual(new[] { "duration 3.000000", "duration 2.000000", "duration 1.666667", "duration 3.000000", "duration 0.333333" })
+            && list.Count(line => line == "option framerate 30") == 6 && list[2] == "option framerate 30" && list[3].StartsWith("duration ")
+            && files.Count == 6 && files[1].EndsWith("_blank.png") && files[1] == files[4] && files[4] == files[5] && files[0] != files[1] && files[2] != files[3] && files.All(file => File.Exists(Path.Combine(folder, file))), "caption list: " + string.Join(" / ", list));
+        Check(stream.Y > 400 && stream.Y < 540 && stream.X >= 0 && stream.X < 480, $"the caption band sits at the bottom of the half-size picture: {stream.X}, {stream.Y}");
+        string[] built = ExportArguments.Build(new ExportPlan { Width = 320, Height = 180, FrameRate = FrameRate.Fps30, Duration = 2, Overlays = new[] { new ExportOverlayStream(@"C:\t\c.ffconcat", 12, 150.5) } }, EncoderProbe.Hardware[0], 75, @"C:\o.mp4");
+        int graphAt = Array.IndexOf(built, "-filter_complex");
+        Check(built.Skip(4).Take(6).SequenceEqual(new[] { "-f", "concat", "-safe", "0", "-i", @"C:\t\c.ffconcat" })
+            && built[graphAt + 1] == "color=c=black:s=320x180:r=30:d=2,format=yuv420p[bg];[0:v]fps=30,format=rgba[v0];[bg][v0]overlay=x=12:y=150.5:eof_action=pass[o0];[o0]format=yuv420p[vout]", "caption stream arguments: " + built[graphAt + 1]);
+    }
+
+    /// <summary>Graphics in the preview and captions on the timeline, driven through the controls' pointer methods.</summary>
+    static void GraphicGestures()
+    {
+        var a = Source(@"C:\media\a.mp4", 10);
+        var project = TimelineOps.ForSource(a);
+        var videoId = project.Tracks[0].Clips[0].Id;
+        var callout = new CalloutItem { Text = "Look", FontSize = 30, Padding = 10, Bounds = new Rect(900, 300, 300, 100), Targets = System.Collections.Immutable.ImmutableList.Create(new Point(700, 600)), Background = Colors.White, Stroke = Colors.Black, StrokeWidth = 2 };
+        project = TimelineOps.InsertGraphic(project, callout, null, 0, out var calloutId);
+        var title = (TextItem)VideoElements.Create(project, "Text:plain", new Point(400, 800))!;
+        project = TimelineOps.InsertGraphic(project, title, null, 0, out var titleId);
+        var line = new LineItem { Stroke = Colors.Yellow, StrokeWidth = 6 }.WithPoints(new Point(1400, 900), new Point(1700, 900));
+        project = TimelineOps.InsertGraphic(project, line, null, 0, out var lineId);
+        project = TimelineOps.AddCaption(project, null, 0, "A caption", out var captionId);
+        var history = new History<VideoProject>(project);
+        var view = new VideoPreview { History = history };
+        view.Measure(new Size(992, 572)); view.Arrange(new Rect(0, 0, 992, 572));
+        void Refresh() => view.Show(history.Current, 0, false);
+        Point At(double x, double y) => view.CanvasToScreen(new Point(x, y));
+        T ItemOf<T>(Guid id) where T : Item => (T)((GraphicClip)TimelineOps.Find(history.Current, id)!.Value.Clip).Item;
+        Refresh();
+        Guid? picked = null; view.ClipPicked += id => picked = id;
+
+        // Graphics are picked over the video; a flat line has enough thickness to hit; captions are left alone.
+        view.PointerDown(At(1050, 350)); view.PointerUp();
+        Check(picked == calloutId, "the callout is picked");
+        view.PointerDown(At(1550, 906)); view.PointerUp();
+        Check(picked == lineId, "a level line can be clicked");
+        var captionBox = TimelineOps.CaptionItem(history.Current, history.Current.Tracks.Single(t => t.Kind == TrackKind.Caption), (CaptionClip)TimelineOps.Find(history.Current, captionId)!.Value.Clip).Bounds;
+        view.PointerDown(At(captionBox.X + captionBox.Width / 2, captionBox.Y + captionBox.Height / 2)); view.PointerUp();
+        Check(picked == videoId, "a click on a caption reaches the video under it");
+
+        // Moving a callout takes its pointer with it; dragging the tip moves only the tip.
+        view.PointerDown(At(1050, 350)); view.PointerMove(At(1100, 400)); view.PointerMove(At(1150, 450)); view.PointerUp(); Refresh();
+        Check(ItemOf<CalloutItem>(calloutId).Bounds == new Rect(1000, 400, 300, 100) && ItemOf<CalloutItem>(calloutId).Targets[0] == new Point(800, 700), "a moved callout keeps pointing the same way: " + ItemOf<CalloutItem>(calloutId).Bounds);
+        Check(view.PointerDown(At(800, 700)), "the pointer tip is a handle"); view.PointerMove(At(700, 800)); view.PointerMove(At(600, 900)); view.PointerUp(); Refresh();
+        Check(ItemOf<CalloutItem>(calloutId).Targets[0] == new Point(600, 900) && ItemOf<CalloutItem>(calloutId).Bounds == new Rect(1000, 400, 300, 100), "dragging the tip leaves the body alone");
+        view.CropMode = true;
+        Check(!view.CropMode, "a graphic cannot be cropped");
+
+        // A corner of a text box scales its letters; a side only changes the wrap width.
+        view.PointerDown(At(400, 800)); view.PointerUp(); Refresh();
+        var before = ItemOf<TextItem>(titleId);
+        var grip = view.HandlePoint(BoxEdges.Right | BoxEdges.Bottom)!.Value;
+        view.PointerDown(grip); view.PointerMove(new Point(grip.X + 20, grip.Y + 5)); view.PointerMove(new Point(grip.X + before.Bounds.Width / 2, grip.Y)); view.PointerUp(); Refresh();
+        var grown = ItemOf<TextItem>(titleId);
+        Check(Near(grown.Bounds.Width, before.Bounds.Width * 2, 2) && Near(grown.FontSize, before.FontSize * 2, 1) && grown.Bounds.Height >= DocumentRenderer.MeasureText(grown).Height - 0.01, $"corner drag doubles the letters: {before.FontSize} to {grown.FontSize}, {before.Bounds} to {grown.Bounds}");
+        var side = view.HandlePoint(BoxEdges.Right)!.Value;
+        view.PointerDown(side); view.PointerMove(new Point(side.X + 20, side.Y)); view.PointerMove(new Point(side.X + 50, side.Y)); view.PointerUp(); Refresh();
+        Check(ItemOf<TextItem>(titleId).FontSize == grown.FontSize && Near(ItemOf<TextItem>(titleId).Bounds.Width, grown.Bounds.Width + 100, 1), "a side drag keeps the letter size");
+
+        // Timeline: the caption lane is on top, its clips select and trim like any other, its eye hides it.
+        var timeline = new TimelineView { History = history };
+        timeline.Measure(new Size(1440, 400)); timeline.Arrange(new Rect(0, 0, 1440, 400));
+        timeline.SetZoom(100); timeline.ScrollX = 0;
+        const double h = TimelineView.HeaderWidth, captionLane = TimelineView.RulerHeight + TimelineView.CaptionHeight / 2;
+        timeline.PointerDown(new Point(h + 150, captionLane)); timeline.PointerUp();
+        Check(timeline.Selection.SetEquals(new[] { captionId }), "a click on the top lane selects the caption");
+        timeline.PointerDown(new Point(h + 297, captionLane)); timeline.PointerMove(new Point(h + 350, captionLane)); timeline.PointerMove(new Point(h + 400, captionLane)); timeline.PointerUp();
+        Check(TimelineOps.Find(history.Current, captionId)!.Value.Clip.Duration == 120, "a caption's end can be dragged out: " + TimelineOps.Find(history.Current, captionId)!.Value.Clip.Duration);
+        timeline.PointerDown(new Point(h + 200, captionLane)); timeline.PointerMove(new Point(h + 300, captionLane + 60)); timeline.PointerMove(new Point(h + 400, captionLane + 60)); timeline.PointerUp();
+        var movedCaption = TimelineOps.Find(history.Current, captionId)!.Value;
+        Check(movedCaption.Track.Kind == TrackKind.Caption && movedCaption.Clip.Start == 60, "a caption moves along its lane and never onto a video layer: " + movedCaption.Clip.Start);
+        timeline.PointerDown(new Point(h - 22, captionLane));
+        Check(history.Current.Tracks.Single(t => t.Kind == TrackKind.Caption).Hidden && TimelineOps.DrawnAt(history.Current, 70).All(l => l.Clip is not CaptionClip), "the caption lane's eye hides its captions");
+        Check(TimelineView.NameOf(history.Current, TimelineOps.Find(history.Current, calloutId)!.Value.Clip) == "Look" && TimelineView.NameOf(history.Current, TimelineOps.Find(history.Current, lineId)!.Value.Clip) == "Line" && TimelineView.NameOf(history.Current, movedCaption.Clip) == "A caption", "clips are named by their words or shape");
     }
 
     /// <summary>Drives the preview's handles through its pointer methods: the same code the mouse reaches.</summary>
@@ -522,6 +713,58 @@ static class VideoEditorChecks
         Check(wave != null && Math.Abs(wave.Peaks.Length - 300) <= 12 && wave.Peaks.Skip(5).Take(280).All(peak => peak > 20) && Math.Abs(wave.BucketSeconds - 0.01) < 1e-9, "sine waveform: " + (wave == null ? "none" : wave.Peaks.Length + " buckets, lowest " + wave.Peaks.Skip(5).Take(280).Min()));
         Check(Directory.GetFiles(waves.Folder, "*.peaks").Length == 1 && waves.GetOrCreateAsync(red).GetAwaiter().GetResult()!.Peaks.SequenceEqual(wave!.Peaks), "waveform cached on disk");
         Check(waves.GetOrCreateAsync(blue).GetAwaiter().GetResult() == null, "a silent file has no waveform");
+        // Graphics and captions: a lime box for the first 45 frames, and a caption in a blue box
+        // from frame 30 to 60 with another from 60 to 75, all over the red video. Each must appear
+        // and go on exactly its own frames, which is what the timed PNG list has to get right.
+        string drawnOut = Path.Combine(dir, "drawn.mp4"), drawnBig = Path.Combine(dir, "drawn-big.mp4"), drawFolder = Path.Combine(dir, "drawn-pngs");
+        if (Directory.Exists(drawFolder)) Directory.Delete(drawFolder, true);
+        var drawnProject = TimelineOps.InsertGraphic(TimelineOps.ForSource(redSource), new RectItem { Bounds = new Rect(20, 20, 60, 40), Fill = Colors.Lime }, null, 0, out var limeId);
+        drawnProject = TimelineOps.TrimEnd(drawnProject, limeId, 45);
+        drawnProject = TimelineOps.AddCaption(drawnProject, null, 30, "Hi", out var firstCaption);
+        drawnProject = TimelineOps.TrimEnd(drawnProject, firstCaption, 60);
+        drawnProject = TimelineOps.AddCaption(drawnProject, null, 60, "Wider words", out var secondCaption);
+        drawnProject = TimelineOps.TrimEnd(drawnProject, secondCaption, 75);
+        var captionTrack = drawnProject.Tracks.Single(t => t.Kind == TrackKind.Caption);
+        drawnProject = TimelineOps.SetTrack(drawnProject, captionTrack with { CaptionStyle = new CaptionStyle { FontSize = 14, Color = Colors.Blue, Background = Colors.Blue } });
+        captionTrack = drawnProject.Tracks.Single(t => t.Kind == TrackKind.Caption);
+        Check(drawnProject.Duration == 90, "graphics and captions do not lengthen the three-second project");
+        var narrow = TimelineOps.CaptionItem(drawnProject, captionTrack, (CaptionClip)captionTrack.Clips[0]).Bounds;
+        var wide = TimelineOps.CaptionItem(drawnProject, captionTrack, (CaptionClip)captionTrack.Clips[1]).Bounds;
+        Check(wide.Width > narrow.Width + 20 && narrow.Bottom == 171 && wide.Bottom == 171, $"caption boxes: {narrow} and {wide}");
+        result = runner.RunAsync(ExportArguments.Build(TimelineOps.ToPlan(drawnProject, null, null, null, drawFolder), encoder, 90, drawnOut)).GetAwaiter().GetResult();
+        Check(result.Succeeded, "export with a graphic and captions: " + result.ErrorText());
+        using (var reader = new FrameReader(runner, new FrameReaderOptions { Path = drawnOut, Width = 320, Height = 180, FrameRate = FrameRate.Fps30 }))
+        {
+            var frame = new byte[reader.FrameBytes];
+            int count = 0;
+            string Colour(double x, double y) { int i = ((int)y * 320 + (int)x) * 4; byte b = frame[i], g = frame[i + 1], r = frame[i + 2]; return r > 170 && g < 90 && b < 90 ? "red" : b > 170 && r < 90 && g < 90 ? "blue" : g > 170 && r < 90 && b < 90 ? "lime" : $"({r},{g},{b})"; }
+            // One point inside both caption boxes, one inside only the wider second box.
+            double midY = narrow.Y + narrow.Height / 2, sideX = wide.X + 6;
+            while (reader.ReadFrameAsync(frame).AsTask().GetAwaiter().GetResult())
+            {
+                string box = Colour(50, 40), centre = Colour(160, midY), side = Colour(sideX, midY);
+                Check(box == (count < 45 ? "lime" : "red"), $"frame {count}: the box is {box}");
+                Check(centre == (count >= 30 && count < 75 ? "blue" : "red"), $"frame {count}: the caption centre is {centre}");
+                Check(side == (count >= 60 && count < 75 ? "blue" : "red"), $"frame {count}: the wider caption's edge is {side}");
+                Check(Colour(160, 60) == "red" && Colour(10, 170) == "red", $"frame {count}: the rest stays red");
+                count++;
+            }
+            Check(count == 90, "export with graphics has exactly 90 frames, got " + count);
+        }
+        // At twice the size the pictures are drawn again at that scale, not stretched.
+        var bigPlan = TimelineOps.ToPlan(drawnProject, null, 640, 360, drawFolder);
+        Check(bigPlan.Video[1] is { Width: > 150, IsImage: true } && bigPlan.Video[1].Path != TimelineOps.ToPlan(drawnProject, null, null, null, drawFolder).Video[1].Path, "a larger export draws its own graphics");
+        result = runner.RunAsync(ExportArguments.Build(bigPlan, encoder, 90, drawnBig)).GetAwaiter().GetResult();
+        Check(result.Succeeded, "export with graphics at twice the size: " + result.ErrorText());
+        using (var reader = new FrameReader(runner, new FrameReaderOptions { Path = drawnBig, Start = 1.2, Width = 640, Height = 360, FrameRate = FrameRate.Fps30, MaxFrames = 1 }))
+        {
+            var frame = new byte[reader.FrameBytes];
+            Check(reader.ReadFrameAsync(frame).AsTask().GetAwaiter().GetResult(), "a frame from the larger export");
+            bool Is(int x, int y, int blue, int green, int red) { int i = (y * 640 + x) * 4; return Math.Abs(frame[i] - blue) < 80 && Math.Abs(frame[i + 1] - green) < 80 && Math.Abs(frame[i + 2] - red) < 80; }
+            Check(Is(100, 80, 0, 255, 0) && Is(320, (int)((narrow.Y + narrow.Height / 2) * 2), 255, 0, 0) && Is(320, 120, 0, 0, 255), "at frame 36 of the larger export the box is lime and the caption blue");
+        }
+        Console.WriteLine("PASS: live export with a graphic and two captions, each on exactly its own frames, and again at twice the size.");
+
         // The gallery's ffmpeg thumbnail: a red frame no larger than the asked edge.
         var thumb = new FfmpegVideoThumbnailer().FromFfmpeg(red, 160);
         var thumbPixel = new byte[4];

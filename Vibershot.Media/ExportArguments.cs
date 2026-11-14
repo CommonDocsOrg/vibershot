@@ -25,6 +25,13 @@ public sealed record ExportVideoClip(string Path, double SourceIn, double Durati
     public bool IsImage { get; init; }
 }
 
+/// <summary>
+/// A ready-timed run of same-sized transparent pictures (captions), listed in an ffconcat file
+/// that covers the whole output from time zero, drawn over everything else with its top-left
+/// corner at X, Y in output pixels.
+/// </summary>
+public sealed record ExportOverlayStream(string ListPath, double X, double Y);
+
 /// <summary>One audio clip on the output timeline. Times are seconds; volume 1 is unchanged.</summary>
 public sealed record ExportAudioClip(string Path, double SourceIn, double Duration, double Start, double Volume = 1);
 
@@ -43,6 +50,9 @@ public sealed record ExportPlan
 
     /// <summary>Video clips, lowest layer first: a later clip is drawn over an earlier one.</summary>
     public IReadOnlyList<ExportVideoClip> Video { get; init; } = Array.Empty<ExportVideoClip>();
+
+    /// <summary>Picture streams drawn over every video clip, in order.</summary>
+    public IReadOnlyList<ExportOverlayStream> Overlays { get; init; } = Array.Empty<ExportOverlayStream>();
 
     public IReadOnlyList<ExportAudioClip> Audio { get; init; } = Array.Empty<ExportAudioClip>();
 }
@@ -93,6 +103,14 @@ public static class ExportArguments
             graph.Append(CultureInfo.InvariantCulture, $",setpts=PTS-STARTPTS+{N(clip.Start)}/TB[v{input}]");
             graph.Append(CultureInfo.InvariantCulture,
                 $";[{last}][v{input}]overlay=x={S(clip.X + clip.Width / 2.0)}-w/2:y={S(clip.Y + clip.Height / 2.0)}-h/2:eof_action=pass:enable='gte(t,{N(clip.Start)})*lt(t,{N(clip.Start + clip.Duration)})'[o{input}]");
+            last = "o" + input.ToString(CultureInfo.InvariantCulture);
+            input++;
+        }
+        foreach (var stream in plan.Overlays)
+        {
+            args.AddRange(new[] { "-f", "concat", "-safe", "0", "-i", stream.ListPath });
+            // The list times each picture; fps turns that into one frame per output frame.
+            graph.Append(CultureInfo.InvariantCulture, $";[{input}:v]fps={rate},format=rgba[v{input}];[{last}][v{input}]overlay=x={S(stream.X)}:y={S(stream.Y)}:eof_action=pass[o{input}]");
             last = "o" + input.ToString(CultureInfo.InvariantCulture);
             input++;
         }

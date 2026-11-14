@@ -14,7 +14,7 @@ class Program {
  static void Check(bool ok, string what) { if (!ok) throw new Exception("FAIL: " + what); }
  static void Same(string[] expected, string[] actual, string what) { if (!expected.SequenceEqual(actual)) throw new Exception($"FAIL: {what}\n expected: {string.Join(" ", expected)}\n actual:   {string.Join(" ", actual)}"); }
  [STAThread] static void Main() {
-  var cli=Environment.GetCommandLineArgs(); if(cli.Length>=3&&cli[1]=="--editor"){VideoEditorChecks.ShowEditor(cli[2],cli.Length>3?cli[3]:null);return;}
+  var cli=Environment.GetCommandLineArgs(); if(cli.Length>=3&&cli[1]=="--editor"){VideoEditorChecks.ShowEditor(cli[2],cli.Skip(3).ToArray());return;}
   BitmapSource Frame(int offset) { int w=120,h=100; byte[] p=new byte[w*h*4]; for(int y=0;y<h;y++)for(int x=0;x<w;x++){int i=(y*w+x)*4; p[i]=(byte)((x*17+(y+offset)*7)%256);p[i+1]=(byte)((x*3+(y+offset)*13)%256);p[i+2]=(byte)((x*11+(y+offset)*19)%256);p[i+3]=255;} var b=BitmapSource.Create(w,h,96,96,PixelFormats.Bgra32,null,p,w*4);b.Freeze();return b; }
   var first=Frame(0);var next=Frame(40);var stitched=ScrollStitcher.Append(first,first,next);if(stitched.PixelHeight!=140)throw new Exception("Wrong overlap");
   var expected=Frame(0); byte[] pixels=new byte[120*140*4];stitched.CopyPixels(pixels,480,0);byte[] tail=new byte[480*100];next.CopyPixels(tail,480,0);for(int i=0;i<480*40;i++)if(pixels[480*100+i]!=tail[480*60+i])throw new Exception("Wrong stitched pixels");

@@ -7,7 +7,7 @@ using Vibershot.Media;
 
 namespace Vibershot.Editing.Video;
 
-public enum TrackKind { Visual, Audio }
+public enum TrackKind { Visual, Audio, Caption }
 
 /// <summary>A media file the project links to. The file is never copied into the project.</summary>
 public sealed record MediaSource
@@ -103,6 +103,8 @@ public sealed record Placement
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]
 [JsonDerivedType(typeof(VideoClip), "video")]
 [JsonDerivedType(typeof(ImageClip), "image")]
+[JsonDerivedType(typeof(GraphicClip), "graphic")]
+[JsonDerivedType(typeof(CaptionClip), "caption")]
 [JsonDerivedType(typeof(AudioClip), "audio")]
 public abstract record Clip
 {
@@ -127,6 +129,38 @@ public sealed record VideoClip : VisualClip;
 /// <summary>A still picture held on screen for the clip's length.</summary>
 public sealed record ImageClip : VisualClip;
 
+/// <summary>
+/// Text, a callout, a shape, an arrow or a stamp drawn on the canvas for the clip's length. It
+/// wraps the image editor's <see cref="Item"/>, whose bounds are in canvas pixels, so
+/// the same renderer draws it in the preview and for the export. It sits on a visual track and
+/// layers with the pictures there.
+/// </summary>
+public sealed record GraphicClip : Clip
+{
+    public required Item Item { get; init; }
+}
+
+/// <summary>One caption on a caption track; the track's <see cref="CaptionStyle"/> decides how it looks.</summary>
+public sealed record CaptionClip : Clip
+{
+    public string Text { get; init; } = "";
+}
+
+/// <summary>How every caption on a track is drawn. Sizes are canvas pixels.</summary>
+public sealed record CaptionStyle
+{
+    public string FontFamily { get; init; } = "Segoe UI";
+    public double FontSize { get; init; } = 54;
+    public bool Bold { get; init; } = true;
+    public Color Color { get; init; } = Colors.White;
+
+    /// <summary>The box behind the words; null draws the words alone.</summary>
+    public Color? Background { get; init; } = Color.FromArgb(0xB4, 0, 0, 0);
+
+    /// <summary>Captions sit at the bottom of the picture, or at the top when this is set.</summary>
+    public bool AtTop { get; init; }
+}
+
 public sealed record AudioClip : Clip
 {
     /// <summary>Linear gain: 1 leaves the sound unchanged.</summary>
@@ -148,6 +182,9 @@ public sealed record Track
     public bool Muted { get; init; }
 
     public bool Locked { get; init; }
+
+    /// <summary>For a caption track: how its captions are drawn. Null uses the defaults scaled to the canvas.</summary>
+    public CaptionStyle? CaptionStyle { get; init; }
 
     /// <summary>Clips in start order; clips on one track never overlap.</summary>
     public ImmutableList<Clip> Clips { get; init; } = ImmutableList<Clip>.Empty;

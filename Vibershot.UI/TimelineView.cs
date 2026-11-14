@@ -22,14 +22,14 @@ public sealed record Filmstrip(double Interval, IReadOnlyList<BitmapSource> Fram
 /// </summary>
 public sealed class TimelineView : FrameworkElement
 {
-    public const double HeaderWidth = 148, RulerHeight = 24, VisualHeight = 52, AudioHeight = 40, EdgeGrip = 7, SnapPixels = 8;
+    public const double HeaderWidth = 148, RulerHeight = 24, VisualHeight = 52, AudioHeight = 40, CaptionHeight = 34, EdgeGrip = 7, SnapPixels = 8;
     public const string SourceFormat = "Vibershot.VideoSource";
 
     private enum Drag { None, Scrub, Move, TrimStart, TrimEnd }
 
     private readonly Brush _well, _paper, _rule, _hover, _ink, _ink2, _ink3, _accent;
     private static readonly Brush VideoFill = Frozen("#3D4A63"), VideoEdge = Frozen("#2B3447"), AudioFill = Frozen("#1F4D3A"), AudioWave = Frozen("#50FA7B"),
-        ImageFill = Frozen("#5B4A7A"), PlayheadBrush = Frozen("#FF79C6"), LabelBack = Frozen("#CC191A21"), LaneAlt = Frozen("#252631");
+        ImageFill = Frozen("#5B4A7A"), GraphicFill = Frozen("#7A4660"), CaptionFill = Frozen("#6E5A24"), PlayheadBrush = Frozen("#FF79C6"), LabelBack = Frozen("#CC191A21"), LaneAlt = Frozen("#252631");
     private readonly Typeface _face = new("Segoe UI"), _mono = new("Cascadia Mono, Consolas");
 
     private History<VideoProject>? _history;
@@ -77,6 +77,29 @@ public sealed class TimelineView : FrameworkElement
 
     /// <summary>Raised when a media-bin source is dropped: source id, track under the pointer (or null) and frame.</summary>
     public event Action<Guid, Guid?, long>? SourceDropped;
+
+    /// <summary>Raised when an element from the palette is dropped: its key, the track under the pointer (or null) and the frame.</summary>
+    public event Action<string, Guid?, long>? ElementDropped;
+
+    /// <summary>Raised when the lane menu asks for a caption: the caption track (or null for the first) and the frame.</summary>
+    public event Action<Guid?, long>? CaptionRequested;
+
+    private static double HeightOf(TrackKind kind) => kind == TrackKind.Visual ? VisualHeight : kind == TrackKind.Caption ? CaptionHeight : AudioHeight;
+
+    /// <summary>What a clip is called on its bar and in the properties panel: its file, its words or its shape.</summary>
+    public static string NameOf(VideoProject project, Clip clip) => clip switch
+    {
+        CaptionClip caption => caption.Text.Length > 0 ? caption.Text.Replace("\n", " ") : "Caption",
+        GraphicClip { Item: CalloutItem callout } => callout.Text.Length > 0 ? callout.Text.Replace("\n", " ") : "Callout",
+        GraphicClip { Item: TextItem text } => text.Text.Length > 0 ? text.Text.Replace("\n", " ") : "Text",
+        GraphicClip { Item: RectItem } => "Rectangle",
+        GraphicClip { Item: EllipseItem } => "Ellipse",
+        GraphicClip { Item: ArrowItem } => "Arrow",
+        GraphicClip { Item: LineItem } => "Line",
+        GraphicClip { Item: StampItem stamp } => StampLibrary.Find(stamp.StampId)?.Name ?? "Stamp",
+        GraphicClip => "Graphic",
+        _ => project.Source(clip.SourceId)?.Name ?? "Missing media",
+    };
 
     public History<VideoProject>? History
     {
@@ -163,13 +186,15 @@ public sealed class TimelineView : FrameworkElement
     {
         var rows = new List<Row>();
         double y = RulerHeight;
+        // Captions are drawn over everything, so their lanes come first.
+        foreach (var track in Project.Tracks.Where(track => track.Kind == TrackKind.Caption).Reverse()) { rows.Add(new Row(track, y, CaptionHeight)); y += CaptionHeight; }
         foreach (var track in Project.Tracks.Where(track => track.Kind == TrackKind.Visual).Reverse()) { rows.Add(new Row(track, y, VisualHeight)); y += VisualHeight; }
         foreach (var track in Project.Tracks.Where(track => track.Kind == TrackKind.Audio)) { rows.Add(new Row(track, y, AudioHeight)); y += AudioHeight; }
         return rows;
     }
 
     /// <summary>Height this control wants for the current tracks.</summary>
-    public double DesiredContentHeight => RulerHeight + Project.Tracks.Sum(track => track.Kind == TrackKind.Visual ? VisualHeight : AudioHeight) + 4;
+    public double DesiredContentHeight => RulerHeight + Project.Tracks.Sum(track => HeightOf(track.Kind)) + 4;
 
     private Rect ClipRect(Row row, Clip clip) => new(FrameToX(clip.Start), row.Top + 4, Math.Max(2, Project.Seconds(clip.Duration) * _pixelsPerSecond), row.Height - 8);
 
@@ -242,8 +267,8 @@ public sealed class TimelineView : FrameworkElement
         foreach (var row in rows)
         {
             dc.DrawLine(rulePen, new Point(0, row.Top + row.Height - 0.5), new Point(HeaderWidth, row.Top + row.Height - 0.5));
-            bool off = row.Track.Kind == TrackKind.Visual ? row.Track.Hidden : row.Track.Muted;
-            string kind = row.Track.Kind == TrackKind.Visual ? "Video" : "Audio";
+            bool off = row.Track.Kind == TrackKind.Audio ? row.Track.Muted : row.Track.Hidden;
+            string kind = row.Track.Kind == TrackKind.Visual ? "Video" : row.Track.Kind == TrackKind.Caption ? "Captions" : "Audio";
             var name = Text($"{row.Track.Name} · {kind}", 12, off ? _ink3 : _ink, maxWidth: HeaderWidth - 50);
             dc.DrawText(name, new Point(12, row.Top + (row.Height - name.Height) / 2));
             DrawToggle(dc, row, off);
@@ -272,10 +297,10 @@ public sealed class TimelineView : FrameworkElement
     {
         bool selected = Selection.Contains(clip.Id), video = clip is VisualClip;
         var source = project.Source(clip.SourceId);
-        bool dim = clip is AudioClip { Muted: true } || (video ? row.Track.Hidden : row.Track.Muted);
+        bool dim = clip is AudioClip { Muted: true } || (row.Track.Kind == TrackKind.Audio ? row.Track.Muted : row.Track.Hidden);
         dc.PushOpacity(dim ? 0.45 : 1);
         dc.PushClip(new RectangleGeometry(rect, 4, 4));
-        dc.DrawRectangle(clip is ImageClip ? ImageFill : video ? VideoFill : AudioFill, null, rect);
+        dc.DrawRectangle(clip switch { ImageClip => ImageFill, GraphicClip => GraphicFill, CaptionClip => CaptionFill, AudioClip => AudioFill, _ => VideoFill }, null, rect);
         if (video && source != null && FilmstripFor?.Invoke(source.Id) is { Frames.Count: > 0 } strip)
         {
             var sample = strip.Frames[0];
@@ -290,7 +315,7 @@ public sealed class TimelineView : FrameworkElement
                 dc.DrawRectangle(VideoEdge, null, new Rect(x + thumbWidth - 1, rect.Top, 1, thumbHeight));
             }
         }
-        else if (!video)
+        else if (clip is AudioClip)
         {
             double middle = rect.Top + rect.Height / 2;
             dc.DrawRectangle(AudioWave, null, new Rect(rect.Left, middle - 0.5, rect.Width, 1));
@@ -298,8 +323,7 @@ public sealed class TimelineView : FrameworkElement
         }
         if (rect.Width > 28)
         {
-            string name = source?.Name ?? "Missing media";
-            var label = Text(name, 11, Brushes.White, maxWidth: Math.Max(10, rect.Width - 16));
+            var label = Text(NameOf(project, clip), 11, Brushes.White, maxWidth: Math.Max(10, rect.Width - 16));
             double lx = Math.Max(rect.Left, HeaderWidth) + 6;
             dc.DrawRoundedRectangle(LabelBack, null, new Rect(lx - 3, rect.Top + 3, Math.Min(label.Width + 8, rect.Width - 6), label.Height + 2), 3, 3);
             dc.DrawText(label, new Point(lx + 1, rect.Top + 4));
@@ -348,7 +372,7 @@ public sealed class TimelineView : FrameworkElement
         var rect = ToggleRect(row);
         var pen = new Pen(off ? _ink3 : _ink2, 1.5);
         var c = new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
-        if (row.Track.Kind == TrackKind.Visual)
+        if (row.Track.Kind != TrackKind.Audio)
         {
             dc.DrawEllipse(null, pen, c, 8, 5);
             dc.DrawEllipse(off ? _ink3 : _ink2, null, c, 2.2, 2.2);
@@ -425,7 +449,7 @@ public sealed class TimelineView : FrameworkElement
             if (RowAt(p.Y) is { } header && ToggleRect(header).Contains(p))
             {
                 var track = header.Track;
-                _history.Push(TimelineOps.SetTrack(Project, track.Kind == TrackKind.Visual ? track with { Hidden = !track.Hidden } : track with { Muted = !track.Muted }));
+                _history.Push(TimelineOps.SetTrack(Project, track.Kind == TrackKind.Audio ? track with { Muted = !track.Muted } : track with { Hidden = !track.Hidden }));
             }
             return false;
         }
@@ -582,11 +606,16 @@ public sealed class TimelineView : FrameworkElement
         }
         else
         {
+            long here = XToFrame(Math.Max(HeaderWidth, p.X));
+            var under = RowAt(p.Y);
+            Add("Add caption here", () => CaptionRequested?.Invoke(under is { Track.Kind: TrackKind.Caption } lane ? lane.Track.Id : null, here));
+            menu.Items.Add(new Separator());
             Add("Add video track", () => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Visual, out _)));
             Add("Add audio track", () => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Audio, out _)));
-            if (RowAt(p.Y) is { } row)
+            Add("Add caption track", () => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Caption, out _)));
+            if (under is { } row)
             {
-                bool last = Project.Tracks.Count(track => track.Kind == row.Track.Kind) <= 1;
+                bool last = row.Track.Kind != TrackKind.Caption && Project.Tracks.Count(track => track.Kind == row.Track.Kind) <= 1;
                 menu.Items.Add(new Separator());
                 Add($"Remove {row.Track.Name}", () => _history.Push(TimelineOps.RemoveTrack(Project, row.Track.Id)), !last);
             }
@@ -600,7 +629,7 @@ public sealed class TimelineView : FrameworkElement
 
     protected override void OnDragOver(DragEventArgs e)
     {
-        if (!e.Data.GetDataPresent(SourceFormat)) return;
+        if (!e.Data.GetDataPresent(SourceFormat) && !e.Data.GetDataPresent(VideoPreview.ElementFormat)) return;
         e.Effects = DragDropEffects.Copy;
         var p = e.GetPosition(this);
         _snapLine = Math.Max(0, XToFrame(p.X));
@@ -613,8 +642,15 @@ public sealed class TimelineView : FrameworkElement
     protected override void OnDrop(DragEventArgs e)
     {
         _snapLine = null;
-        if (e.Data.GetData(SourceFormat) is not string text || !Guid.TryParse(text, out var sourceId)) return;
         var p = e.GetPosition(this);
+        if (e.Data.GetData(VideoPreview.ElementFormat) is string element)
+        {
+            ElementDropped?.Invoke(element, RowAt(p.Y)?.Track.Id, Math.Max(0, XToFrame(p.X)));
+            InvalidateVisual();
+            e.Handled = true;
+            return;
+        }
+        if (e.Data.GetData(SourceFormat) is not string text || !Guid.TryParse(text, out var sourceId)) return;
         SourceDropped?.Invoke(sourceId, RowAt(p.Y)?.Track.Id, Math.Max(0, XToFrame(p.X)));
         InvalidateVisual();
         e.Handled = true;

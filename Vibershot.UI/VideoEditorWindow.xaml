@@ -57,6 +57,8 @@
        <MenuItem Header="New project" InputGestureText="Ctrl+N" Click="New_Click"/>
        <MenuItem Header="Open project…" InputGestureText="Ctrl+O" Click="Open_Click"/>
        <MenuItem Header="Import media…" InputGestureText="Ctrl+I" Click="Import_Click"/>
+       <MenuItem Header="Import captions (SRT)…" Click="ImportCaptions_Click"/>
+       <MenuItem Header="Export captions (SRT)…" Click="ExportCaptions_Click"/>
        <Separator/>
        <MenuItem Header="Save project" InputGestureText="Ctrl+S" Click="Save_Click"/>
        <MenuItem Header="Save project as…" InputGestureText="Ctrl+Shift+S" Click="SaveAs_Click"/>
@@ -84,6 +86,9 @@
       <MenuItem Header="_Track">
        <MenuItem Header="Add video track" Click="AddVideoTrack_Click"/>
        <MenuItem Header="Add audio track" Click="AddAudioTrack_Click"/>
+       <MenuItem Header="Add caption track" Click="AddCaptionTrack_Click"/>
+       <Separator/>
+       <MenuItem Header="Add caption at playhead" InputGestureText="T" Click="AddCaption_Click"/>
       </MenuItem>
       <MenuItem Header="_Help">
        <MenuItem Header="Keyboard shortcuts…" Click="Shortcuts_Click"/>
@@ -114,6 +119,7 @@
      <ToggleButton x:Name="RazorToolButton" Style="{StaticResource RailToggle}" Click="RazorTool_Click" ToolTip="Click a clip to cut it there (C)" AutomationProperties.Name="Razor tool"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource RailGlyph}" Text="&#xE8C6;"/><TextBlock Text="Razor"/><TextBlock Style="{StaticResource Keys}" Text="C"/></StackPanel></ToggleButton>
      <Button x:Name="SplitButton" Style="{StaticResource RailTextButton}" Click="Split_Click" ToolTip="Cut the clips under the playhead (S)" AutomationProperties.Name="Split at playhead"><StackPanel Orientation="Horizontal"><TextBlock Text="Split at playhead"/><TextBlock Style="{StaticResource Keys}" Text="S"/></StackPanel></Button>
      <Button x:Name="RippleButton" Style="{StaticResource RailTextButton}" Click="RippleDelete_Click" ToolTip="Delete the selection and close the gap (Shift+Del)" AutomationProperties.Name="Ripple delete"><TextBlock Text="Ripple delete"/></Button>
+     <Button x:Name="AddCaptionButton" Style="{StaticResource RailTextButton}" Click="AddCaption_Click" ToolTip="Add a caption at the playhead (T)" AutomationProperties.Name="Add caption"><StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource RailGlyph}" Text="&#xED1E;"/><TextBlock Text="Caption"/><TextBlock Style="{StaticResource Keys}" Text="T"/></StackPanel></Button>
      <Border Style="{StaticResource RailDivider}"/>
      <ToggleButton x:Name="SnapButton" Style="{StaticResource RailToggle}" IsChecked="True" Click="Snap_Click" ToolTip="Snap clips and the playhead to clip edges, and moved pictures to the canvas (N). Hold Alt to snap off while dragging." AutomationProperties.Name="Snap"><TextBlock Text="Snap"/></ToggleButton>
     </StackPanel>
@@ -133,7 +139,10 @@
    <Border Background="{StaticResource Paper}" BorderBrush="{StaticResource Rule}" BorderThickness="0,0,1,0">
     <Grid Margin="14,12,10,10">
      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-     <TextBlock x:Name="BinLabel" Style="{StaticResource PanelLabel}" Text="PROJECT MEDIA"/>
+     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+      <RadioButton x:Name="MediaTab" GroupName="LeftTab" Style="{StaticResource RailToggle}" Height="28" IsChecked="True" Checked="LeftTab_Changed" ToolTip="The files this project uses" AutomationProperties.Name="Media tab"><TextBlock x:Name="BinLabel" Text="Media"/></RadioButton>
+      <RadioButton x:Name="ElementsTab" GroupName="LeftTab" Style="{StaticResource RailToggle}" Height="28" Checked="LeftTab_Changed" Content="Elements" ToolTip="Text, callouts, shapes, arrows and stamps to put over the video" AutomationProperties.Name="Elements tab"/>
+     </StackPanel>
      <ListBox x:Name="Bin" Grid.Row="1" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" MouseDoubleClick="Bin_DoubleClick" PreviewMouseLeftButtonDown="Bin_MouseDown" PreviewMouseMove="Bin_MouseMove" AutomationProperties.Name="Project media">
       <ListBox.ContextMenu>
        <ContextMenu Opened="BinMenu_Opened">
@@ -169,8 +178,11 @@
        </DataTemplate>
       </ListBox.ItemTemplate>
      </ListBox>
+     <ScrollViewer x:Name="ElementsScroll" Grid.Row="1" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" Focusable="False">
+      <StackPanel x:Name="ElementsHost" Margin="0,0,6,0"/>
+     </ScrollViewer>
      <Border Grid.Row="2" BorderBrush="{StaticResource Rule}" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,8,4,0">
-      <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Drag a file onto the timeline, or onto the picture to lay it over what is there. Double-click adds a video after the last clip and a still on top at the playhead."/>
+      <TextBlock x:Name="LeftHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Drag a file onto the timeline, or onto the picture to lay it over what is there. Double-click adds a video after the last clip and a still on top at the playhead."/>
      </Border>
     </Grid>
    </Border>
@@ -179,6 +191,11 @@
    <Grid Grid.Column="1">
     <Grid.RowDefinitions><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <local:VideoPreview x:Name="Preview"/>
+    <!-- Shown over a text graphic while its words are edited in place. -->
+    <TextBox x:Name="InlineWords" Visibility="Collapsed" TextOptions.TextFormattingMode="Ideal" HorizontalAlignment="Left" VerticalAlignment="Top" AcceptsReturn="True" TextWrapping="Wrap" BorderThickness="1" BorderBrush="{StaticResource Accent}" Padding="0" TextChanged="Words_Changed" LostKeyboardFocus="InlineWords_LostFocus" PreviewKeyDown="Words_KeyDown" AutomationProperties.Name="Edit text in place">
+     <!-- A bare template: the themed text box's own padding and corners would shift the words off the ones drawn underneath. -->
+     <TextBox.Template><ControlTemplate TargetType="TextBox"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"><ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Hidden"/></Border></ControlTemplate></TextBox.Template>
+    </TextBox>
     <Border Grid.Row="1" Background="{StaticResource Paper}" BorderBrush="{StaticResource Rule}" BorderThickness="0,1,0,0" Height="44" Padding="14,0">
      <Grid>
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
@@ -216,21 +233,47 @@
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Start"/><TextBlock x:Name="ClipStartValue" Style="{StaticResource FieldValue}"/></Grid>
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Length"/><TextBlock x:Name="ClipLengthValue" Style="{StaticResource FieldValue}"/></Grid>
        <Grid Margin="0,0,0,6"><TextBlock Style="{StaticResource FieldLabel}" Text="Source in"/><TextBlock x:Name="ClipSourceValue" Style="{StaticResource FieldValue}"/></Grid>
+       <StackPanel x:Name="WordsPanel" Margin="0,10,0,0">
+        <Border Style="{StaticResource Divider}" Margin="0,0,0,12"/>
+        <TextBlock x:Name="WordsLabel" Style="{StaticResource PanelLabel}" Text="TEXT"/>
+        <TextBox x:Name="WordsBox" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="58" MaxHeight="160" VerticalScrollBarVisibility="Auto" Padding="8,6" FontSize="12.5" TextChanged="Words_Changed" PreviewKeyDown="Words_KeyDown" AutomationProperties.Name="Words"/>
+        <Grid Margin="0,4,0,0"><TextBlock Style="{StaticResource FieldLabel}" Text="Size"/><local:ValueBox x:Name="FontSizeBox" Minimum="4" Maximum="2000" Suffix="" AutomationProperties.Name="Font size"/></Grid>
+        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+         <ToggleButton x:Name="BoldButton" Style="{StaticResource RailToggle}" Height="28" Width="34" Padding="0" Content="B" FontWeight="Bold" Checked="TextStyle_Changed" Unchecked="TextStyle_Changed" ToolTip="Bold" AutomationProperties.Name="Bold"/>
+         <ToggleButton x:Name="ItalicButton" Style="{StaticResource RailToggle}" Height="28" Width="34" Padding="0" Content="I" FontStyle="Italic" Checked="TextStyle_Changed" Unchecked="TextStyle_Changed" ToolTip="Italic" AutomationProperties.Name="Italic"/>
+         <ComboBox x:Name="AlignBox" Width="96" Margin="8,0,0,0" SelectionChanged="TextStyle_Changed" AutomationProperties.Name="Text alignment"><ComboBoxItem Content="Left"/><ComboBoxItem Content="Centre"/><ComboBoxItem Content="Right"/></ComboBox>
+        </StackPanel>
+        <CheckBox x:Name="CaptionTopCheck" Content="Show captions at the top" Margin="0,10,0,0" Click="CaptionTop_Click"/>
+        <TextBlock Style="{StaticResource FieldLabel}" Text="Text colour" Margin="0,12,0,6"/>
+        <local:ColorStrip x:Name="TextColour"/>
+        <TextBlock Style="{StaticResource FieldLabel}" Text="Box behind the text" Margin="0,10,0,6"/>
+        <local:ColorStrip x:Name="BackColour" AllowNone="True"/>
+        <TextBlock x:Name="CaptionNote" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,8,0,0" Text="Size, colours and position apply to every caption on this track."/>
+       </StackPanel>
+       <StackPanel x:Name="ShapePanel" Margin="0,10,0,0">
+        <Border Style="{StaticResource Divider}" Margin="0,0,0,12"/>
+        <TextBlock Style="{StaticResource PanelLabel}" Text="LINE AND FILL"/>
+        <TextBlock Style="{StaticResource FieldLabel}" Text="Line colour" Margin="0,0,0,6"/>
+        <local:ColorStrip x:Name="StrokeColour" AllowNone="True"/>
+        <Grid Margin="0,4,0,0"><TextBlock Style="{StaticResource FieldLabel}" Text="Line width"/><local:ValueBox x:Name="StrokeWidthBox" Minimum="0" Maximum="400" Suffix="" Decimals="1" AutomationProperties.Name="Line width"/></Grid>
+        <TextBlock x:Name="FillLabel" Style="{StaticResource FieldLabel}" Text="Fill colour" Margin="0,10,0,6"/>
+        <local:ColorStrip x:Name="FillColour" AllowNone="True"/>
+       </StackPanel>
        <StackPanel x:Name="PicturePanel" Margin="0,10,0,0">
         <Border Style="{StaticResource Divider}" Margin="0,0,0,12"/>
-        <TextBlock Style="{StaticResource PanelLabel}" Text="PICTURE"/>
+        <TextBlock x:Name="PictureLabel" Style="{StaticResource PanelLabel}" Text="PICTURE"/>
         <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Position"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><local:ValueBox x:Name="PlaceX" Suffix="" Minimum="-16000" Maximum="16000" AutomationProperties.Name="Picture X" ToolTip="Left edge, in canvas pixels"/><local:ValueBox x:Name="PlaceY" Suffix="" Minimum="-16000" Maximum="16000" Margin="6,6,0,2" AutomationProperties.Name="Picture Y" ToolTip="Top edge, in canvas pixels"/></StackPanel></Grid>
         <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Size"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><local:ValueBox x:Name="PlaceW" Suffix="" Minimum="8" Maximum="16000" AutomationProperties.Name="Picture width" ToolTip="Width, in canvas pixels"/><local:ValueBox x:Name="PlaceH" Suffix="" Minimum="8" Maximum="16000" Margin="6,6,0,2" AutomationProperties.Name="Picture height" ToolTip="Height, in canvas pixels"/></StackPanel></Grid>
         <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Rotation"/><local:ValueBox x:Name="PlaceRotation" Minimum="-360" Maximum="360" Suffix="°" Decimals="1" AutomationProperties.Name="Picture rotation"/></Grid>
         <Grid Margin="0,8,0,0"><TextBlock Style="{StaticResource FieldLabel}" Text="Opacity"/><TextBlock x:Name="OpacityValue" Style="{StaticResource FieldValue}"/></Grid>
         <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10" Margin="0,6,0,10" ValueChanged="Opacity_Changed" AutomationProperties.Name="Opacity"/>
-        <WrapPanel>
+        <WrapPanel x:Name="PictureButtons">
          <Button Content="Fit" Click="Fit_Click" Padding="12,6" Margin="0,0,6,6" ToolTip="Show the whole picture inside the canvas"/>
          <Button Content="Fill" Click="Fill_Click" Padding="12,6" Margin="0,0,6,6" ToolTip="Cover the canvas, cropping what overhangs"/>
          <ToggleButton x:Name="CropButton" Style="{StaticResource RailToggle}" Content="Crop" Checked="Crop_Click" Unchecked="Crop_Click" Height="30" Margin="0,0,6,6" ToolTip="Drag the picture's edges in the preview to cut them away (or double-click the picture)" AutomationProperties.Name="Crop picture"/>
          <Button Content="Reset" Click="ResetPlacement_Click" Padding="12,6" Margin="0,0,0,6" ToolTip="Back to fitted, upright, uncropped and fully opaque"/>
         </WrapPanel>
-        <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Drag the picture in the preview to move it, its handles to resize or turn it. Shift frees the shape on a corner and snaps the turn to 15°."/>
+        <TextBlock x:Name="PictureHint" Style="{StaticResource Hint}" TextWrapping="Wrap" Text="Drag the picture in the preview to move it, its handles to resize or turn it. Shift frees the shape on a corner and snaps the turn to 15°."/>
        </StackPanel>
        <StackPanel x:Name="AudioPanel" Margin="0,10,0,0">
         <Border Style="{StaticResource Divider}" Margin="0,0,0,12"/>
