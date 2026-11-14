@@ -645,6 +645,22 @@ static class VideoEditorChecks
             Check(count == 90, "export has exactly 90 frames, got " + count);
         }
 
+        // The preview stops a reader from the UI thread while its reading task disposes it too.
+        // Two closes at the same moment once threw out of Process.Close and took the app down.
+        for (int round = 0; round < 40; round++)
+        {
+            var reader = new FrameReader(runner, new FrameReaderOptions { Path = output, Width = 320, Height = 180, FrameRate = FrameRate.Fps30 });
+            var frame = new byte[reader.FrameBytes];
+            if (round % 2 == 0) reader.ReadFrameAsync(frame).AsTask().GetAwaiter().GetResult();
+            using var go = new System.Threading.ManualResetEventSlim();
+            Exception? thrown = null;
+            var threads = Enumerable.Range(0, 4).Select(_ => new System.Threading.Thread(() => { go.Wait(); try { reader.Dispose(); } catch (Exception ex) { thrown = ex; } })).ToList();
+            threads.ForEach(thread => thread.Start());
+            go.Set();
+            threads.ForEach(thread => thread.Join());
+            Check(thrown == null, "a reader stopped from several threads at once closes quietly: " + thrown);
+        }
+
         // The audio-only mix used for preview playback.
         var mix = runner.RunAsync(ExportArguments.BuildAudioMix(plan, wav)).GetAwaiter().GetResult();
         Check(mix.Succeeded, "audio mix: " + mix.ErrorText());
