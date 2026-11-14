@@ -540,9 +540,13 @@ public partial class VideoEditorWindow : Window
 
     private void DeleteSelection(bool ripple)
     {
-        if (Timeline.Selection.Count == 0) { ShowStatus("Select a clip first."); return; }
-        _history.Push(TimelineOps.Delete(Project, Timeline.Selection.ToList(), ripple));
+        if (!Timeline.DeleteSelection(ripple)) ShowStatus("Select a clip first.");
     }
+
+    private void Cut_Click(object sender, RoutedEventArgs e) { if (!Timeline.CutSelection()) ShowStatus("Select a clip first."); }
+    private void Copy_Click(object sender, RoutedEventArgs e) { if (!Timeline.CopySelection()) ShowStatus("Select a clip first."); }
+    private void Paste_Click(object sender, RoutedEventArgs e) { if (!Timeline.Paste()) ShowStatus("Nothing to paste: copy a clip first."); }
+    private void Duplicate_Click(object sender, RoutedEventArgs e) { if (!Timeline.DuplicateSelection()) ShowStatus("Select a clip first."); }
 
     private void Detach_Click(object sender, RoutedEventArgs e)
     {
@@ -552,7 +556,7 @@ public partial class VideoEditorWindow : Window
         _history.Push(project);
     }
 
-    private void SelectAll_Click(object sender, RoutedEventArgs e) => Timeline.Select(Project.AllClips.Select(clip => clip.Id).ToList());
+    private void SelectAll_Click(object sender, RoutedEventArgs e) => Timeline.SelectAll();
     private void AddVideoTrack_Click(object sender, RoutedEventArgs e) => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Visual, out _));
     private void AddAudioTrack_Click(object sender, RoutedEventArgs e) => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Audio, out _));
 
@@ -560,7 +564,8 @@ public partial class VideoEditorWindow : Window
     {
         bool any = Timeline.Selection.Count > 0;
         UndoMenu.IsEnabled = _history.CanUndo; RedoMenu.IsEnabled = _history.CanRedo;
-        DeleteMenu.IsEnabled = RippleMenu.IsEnabled = any;
+        DeleteMenu.IsEnabled = RippleMenu.IsEnabled = CutMenu.IsEnabled = CopyMenu.IsEnabled = DuplicateMenu.IsEnabled = any;
+        PasteMenu.IsEnabled = TimelineView.Clipboard != null;
         DetachMenu.IsEnabled = Project.AllClips.Any(clip => Timeline.Selection.Contains(clip.Id) && clip.LinkId != null);
         SplitMenu.IsEnabled = Project.AllClips.Any(clip => clip.Start < _playhead && _playhead < clip.End);
     }
@@ -602,7 +607,7 @@ public partial class VideoEditorWindow : Window
     private void UpdatePanel()
     {
         var project = Project;
-        var selected = project.Tracks.SelectMany(track => track.Clips.Select(clip => (Track: track, Clip: clip))).Where(pair => Timeline.Selection.Contains(pair.Clip.Id)).ToList();
+        var selected = project.Tracks.SelectMany(track => track.Clips.Select(clip => (Track: track, Clip: clip))).Where(pair => Timeline.Selection.Contains(pair.Clip.Id)).OrderBy(pair => SelectionRank(pair.Clip)).ToList();
         _updatingPanel = true;
         try
         {
@@ -701,7 +706,18 @@ public partial class VideoEditorWindow : Window
         finally { _updatingPanel = false; }
     }
 
-    private VisualClip? SelectedPicture => Project.AllClips.OfType<VisualClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+    /// <summary>Orders selected clips for the panel: the primary clip, then what is linked to it, then the rest as the tracks list them.</summary>
+    private int SelectionRank(Clip clip)
+    {
+        if (clip.Id == Timeline.Primary) return 0;
+        var primary = Timeline.Primary is { } id ? TimelineOps.Find(Project, id)?.Clip : null;
+        return primary?.LinkId != null && primary.LinkId == clip.LinkId ? 1 : 2;
+    }
+
+    /// <summary>The selected clips, the primary one and its partners first, so the panel edits the clip it shows.</summary>
+    private IEnumerable<Clip> SelectedClips => Project.AllClips.Where(clip => Timeline.Selection.Contains(clip.Id)).OrderBy(SelectionRank);
+
+    private VisualClip? SelectedPicture => SelectedClips.OfType<VisualClip>().FirstOrDefault();
 
     /// <summary>Changes the selected picture's placement, starting from the one it shows now.</summary>
     private void Place(Func<Placement, Placement> change, string? key = null)
@@ -722,7 +738,7 @@ public partial class VideoEditorWindow : Window
     /// <summary>Sets a fade, in frames, on the clip the panel is showing (and whatever is linked to it).</summary>
     private void SetFade(long? fadeIn = null, long? fadeOut = null)
     {
-        var selected = Project.Tracks.SelectMany(track => track.Clips).Where(clip => Timeline.Selection.Contains(clip.Id)).ToList();
+        var selected = SelectedClips.ToList();
         if (selected.Count == 0) return;
         var primary = selected.FirstOrDefault(clip => clip is not AudioClip, selected[0]);
         var result = TimelineOps.SetFade(Project, primary.Id, fadeIn, fadeOut);
@@ -730,14 +746,13 @@ public partial class VideoEditorWindow : Window
         if (ReferenceEquals(result, Project)) UpdatePanel(); else _history.Push(result);
     }
 
-    private GraphicClip? SelectedGraphic => Project.AllClips.OfType<GraphicClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+    private GraphicClip? SelectedGraphic => SelectedClips.OfType<GraphicClip>().FirstOrDefault();
 
     private (Vibershot.Editing.Video.Track Track, CaptionClip Clip)? SelectedCaption
     {
         get
         {
-            foreach (var track in Project.Tracks)
-                if (track.Clips.OfType<CaptionClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id)) is { } clip) return (track, clip);
+            if (SelectedClips.OfType<CaptionClip>().FirstOrDefault() is { } clip && TimelineOps.Find(Project, clip.Id) is var (track, _)) return (track, clip);
             return null;
         }
     }
@@ -1029,7 +1044,7 @@ public partial class VideoEditorWindow : Window
 
     private void Crop_Click(object sender, RoutedEventArgs e) => Preview.CropMode = CropButton.IsChecked == true;
 
-    private AudioClip? SelectedSound => Project.AllClips.OfType<AudioClip>().FirstOrDefault(clip => Timeline.Selection.Contains(clip.Id));
+    private AudioClip? SelectedSound => SelectedClips.OfType<AudioClip>().FirstOrDefault();
 
     private void Volume_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -1161,7 +1176,7 @@ public partial class VideoEditorWindow : Window
 
     private void Shortcuts_Click(object sender, RoutedEventArgs e) => MessageBox.Show(this,
         "Space\tPlay / pause\nLeft / Right or , / .\tStep one frame (Shift: one second)\nHome / End\tStart / end\nJ / K / L\tBack one second / pause / play\n\n" +
-        "V / C\tSelect tool / Razor tool\nS or Ctrl+K\tSplit at the playhead\nDelete\tDelete the selection\nShift+Delete\tRipple delete\nN\tSnap on / off (hold Alt while dragging to snap off)\n\n" +
+        "V / C\tSelect tool / Razor tool\nS or Ctrl+K\tSplit at the playhead\nDelete\tDelete the selection\nShift+Delete\tRipple delete\nCtrl+C / Ctrl+X / Ctrl+V\tCopy / cut / paste at the playhead\nCtrl+D\tDuplicate\nCtrl+click / Shift+click\tAdd a clip / a run of clips to the selection\nDrag on an empty lane\tSelect every clip the box touches\nCtrl+A / Esc\tSelect all / none\nN\tSnap on / off (hold Alt while dragging to snap off)\n\n" +
         "T\tAdd a caption at the playhead\nDouble-click text in the preview\tType in place (Esc to finish)\nDrag a picture in the preview\tMove it (Shift: one axis, Alt: no snapping)\nDouble-click a picture\tCrop it (Enter or Esc to finish)\n\n+ / -\tZoom the timeline\n\\\tFit the timeline\nCtrl + wheel\tZoom at the pointer\n\nCtrl+Z / Ctrl+Y\tUndo / redo\nCtrl+S\tSave project\nCtrl+I\tImport media\nCtrl+E\tExport MP4",
         "Keyboard shortcuts");
 
@@ -1186,6 +1201,10 @@ public partial class VideoEditorWindow : Window
                 case Key.W: Close(); break;
                 case Key.A: SelectAll_Click(this, e); break;
                 case Key.K: Split_Click(this, e); break;
+                case Key.C: Copy_Click(this, e); break;
+                case Key.X: Cut_Click(this, e); break;
+                case Key.V: Paste_Click(this, e); break;
+                case Key.D: Duplicate_Click(this, e); break;
                 default: handled = false; break;
             }
         }
@@ -1196,7 +1215,7 @@ public partial class VideoEditorWindow : Window
                 case Key.Space: if (_playing) Pause(); else Play(); break;
                 case Key.V: SetTool(TimelineTool.Select); break;
                 case Key.C: SetTool(TimelineTool.Razor); break;
-                case Key.Escape: if (Preview.CropMode) Preview.CropMode = false; else SetTool(TimelineTool.Select); break;
+                case Key.Escape: if (Preview.CropMode) Preview.CropMode = false; else if (Timeline.Tool != TimelineTool.Select) SetTool(TimelineTool.Select); else Timeline.ClearSelection(); break;
                 case Key.Enter when Preview.CropMode: Preview.CropMode = false; break;
                 case Key.S: Split_Click(this, e); break;
                 case Key.T: AddCaptionAt(null, _playhead); break;

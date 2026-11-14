@@ -28,7 +28,7 @@ public sealed class TimelineView : FrameworkElement
     public const double FadeGrip = 7, FadeInset = 6;
     public const string SourceFormat = "Vibershot.VideoSource";
 
-    private enum Drag { None, Scrub, Move, TrimStart, TrimEnd, FadeIn, FadeOut }
+    private enum Drag { None, Scrub, Move, TrimStart, TrimEnd, FadeIn, FadeOut, Marquee }
 
     private readonly Brush _well, _paper, _rule, _hover, _ink, _ink2, _ink3, _accent;
     private static readonly Brush VideoFill = Frozen("#3D4A63"), VideoEdge = Frozen("#2B3447"), AudioFill = Frozen("#1F4D3A"), AudioWave = Frozen("#50FA7B"),
@@ -43,8 +43,12 @@ public sealed class TimelineView : FrameworkElement
     private string _dragKey = "";
     private Guid _dragClip;
     private long _dragClipStart, _dragOffsetFrames, _dragFade;
-    private double _dragStartX;
-    private bool _dragMoved;
+    private double _dragStartX, _dragStartY;
+    private bool _dragMoved, _collapseOnUp;
+    private HashSet<Guid> _dragSet = new();
+    private Point _marqueeFrom;
+    private Point? _marqueeTo;
+    private List<Guid> _marqueeKeep = new();
     private long? _snapLine;
     private ModifierKeys _modifiers;
 
@@ -64,6 +68,12 @@ public sealed class TimelineView : FrameworkElement
     }
 
     public HashSet<Guid> Selection { get; } = new();
+
+    /// <summary>The selected clip the properties panel and the preview show; Shift+click measures its range from here. Null when nothing is selected.</summary>
+    public Guid? Primary { get; private set; }
+
+    /// <summary>The clips last copied or cut, shared by every editor window. It is not the system clipboard.</summary>
+    public static ClipClipboard? Clipboard { get; set; }
     public TimelineTool Tool { get; set; }
     public bool Snap { get; set; } = true;
     public Func<Guid, Filmstrip?>? FilmstripFor { get; set; }
@@ -121,7 +131,11 @@ public sealed class TimelineView : FrameworkElement
     private void OnHistoryChanged()
     {
         var alive = Project.AllClips.Select(clip => clip.Id).ToHashSet();
-        if (Selection.RemoveWhere(id => !alive.Contains(id)) > 0) SelectionChanged?.Invoke();
+        if (Selection.RemoveWhere(id => !alive.Contains(id)) > 0)
+        {
+            if (Primary is { } primary && !Selection.Contains(primary)) Primary = Selection.Count > 0 ? Selection.First() : null;
+            SelectionChanged?.Invoke();
+        }
         InvalidateMeasure();
         InvalidateVisual();
         ViewChanged?.Invoke();
@@ -294,6 +308,11 @@ public sealed class TimelineView : FrameworkElement
             double sx = Math.Round(FrameToX(snap)) + 0.5;
             dc.DrawLine(new Pen(_accent, 1) { DashStyle = DashStyles.Dash }, new Point(sx, RulerHeight), new Point(sx, height));
         }
+        if (Marquee is { } box)
+        {
+            dc.PushOpacity(0.18); dc.DrawRectangle(_accent, null, box); dc.Pop();
+            dc.DrawRectangle(null, new Pen(_accent, 1), new Rect(box.X + 0.5, box.Y + 0.5, Math.Max(0, box.Width - 1), Math.Max(0, box.Height - 1)));
+        }
         double px = Math.Round(FrameToX(_playhead)) + 0.5;
         dc.DrawLine(new Pen(PlayheadBrush, 2), new Point(px, 0), new Point(px, height));
         dc.DrawRoundedRectangle(PlayheadBrush, null, new Rect(px - 6, 0, 12, 12), 2, 2);
@@ -463,12 +482,70 @@ public sealed class TimelineView : FrameworkElement
 
     // ---- Selection ----
 
-    public void Select(IEnumerable<Guid> ids)
+    /// <summary>
+    /// Replaces the selection. The primary clip is <paramref name="primary"/> when it is in the
+    /// set, else the one before when it still is, else the first id given.
+    /// </summary>
+    public void Select(IEnumerable<Guid> ids, Guid? primary = null)
     {
+        var list = ids.ToList();
         Selection.Clear();
-        foreach (var id in ids) Selection.Add(id);
+        foreach (var id in list) Selection.Add(id);
+        Primary = primary is { } wanted && Selection.Contains(wanted) ? wanted : Primary is { } kept && Selection.Contains(kept) ? kept : list.Count > 0 ? list[0] : null;
         SelectionChanged?.Invoke();
         InvalidateVisual();
+    }
+
+    public void SelectAll() => Select(Project.AllClips.Select(clip => clip.Id).ToList());
+
+    public void ClearSelection() { if (Selection.Count > 0) Select(Array.Empty<Guid>()); }
+
+    /// <summary>The box being dragged over empty lane space, in this control's coordinates; null when there is none.</summary>
+    public Rect? Marquee => _drag == Drag.Marquee && _marqueeTo is { } to
+        ? new Rect(new Point(_marqueeFrom.X - _scroll, _marqueeFrom.Y), new Point(to.X - _scroll, to.Y)) : null;
+
+    // ---- Commands on the selection ----
+
+    /// <summary>Removes the selected clips; with <paramref name="ripple"/> the clips after them close the gaps. False when nothing is selected.</summary>
+    public bool DeleteSelection(bool ripple = false)
+    {
+        if (_history == null || Selection.Count == 0) return false;
+        var ids = Selection.ToList();
+        _history.Push(ripple ? TimelineOps.RippleDeleteMany(Project, ids) : TimelineOps.DeleteMany(Project, ids));
+        return true;
+    }
+
+    /// <summary>Copies the selected clips to <see cref="Clipboard"/>. False when nothing is selected.</summary>
+    public bool CopySelection()
+    {
+        if (TimelineOps.Copy(Project, Selection) is not { } copied) return false;
+        Clipboard = copied;
+        return true;
+    }
+
+    /// <summary>Copies the selected clips, then removes them.</summary>
+    public bool CutSelection() => CopySelection() && DeleteSelection();
+
+    /// <summary>Pastes <see cref="Clipboard"/> at the playhead and selects what was pasted. False when there is nothing to paste.</summary>
+    public bool Paste()
+    {
+        if (_history == null || Clipboard is not { } copied) return false;
+        var result = TimelineOps.Paste(Project, copied, _playhead, out var pasted);
+        if (pasted.Count == 0) return false;
+        _history.Push(result);
+        Select(pasted, pasted[0]);
+        return true;
+    }
+
+    /// <summary>Puts a copy of the selected clips straight after them and selects the copies. The clipboard is left alone.</summary>
+    public bool DuplicateSelection()
+    {
+        if (_history == null || Selection.Count == 0) return false;
+        var result = TimelineOps.Duplicate(Project, Selection.ToList(), out var pasted);
+        if (pasted.Count == 0) return false;
+        _history.Push(result);
+        Select(pasted, pasted[0]);
+        return true;
     }
 
     // ---- Mouse ----
@@ -528,12 +605,14 @@ public sealed class TimelineView : FrameworkElement
             return true;
         }
         var hit = HitClip(p);
+        bool extend = modifiers.HasFlag(ModifierKeys.Control) || modifiers.HasFlag(ModifierKeys.Shift);
         if (hit is not var (row, clip))
         {
-            if (Selection.Count > 0) Select(Array.Empty<Guid>());
-            // Clicking an empty lane parks the playhead there, like the ruler.
-            _drag = Drag.Scrub;
+            if (!extend) ClearSelection();
+            // Clicking an empty lane parks the playhead there, like the ruler; a drag from here draws a marquee.
             Scrub(p.X);
+            _drag = Drag.Marquee; _marqueeFrom = new Point(p.X + _scroll, p.Y); _marqueeTo = null;
+            _marqueeKeep = extend ? Selection.ToList() : new List<Guid>();
             return true;
         }
         if (Tool == TimelineTool.Razor)
@@ -548,10 +627,26 @@ public sealed class TimelineView : FrameworkElement
         {
             var ids = TimelineOps.WithLinked(Project, new[] { clip.Id });
             if (Selection.Contains(clip.Id)) Select(Selection.Where(id => !ids.Contains(id)).ToList());
-            else Select(Selection.Concat(ids).ToList());
+            else Select(Selection.Concat(ids).ToList(), clip.Id);
             return false;
         }
-        if (!Selection.Contains(clip.Id)) Select(TimelineOps.WithLinked(Project, new[] { clip.Id }));
+        if (modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            // Everything on this track from the primary clip to the clicked one joins the selection.
+            var range = new List<Guid> { clip.Id };
+            if (row.Track.Clips.FirstOrDefault(candidate => candidate.Id == Primary) is { } anchor)
+            {
+                long from = Math.Min(anchor.Start, clip.Start), to = Math.Max(anchor.End, clip.End);
+                range.AddRange(row.Track.Clips.Where(between => between.Start >= from && between.End <= to).Select(between => between.Id));
+            }
+            Select(TimelineOps.WithLinked(Project, Selection.Concat(range).ToList()), Primary ?? clip.Id);
+            return false;
+        }
+        var alone = TimelineOps.WithLinked(Project, new[] { clip.Id });
+        // A press on one of several selected clips keeps the set, so it can be dragged; a plain click (no drag) then leaves just that clip.
+        _collapseOnUp = Selection.Contains(clip.Id) && !Selection.SetEquals(alone);
+        if (!Selection.Contains(clip.Id)) Select(alone, clip.Id);
+        else if (Primary != clip.Id) Select(Selection.ToList(), clip.Id);
         if (row.Track.Locked) return false;
         var rect = ClipRect(row, clip);
         if (FadeHandleAt(row, clip, p) is var fade && fade != Drag.None)
@@ -563,7 +658,8 @@ public sealed class TimelineView : FrameworkElement
         }
         _drag = p.X - rect.Left <= EdgeGrip && rect.Width > EdgeGrip * 2 ? Drag.TrimStart : rect.Right - p.X <= EdgeGrip && rect.Width > EdgeGrip * 2 ? Drag.TrimEnd : Drag.Move;
         _dragBase = Project; _dragKey = "drag:" + Guid.NewGuid(); _dragClip = clip.Id; _dragClipStart = clip.Start;
-        _dragStartX = p.X; _dragOffsetFrames = XToFrame(p.X) - clip.Start; _dragMoved = false;
+        _dragStartX = p.X; _dragStartY = p.Y; _dragOffsetFrames = XToFrame(p.X) - clip.Start; _dragMoved = false;
+        _dragSet = TimelineOps.WithLinked(Project, Selection.ToList());
         return true;
     }
 
@@ -589,8 +685,22 @@ public sealed class TimelineView : FrameworkElement
             if (p.X > ActualWidth - 24) ScrollX = _scroll + 16; else if (p.X < HeaderWidth + 24) ScrollX = _scroll - 16;
             return;
         }
+        if (_drag == Drag.Marquee)
+        {
+            if (_marqueeTo == null && Math.Abs(p.X + _scroll - _marqueeFrom.X) < 3 && Math.Abs(p.Y - _marqueeFrom.Y) < 3) return;
+            if (p.X > ActualWidth - 24) ScrollX = _scroll + 16; else if (p.X < HeaderWidth + 24) ScrollX = _scroll - 16;
+            _marqueeTo = new Point(Math.Max(HeaderWidth, p.X) + _scroll, Math.Max(RulerHeight, p.Y));
+            if (Marquee is { } box)
+            {
+                var touched = Rows().SelectMany(row => row.Track.Clips.Where(clip => ClipRect(row, clip).IntersectsWith(box))).Select(clip => clip.Id);
+                var ids = TimelineOps.WithLinked(Project, _marqueeKeep.Concat(touched).ToList());
+                if (!Selection.SetEquals(ids)) Select(_marqueeKeep.Concat(ids).Distinct().ToList());
+            }
+            InvalidateVisual();
+            return;
+        }
         if (_history == null || _dragBase == null) return;
-        if (!_dragMoved && Math.Abs(p.X - _dragStartX) < 3) return;
+        if (!_dragMoved && Math.Abs(p.X - _dragStartX) < 3 && (_drag != Drag.Move || Math.Abs(p.Y - _dragStartY) < 3)) return;
         _dragMoved = true;
         var group = TimelineOps.WithLinked(_dragBase, new[] { _dragClip });
         if (TimelineOps.Find(_dragBase, _dragClip) is not var (fromTrack, clip)) return;
@@ -603,6 +713,12 @@ public sealed class TimelineView : FrameworkElement
         }
         else if (_drag == Drag.TrimStart) result = TimelineOps.TrimStart(_dragBase, _dragClip, SnapFrame(XToFrame(p.X), group));
         else if (_drag == Drag.TrimEnd) result = TimelineOps.TrimEnd(_dragBase, _dragClip, SnapFrame(XToFrame(p.X), group));
+        else if (!_dragSet.SetEquals(group))
+        {
+            result = MoveSet(p, fromTrack, clip);
+            // A refused move puts the whole set back where the drag began.
+            if (result == null || ReferenceEquals(result, _dragBase)) { _history.Rollback(_dragKey); result = null; }
+        }
         else
         {
             long desired = Math.Max(0, XToFrame(p.X) - _dragOffsetFrames);
@@ -636,11 +752,51 @@ public sealed class TimelineView : FrameworkElement
         InvalidateVisual();
     }
 
+    /// <summary>
+    /// A drag of several selected clips: all of them shift by the same frames, and those of the
+    /// dragged clip's kind by the same number of lanes. The outer edges of the set snap. Null
+    /// when the move is refused.
+    /// </summary>
+    private VideoProject? MoveSet(Point p, Vibershot.Editing.Video.Track fromTrack, Clip clip)
+    {
+        var project = _dragBase!;
+        var set = project.AllClips.Where(candidate => _dragSet.Contains(candidate.Id)).ToList();
+        long first = set.Min(candidate => candidate.Start), last = set.Max(candidate => candidate.End);
+        // The earliest clip of the set stops at the start of the timeline.
+        long delta = Math.Max(-first, XToFrame(p.X) - _dragOffsetFrames - clip.Start);
+        long snappedStart = SnapFrame(first + delta, _dragSet); long? startLine = _snapLine;
+        long snappedEnd = SnapFrame(last + delta, _dragSet); long? endLine = _snapLine;
+        if (startLine != null) { delta = snappedStart - first; _snapLine = startLine; }
+        else if (endLine != null && snappedEnd - last >= -first) { delta = snappedEnd - last; _snapLine = endLine; }
+        else _snapLine = null;
+
+        var working = project;
+        var kind = fromTrack.Kind;
+        Guid target = fromTrack.Id;
+        var sameKind = Rows().Where(row => row.Track.Kind == kind).ToList();
+        if (sameKind.Count > 0)
+        {
+            bool above = kind == TrackKind.Visual && p.Y < sameKind[0].Top;
+            bool below = kind == TrackKind.Audio && p.Y >= sameKind[^1].Top + sameKind[^1].Height;
+            if (!above && !below && RowAt(p.Y) is { } over && over.Track.Kind == kind && !over.Track.Locked) target = over.Track.Id;
+            // Past the outermost lane of its kind, or over the lane an earlier step of this drag made: a new layer.
+            if (above || below || project.Tracks.All(track => track.Id != target)) working = TimelineOps.AddTrack(project, kind, out target);
+        }
+        var ofKind = working.Tracks.Where(track => track.Kind == kind).ToList();
+        int lanes = ofKind.FindIndex(track => track.Id == target) - ofKind.FindIndex(track => track.Id == fromTrack.Id);
+        var result = TimelineOps.MoveMany(working, _dragSet, delta, lanes, kind);
+        if (result == null && lanes != 0) result = TimelineOps.MoveMany(project, _dragSet, delta);
+        if (result == null) _snapLine = null;
+        return result;
+    }
+
     /// <summary>The press ended: finishes the drag as one undo step.</summary>
     public void PointerUp()
     {
         if (_drag == Drag.None) return;
-        bool edit = _drag != Drag.Scrub;
+        bool edit = _drag is Drag.Move or Drag.TrimStart or Drag.TrimEnd or Drag.FadeIn or Drag.FadeOut;
+        if (edit && !_dragMoved && _collapseOnUp) Select(TimelineOps.WithLinked(Project, new[] { _dragClip }), _dragClip);
+        _collapseOnUp = false; _marqueeTo = null;
         _drag = Drag.None; _dragBase = null; _snapLine = null;
         if (edit) _history?.BreakCoalescing();
         InvalidateVisual();
@@ -683,13 +839,18 @@ public sealed class TimelineView : FrameworkElement
             Add("Split at playhead", () => _history.Push(TimelineOps.Split(Project, at, ids)), clip.Start < at && at < clip.End);
             Add("Detach audio", () => _history.Push(TimelineOps.Unlink(Project, clip.Id)), clip.LinkId != null);
             menu.Items.Add(new Separator());
-            Add("Delete", () => _history.Push(TimelineOps.Delete(Project, ids)));
-            Add("Ripple delete", () => _history.Push(TimelineOps.Delete(Project, ids, ripple: true)));
+            Add("Cut", () => CutSelection());
+            Add("Copy", () => CopySelection());
+            Add("Duplicate", () => DuplicateSelection());
+            menu.Items.Add(new Separator());
+            Add("Delete", () => DeleteSelection());
+            Add("Ripple delete", () => DeleteSelection(ripple: true));
         }
         else
         {
             long here = XToFrame(Math.Max(HeaderWidth, p.X));
             var under = RowAt(p.Y);
+            Add("Paste at playhead", () => Paste(), Clipboard != null);
             Add("Add caption here", () => CaptionRequested?.Invoke(under is { Track.Kind: TrackKind.Caption } lane ? lane.Track.Id : null, here));
             menu.Items.Add(new Separator());
             Add("Add video track", () => _history.Push(TimelineOps.AddTrack(Project, TrackKind.Visual, out _)));

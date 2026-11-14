@@ -71,6 +71,11 @@
        <MenuItem x:Name="UndoMenu" Header="Undo" InputGestureText="Ctrl+Z" Click="Undo_Click"/>
        <MenuItem x:Name="RedoMenu" Header="Redo" InputGestureText="Ctrl+Y" Click="Redo_Click"/>
        <Separator/>
+       <MenuItem x:Name="CutMenu" Header="Cut" InputGestureText="Ctrl+X" Click="Cut_Click"/>
+       <MenuItem x:Name="CopyMenu" Header="Copy" InputGestureText="Ctrl+C" Click="Copy_Click"/>
+       <MenuItem x:Name="PasteMenu" Header="Paste at playhead" InputGestureText="Ctrl+V" Click="Paste_Click"/>
+       <MenuItem x:Name="DuplicateMenu" Header="Duplicate" InputGestureText="Ctrl+D" Click="Duplicate_Click"/>
+       <Separator/>
        <MenuItem x:Name="SplitMenu" Header="Split at playhead" InputGestureText="S" Click="Split_Click"/>
        <MenuItem x:Name="DeleteMenu" Header="Delete" InputGestureText="Del" Click="Delete_Click"/>
        <MenuItem x:Name="RippleMenu" Header="Ripple delete" InputGestureText="Shift+Del" Click="RippleDelete_Click"/>
