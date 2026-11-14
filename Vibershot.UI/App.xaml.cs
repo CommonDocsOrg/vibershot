@@ -242,9 +242,27 @@ public partial class App : Application
         try { new EditorWindow(_config, image).Show(); }
         catch (Exception ex) { _main.ShowStatus("Editor failed to open: " + ex.Message); }
     }
-    /// <summary>Opens an image file or a .vibeshot project from the gallery in the editor.</summary>
+    /// <summary>True for the files the video editor opens: MP4 videos and .vibevideo projects.</summary>
+    public static bool IsVideoEditorFile(string path)
+    {
+        string extension = System.IO.Path.GetExtension(path);
+        return extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) || extension.Equals(Vibershot.Editing.Video.VideoProjectFile.Extension, StringComparison.OrdinalIgnoreCase);
+    }
+    /// <summary>Opens the video editor: empty, on a .vibevideo project, or on a new project started from an MP4.</summary>
+    public void OpenVideoEditor(string? path = null)
+    {
+        try
+        {
+            var window = path == null ? new VideoEditorWindow(_config) : VideoEditorWindow.Open(_config, path);
+            window.Show();
+            window.Activate();
+        }
+        catch (Exception ex) { _main.ShowStatus("Video editor failed to open: " + ex.Message); }
+    }
+    /// <summary>Opens an image file or a .vibeshot project in the image editor; MP4s and .vibevideo projects go to the video editor.</summary>
     public void OpenEditor(string path)
     {
+        if (IsVideoEditorFile(path)) { OpenVideoEditor(path); return; }
         try
         {
             if (string.Equals(System.IO.Path.GetExtension(path), Vibershot.Editing.ProjectFile.Extension, StringComparison.OrdinalIgnoreCase))
@@ -258,13 +276,18 @@ public partial class App : Application
     }
     /// <summary>
     /// Shows the gallery (one instance per session), optionally selecting a file once it is indexed.
-    /// Images and projects open in the image editor; videos still open with the shell until the video editor exists.
+    /// Images and projects open in the image editor, MP4s and video projects in the video editor;
+    /// other video formats open with the default Windows app.
     /// </summary>
     public void ShowGallery(string? selectPath = null)
     {
         if (_gallery == null)
         {
-            _gallery = new GalleryWindow(_config) { OpenInEditor = item => OpenEditor(item.Path) };
+            _gallery = new GalleryWindow(_config)
+            {
+                OpenInEditor = item => OpenEditor(item.Path),
+                OpenInVideoEditor = item => { if (IsVideoEditorFile(item.Path)) OpenVideoEditor(item.Path); else GalleryFiles.OpenWithShell(item.Path); },
+            };
             _gallery.Closed += (_, _) => _gallery = null;
         }
         _gallery.Show();

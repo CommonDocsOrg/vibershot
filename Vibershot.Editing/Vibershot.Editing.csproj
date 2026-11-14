@@ -13,4 +13,9 @@
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WPF" />
   </ItemGroup>
 
+  <!-- The video project model uses FrameRate and builds export plans for Vibershot.Media. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Vibershot.Media\Vibershot.Media.csproj" />
+  </ItemGroup>
+
 </Project>

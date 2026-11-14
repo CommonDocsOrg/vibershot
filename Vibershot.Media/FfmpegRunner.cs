@@ -68,6 +68,33 @@ public sealed class FfmpegRunner
         return new FfmpegProcess(process);
     }
 
+    /// <summary>
+    /// Starts ffmpeg with stdout left as a binary stream (raw frames or samples) instead of
+    /// progress text. The caller reads <see cref="RawFfmpegProcess.Output"/> and disposes the handle.
+    /// </summary>
+    public RawFfmpegProcess StartRaw(IReadOnlyList<string> arguments)
+    {
+        var info = new ProcessStartInfo(_ffmpegPath)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        foreach (var arg in arguments) info.ArgumentList.Add(arg);
+        try
+        {
+            var process = Process.Start(info) ?? throw new InvalidOperationException("Process.Start returned null.");
+            return new RawFfmpegProcess(process);
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new FfmpegNotFoundException($"Could not start ffmpeg at {_ffmpegPath}: {ex.Message}");
+        }
+    }
+
     /// <summary>Runs ffmpeg to completion. Cancelling the token kills the process.</summary>
     public async Task<FfmpegResult> RunAsync(IReadOnlyList<string> arguments, IProgress<FfmpegProgress>? progress = null, CancellationToken cancellationToken = default)
     {
@@ -80,6 +107,46 @@ public sealed class FfmpegRunner
 
     /// <summary>Shared leading arguments: quiet banner, no stats spam, progress on stdout.</summary>
     public static string[] StandardPrefix => new[] { "-hide_banner", "-nostats", "-progress", "pipe:1" };
+}
+
+/// <summary>An ffmpeg process whose stdout carries binary data. Disposing kills it.</summary>
+public sealed class RawFfmpegProcess : IDisposable
+{
+    private readonly Process _process;
+    private readonly Queue<string> _stderr = new();
+
+    internal RawFfmpegProcess(Process process)
+    {
+        _process = process;
+        Output = process.StandardOutput.BaseStream;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                string? line;
+                while ((line = await process.StandardError.ReadLineAsync().ConfigureAwait(false)) is not null)
+                {
+                    lock (_stderr)
+                    {
+                        _stderr.Enqueue(line);
+                        while (_stderr.Count > FfmpegRunner.StderrTailLines) _stderr.Dequeue();
+                    }
+                }
+            }
+            catch (Exception) { }
+        });
+    }
+
+    public Stream Output { get; }
+
+    public string ErrorText { get { lock (_stderr) return string.Join(Environment.NewLine, _stderr); } }
+
+    public void Dispose()
+    {
+        try { if (!_process.HasExited) _process.Kill(entireProcessTree: true); }
+        catch (Exception) { }
+        _process.Dispose();
+    }
 }
 
 /// <summary>A running ffmpeg process started by <see cref="FfmpegRunner"/>.</summary>
