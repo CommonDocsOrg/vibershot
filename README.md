@@ -2,9 +2,9 @@
 
 # Vibershot
 
-**Screenshots, screen recordings and annotations for Windows 11, without the clutter.**
+**Screenshots, screen recordings, annotations and video editing for Windows 11, without the clutter.**
 
-Vibershot is a small, fast capture tool. Press a key, pick what you want on screen, and it is saved, copied, recorded or opened for editing. Everything you capture lands in a searchable gallery, and nothing you draw on a picture is ever baked in until you export it.
+Vibershot is a small, fast capture tool. Press a key, pick what you want on screen, and it is saved, copied, recorded or opened for editing. Pictures open in a layered image editor and recordings in a built-in video editor with a timeline, titles and captions. Everything you capture lands in a searchable gallery, and nothing you draw on a picture is ever baked in until you export it.
 
 <br clear="all">
 
@@ -17,6 +17,7 @@ Vibershot is a small, fast capture tool. Press a key, pick what you want on scre
 - **Still or moving.** The same selection becomes a screenshot, an MP4 recording or a stitched scrolling capture.
 - **Exact sizes when you need them.** Pick 720p, 1080p, 1440p, square or a custom frame and place it with a click.
 - **Edit without losing anything.** Arrows, shapes, text, callouts, stamps, crops and layers stay editable in the Vibershot project format.
+- **Edit your recordings too.** A built-in video editor trims, splits and layers clips, adds titles, captions and callouts, and exports an MP4 at up to 4K.
 - **Hide what is private.** Blur or pixelate part of a picture; the hidden pixels are really gone from the export.
 - **A home for every capture.** The gallery keeps everything, with search, tags and favourites.
 - **Lightweight.** A native Windows app with a dark theme that sits in the tray and does nothing until you ask it to.
@@ -113,8 +114,8 @@ Vibershot is a C# / .NET 10 / WPF application. With the .NET 10 SDK installed:
 .\run.ps1
 ```
 
-This builds the app, fetches the FFmpeg binaries used for MP4 recording and starts Vibershot. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the project layout, settings reference and manual test checklist, and [docs/RELEASING.md](docs/RELEASING.md) for building the installer and publishing a release.
+This builds the app, fetches the FFmpeg binaries used for MP4 recording and video editing, and starts Vibershot. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the project layout, settings reference and manual test checklist, and [docs/RELEASING.md](docs/RELEASING.md) for building the installer and publishing a release.
 
 ## License
 
-Vibershot is free software released under the [GNU General Public License v3.0](LICENSE). MP4 recording uses a separately downloaded FFmpeg build; its licence ships alongside it.
+Vibershot is free software released under the [GNU General Public License v3.0](LICENSE). MP4 recording and video editing use a separately downloaded FFmpeg build; its licence ships alongside it.
