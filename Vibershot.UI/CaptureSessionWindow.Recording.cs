@@ -21,21 +21,22 @@ namespace Vibershot.UI;
 public sealed partial class CaptureSessionWindow
 {
     private readonly DispatcherTimer _levels = new() { Interval = TimeSpan.FromMilliseconds(60) };
-    private readonly StackPanel _setup = new() { Margin = new Thickness(0, 12, 0, 0) };
-    private readonly CheckBox _systemToggle = new() { Content = "System audio", ToolTip = "Record what the computer plays, on its own track" };
-    private readonly CheckBox _micToggle = new() { Content = "Microphone", ToolTip = "Record a microphone, on its own track" };
-    private readonly CheckBox _cameraToggle = new() { Content = "Camera", ToolTip = "Record a webcam as its own video layer" };
-    private readonly ComboBox _micPicker = new() { Margin = new Thickness(0, 6, 0, 0) };
-    private readonly ComboBox _cameraPicker = new() { Margin = new Thickness(0, 6, 0, 0) };
+    private readonly StackPanel _setup = new() { Margin = new Thickness(0, 2, 0, 14) };
+    // Bare switches: each sits at the right end of its row, so the three line up whether or not the row has a meter.
+    private readonly CheckBox _systemToggle = new(), _micToggle = new(), _cameraToggle = new();
+    private readonly ComboBox _micPicker = new();
+    private readonly ComboBox _cameraPicker = new();
     private readonly Slider _micVolume = new() { Minimum = 0, Maximum = 200, SmallChange = 5, LargeChange = 20, VerticalAlignment = VerticalAlignment.Center };
-    private readonly TextBlock _micVolumeLabel = new() { Width = 44, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, FontSize = 11.5 };
-    private readonly TextBlock _systemNote = new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 4, 0, 0) };
-    private readonly TextBlock _cameraNote = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) };
-    private readonly StackPanel _micDetails = new() { Margin = new Thickness(0, 0, 0, 0) };
-    private readonly StackPanel _cameraDetails = new();
-    private readonly CheckBox _mute = new() { Content = "Mute microphone", Margin = new Thickness(0, 0, 0, 10), Visibility = Visibility.Collapsed };
-    private readonly CheckBox _skipNextTime = new() { Content = "Start straight away next time", Margin = new Thickness(0, 12, 0, 0), ToolTip = "Skip these choices and record at once with what is switched on now. Change it back in Settings → Video." };
-    private readonly Button _start = new() { Content = "Start recording", Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+    private readonly TextBlock _micVolumeLabel = new() { Width = 40, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, FontSize = 11.5 };
+    // One line under each row's title: what the choice is while off, what it records from while on, or what went wrong.
+    private readonly TextBlock _systemNote = RowNote(), _micNote = RowNote(), _cameraLine = RowNote();
+    private readonly TextBlock _cameraNote = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
+    private readonly StackPanel _micDetails = new() { Margin = new Thickness(DetailsIndent, 10, 0, 0) };
+    private readonly StackPanel _cameraDetails = new() { Margin = new Thickness(DetailsIndent, 10, 0, 0) };
+    private readonly List<(Border Card, Grid Row, CheckBox Toggle)> _choices = new();
+    private readonly CheckBox _mute = new() { Content = "Mute microphone", Margin = new Thickness(2, 0, 0, 12), Visibility = Visibility.Collapsed };
+    private readonly CheckBox _skipNextTime = new() { Content = "Start straight away next time", Margin = new Thickness(2, 6, 0, 0), ToolTip = "Skip these choices and record at once with what is switched on now. Change it back in Settings → Video." };
+    private readonly Button _start = new() { Margin = new Thickness(0, 0, 8, 0), IsDefault = true, ToolTip = "The Record video shortcut starts it too" };
     private readonly Button _cancelSetup = new() { Content = "Cancel", IsCancel = true };
     private Rectangle _systemMeter = null!, _micMeter = null!;
     private double _systemShown, _micShown;
@@ -52,7 +53,9 @@ public sealed partial class CaptureSessionWindow
     /// <summary>Set when the user chose "Open in editor" after a recording: the project to open once this window has closed.</summary>
     public string? OpenInEditorPath { get; private set; }
 
-    private const double MeterWidth = 120;
+    private const double MeterWidth = 110;
+    /// <summary>Device pickers sit under the row's text, past the icon tile (32) and its gap (12).</summary>
+    private const double DetailsIndent = 44;
 
     /// <summary>Shows the choices and opens the chosen devices, so meters move and the camera shows before anything is recorded.</summary>
     private void BeginSetup()
@@ -62,28 +65,29 @@ public sealed partial class CaptureSessionWindow
         string root = _recordingsFolder ?? RecoveryFolder;
         _rig = new CaptureRig(_runner, Path.Combine(root, $"recording_{DateTime.Now:yyyyMMdd_HHmmss}"));
 
-        var ink2 = (Brush)FindResource("Ink2"); var ink3 = (Brush)FindResource("Ink3");
-        _systemNote.Foreground = ink3; _cameraNote.Foreground = ink3; _micVolumeLabel.Foreground = ink2;
+        var ink2 = (Brush)FindResource("Ink2");
+        _cameraNote.Foreground = ink2; _micVolumeLabel.Foreground = ink2;
         _mute.Style = (Style)FindResource("TickCheckBox");
         _skipNextTime.Style = (Style)FindResource("TickCheckBox");
         _start.Style = (Style)FindResource("PrimaryButton");
 
-        _setup.Children.Add(Row(_systemToggle, _systemMeter = Meter()));
-        _setup.Children.Add(_systemNote);
-        _setup.Children.Add(Divider());
-        _setup.Children.Add(Row(_micToggle, _micMeter = Meter()));
+        Icons.Label(_start, Icons.Record, "Start recording");
+        SetHeader(Icons.Video, "Accent", "New recording");
+
+        _setup.Children.Add(Choice(_systemToggle, Icons.Speaker, "System audio", "Record what the computer plays, on its own track", _systemNote, _systemMeter = Meter(), null));
         var volume = new DockPanel { Margin = new Thickness(0, 8, 0, 0) };
-        var volumeLabel = new TextBlock { Text = "Volume", FontSize = 11.5, Foreground = ink2, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) };
-        DockPanel.SetDock(volumeLabel, Dock.Left); DockPanel.SetDock(_micVolumeLabel, Dock.Right);
-        volume.Children.Add(volumeLabel); volume.Children.Add(_micVolumeLabel); volume.Children.Add(_micVolume);
+        var volumeGlyph = Icons.Glyph(Icons.Speaker, 14, ink2);
+        volumeGlyph.Margin = new Thickness(2, 0, 10, 0); volumeGlyph.ToolTip = "Microphone volume: 100% records it as it is, above that makes it louder";
+        System.Windows.Automation.AutomationProperties.SetName(_micVolume, "Microphone volume");
+        DockPanel.SetDock(volumeGlyph, Dock.Left); DockPanel.SetDock(_micVolumeLabel, Dock.Right);
+        volume.Children.Add(volumeGlyph); volume.Children.Add(_micVolumeLabel); volume.Children.Add(_micVolume);
         _micDetails.Children.Add(_micPicker); _micDetails.Children.Add(volume);
-        _setup.Children.Add(_micDetails);
-        _setup.Children.Add(Divider());
-        _setup.Children.Add(Row(_cameraToggle, null));
+        _setup.Children.Add(Choice(_micToggle, Icons.Microphone, "Microphone", "Record a microphone, on its own track", _micNote, _micMeter = Meter(), _micDetails));
         _cameraDetails.Children.Add(_cameraPicker); _cameraDetails.Children.Add(_cameraNote);
-        _setup.Children.Add(_cameraDetails);
+        _setup.Children.Add(Choice(_cameraToggle, Icons.Webcam, "Camera", "Record a webcam as its own video layer", _cameraLine, null, _cameraDetails));
         _setup.Children.Add(_skipNextTime);
-        _panel.Children.Insert(_panel.Children.IndexOf(_status), _setup);
+        // Under the status line, so the window reads top to bottom: what this is, what to choose, the buttons.
+        _panel.Children.Insert(_panel.Children.IndexOf(_status) + 1, _setup);
         _panel.Children.Insert(_panel.Children.IndexOf(_buttons), _mute);
 
         _pause.Visibility = _finish.Visibility = Visibility.Collapsed;
@@ -118,7 +122,7 @@ public sealed partial class CaptureSessionWindow
         _levels.Start();
         _status.Text = _videoSettings.StartImmediately
             ? "Starting with the choices from last time…"
-            : "Choose what to record with the screen, then start. Each choice is recorded as its own track.";
+            : "Choose what to record with the screen. Each choice becomes its own track.";
         _ = OpenCameraThenMaybeStartAsync();
         UpdateSubtitle();
     }
@@ -160,25 +164,85 @@ public sealed partial class CaptureSessionWindow
         _mute.IsChecked = microphone.Muted;
     }
 
-    private Grid Row(CheckBox toggle, FrameworkElement? meter)
+    private static TextBlock RowNote() => new() { FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 2, 0, 0) };
+
+    /// <summary>
+    /// One choice as a card: icon tile, title over a one-line note, the live meter when there is
+    /// one, and the switch at the right edge. Clicking anywhere on the row flips the switch.
+    /// </summary>
+    private Border Choice(CheckBox toggle, string glyph, string title, string tip, TextBlock note, Rectangle? meter, FrameworkElement? details)
     {
-        var row = new Grid();
+        var row = new Grid { Background = Brushes.Transparent, Cursor = System.Windows.Input.Cursors.Hand, ToolTip = tip };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition());
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        toggle.FontWeight = FontWeights.SemiBold;
-        row.Children.Add(toggle);
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var icon = Icons.Glyph(glyph, 15);
+        var tile = new Border { Width = 32, Height = 32, CornerRadius = new CornerRadius(9), Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center, Child = icon };
+        row.Children.Add(tile);
+
+        note.Foreground = (Brush)FindResource("Ink2");
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold });
+        text.Children.Add(note);
+        Grid.SetColumn(text, 1);
+        row.Children.Add(text);
+
+        Border? track = null;
         if (meter != null)
         {
-            var track = new Border { Width = MeterWidth, Height = 6, CornerRadius = new CornerRadius(3), Background = (Brush)FindResource("Well"), VerticalAlignment = VerticalAlignment.Center, Child = meter, ToolTip = "Live level" };
-            Grid.SetColumn(track, 1);
+            track = new Border { Width = MeterWidth, Height = 6, CornerRadius = new CornerRadius(3), Background = (Brush)FindResource("Rule"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0), Child = meter, ToolTip = "Live level" };
+            Grid.SetColumn(track, 2);
             row.Children.Add(track);
         }
-        return row;
+
+        // The switch template keeps 20 px for a label before its track; with no label that is the gap to the meter.
+        toggle.VerticalAlignment = VerticalAlignment.Center;
+        System.Windows.Automation.AutomationProperties.SetName(toggle, title);
+        Grid.SetColumn(toggle, 3);
+        row.Children.Add(toggle);
+        row.MouseLeftButtonUp += (_, _) =>
+        {
+            if (!toggle.IsEnabled || toggle.Visibility != Visibility.Visible) return;
+            toggle.IsChecked = toggle.IsChecked != true;
+            toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        };
+
+        // Off reads as off at a glance: the tile goes grey and the meter leaves.
+        void Look()
+        {
+            bool on = toggle.IsChecked == true;
+            tile.Background = (Brush)FindResource(on ? "AccentSoft" : "Hover");
+            icon.Foreground = (Brush)FindResource(on ? "Accent" : "Ink3");
+            if (track != null) track.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        }
+        toggle.Checked += (_, _) => Look(); toggle.Unchecked += (_, _) => Look();
+        Look();
+
+        var body = new StackPanel();
+        body.Children.Add(row);
+        if (details != null) body.Children.Add(details);
+        var card = new Border { Background = (Brush)FindResource("Well"), BorderBrush = (Brush)FindResource("PaperEdge"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(12), Padding = new Thickness(12), Margin = new Thickness(0, 0, 0, 8), Child = body };
+        _choices.Add((card, row, toggle));
+        return card;
+    }
+
+    /// <summary>Once recording, nothing can be switched: show only what is being recorded, with its meter, and drop the switches and pickers.</summary>
+    private void LockChoices()
+    {
+        foreach (var (card, row, toggle) in _choices)
+        {
+            card.Visibility = toggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+            toggle.Visibility = Visibility.Collapsed;
+            row.Cursor = null; row.ToolTip = null;
+        }
+        if (_micPicker.SelectedItem is ComboBoxItem { Content: string microphone }) _micNote.Text = microphone;
+        if (_cameraPicker.SelectedItem is ComboBoxItem { Content: string camera }) _cameraLine.Text = camera;
+        _micPicker.Visibility = _cameraPicker.Visibility = Visibility.Collapsed;
     }
 
     private Rectangle Meter() => new() { Width = 0, Height = 6, RadiusX = 3, RadiusY = 3, HorizontalAlignment = HorizontalAlignment.Left, Fill = (Brush)FindResource("Ok") };
-
-    private Border Divider() => new() { Height = 1, Background = (Brush)FindResource("Rule"), Margin = new Thickness(0, 12, 0, 12) };
 
     private void Remember() { try { _saveSettings?.Invoke(); } catch (Exception) { } UpdateSubtitle(); }
 
@@ -197,6 +261,7 @@ public sealed partial class CaptureSessionWindow
         if (microphones.Count == 0)
         {
             _micPicker.Items.Add(new ComboBoxItem { Content = "No microphone found", IsEnabled = false });
+            _micPicker.SelectedIndex = 0;
             _micToggle.IsChecked = false; _micToggle.IsEnabled = false;
             return;
         }
@@ -208,7 +273,8 @@ public sealed partial class CaptureSessionWindow
     {
         bool on = _systemToggle.IsChecked == true;
         _rig?.UseSystemAudio(on);
-        _systemNote.Text = on ? "Records " + (AudioDevices.DefaultOutput()?.Name ?? "the default output") : "Off";
+        _systemNote.Text = on ? AudioDevices.DefaultOutput()?.Name ?? "The default output" : "What the computer plays";
+        _systemNote.ToolTip = null;
         _systemShown = 0;
     }
 
@@ -218,6 +284,8 @@ public sealed partial class CaptureSessionWindow
         _micDetails.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         _rig?.UseMicrophone(on, (_micPicker.SelectedItem as ComboBoxItem)?.Tag as string);
         ApplyMicrophoneVolume();
+        _micNote.Text = !_micToggle.IsEnabled ? "No microphone found" : on ? "Recorded on its own track" : "Your voice, on its own track";
+        _micNote.ToolTip = null;
         _micShown = 0;
     }
 
@@ -230,6 +298,7 @@ public sealed partial class CaptureSessionWindow
     private async Task LoadCamerasAsync()
     {
         _cameraDetails.Visibility = _cameraToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        ShowCameraLine();
         _cameraNote.Text = "Looking for cameras…";
         _cameras = await CameraDevices.ListAsync(_runner!);
         if (!_settingUp) return;
@@ -252,6 +321,7 @@ public sealed partial class CaptureSessionWindow
         int change = ++_cameraChange;
         bool on = _cameraToggle.IsChecked == true && _cameras.Count > 0;
         _cameraDetails.Visibility = _cameraToggle.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (_settingUp) ShowCameraLine();
         if (_rig == null || !_settingUp) return;
         if (!on)
         {
@@ -292,14 +362,17 @@ public sealed partial class CaptureSessionWindow
             : "The preview floats over your screen: drag it where you want it, scroll over it to resize, right-click it for shape. It is recorded as its own layer.";
     }
 
+    private void ShowCameraLine() =>
+        _cameraLine.Text = !_cameraToggle.IsEnabled ? "No camera found" : _cameraToggle.IsChecked == true ? "Floating preview, recorded as its own layer" : "A webcam as its own video layer";
+
     private void CloseBubble() { var bubble = _bubble; _bubble = null; bubble?.Close(); }
 
     private void UpdateLevels()
     {
         Show(_systemMeter, ref _systemShown, _rig?.SystemAudio);
         Show(_micMeter, ref _micShown, _rig?.Microphone);
-        if (_rig?.SystemAudio?.Error is { } systemError) _systemNote.Text = "Unavailable: " + systemError;
-        if (_rig?.Microphone?.Error is { } micError && _micToggle.IsChecked == true) { _micVolumeLabel.Text = "!"; _micVolumeLabel.ToolTip = micError; _micPicker.ToolTip = "Unavailable: " + micError; }
+        if (_rig?.SystemAudio?.Error is { } systemError) { _systemNote.Text = "Unavailable: " + systemError; _systemNote.ToolTip = systemError; }
+        if (_rig?.Microphone?.Error is { } micError && _micToggle.IsChecked == true) { _micNote.Text = "Unavailable: " + micError; _micNote.ToolTip = micError; }
         if (_recorder != null && _rig?.Camera?.Error is { } cameraError && _cameraNote.Text != cameraError) _cameraNote.Text = cameraError;
 
         void Show(Rectangle meter, ref double shown, AudioTrackRecorder? recorder)
@@ -319,7 +392,8 @@ public sealed partial class CaptureSessionWindow
         if (_busy || !_settingUp) return;
         _settingUp = false;
         _extras = _rig is { } rig && (rig.SystemAudio != null || rig.Microphone != null || rig.Camera is { Error: null });
-        foreach (var control in new Control[] { _systemToggle, _micToggle, _cameraToggle, _micPicker, _cameraPicker }) control.IsEnabled = false;
+        LockChoices();
+        SetHeader(Icons.Record, "Danger", "Recording");
         _skipNextTime.Visibility = _videoSettings.StartImmediately ? Visibility.Visible : Visibility.Collapsed;
         _start.Visibility = _cancelSetup.Visibility = Visibility.Collapsed;
         _start.IsDefault = false; _cancelSetup.IsCancel = false;
@@ -397,13 +471,15 @@ public sealed partial class CaptureSessionWindow
         if (manifest.Microphone != null) tracks.Add("microphone");
         if (manifest.SystemAudio != null) tracks.Add("system audio");
         string problems = rig.Problems.Count == 0 ? "" : "\nNot recorded: " + string.Join("; ", rig.Problems);
-        ((TextBlock)_panel.Children[0]).Text = "Recording saved";
+        SetHeader(Icons.Check, "Ok", "Recording saved");
         _status.Text = $"{RecordedSeconds:F0} s • separate tracks: {string.Join(", ", tracks)}.{problems}\n{rig.Folder}";
         _buttons.Children.Clear();
-        var edit = new Button { Content = "Open in editor", Style = (Style)FindResource("PrimaryButton"), Margin = new Thickness(0, 0, 8, 0), IsDefault = true, ToolTip = "Open the tracks in the video editor to trim, move the camera, or mute a sound" };
-        var save = new Button { Content = "Save as MP4…", Margin = new Thickness(0, 0, 8, 0), ToolTip = "Mix everything down to one video file" };
-        var folder = new Button { Content = "Open folder", Margin = new Thickness(0, 0, 8, 0) };
+        var edit = new Button { Style = (Style)FindResource("PrimaryButton"), Margin = new Thickness(0, 0, 8, 0), IsDefault = true, ToolTip = "Open the tracks in the video editor to trim, move the camera, or mute a sound" };
+        var save = new Button { Margin = new Thickness(0, 0, 8, 0), ToolTip = "Mix everything down to one video file" };
+        // Icon only: four labelled buttons do not fit the window's width.
+        var folder = new Button { Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(13, 10, 13, 10), ToolTip = "Open the recording's folder" };
         var close = new Button { Content = "Close", IsCancel = true };
+        Icons.Label(edit, Icons.Edit, "Open in editor"); Icons.Label(save, Icons.Save, "Save as MP4…"); Icons.Label(folder, Icons.Folder, "Open folder", showText: false);
         edit.Click += (_, _) => { OpenInEditorPath = _projectPath; Close(); };
         save.Click += async (_, _) => await SaveMixdownAsync(new[] { edit, save, folder, close });
         folder.Click += (_, _) => { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"\"{rig.Folder}\"") { UseShellExecute = true }); } catch (Exception ex) { _status.Text = ex.Message; } };

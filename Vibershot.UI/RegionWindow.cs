@@ -68,10 +68,10 @@ public sealed class RegionWindow : Window
         _canvas.Children.Add(_shade); _canvas.Children.Add(_selection);
         HintText = "Hover + click: window or content • Shift: whole window • Drag: region • Esc: cancel";
         Canvas.SetLeft(_hint, 24); Canvas.SetTop(_hint, 24); _canvas.Children.Add(_hint);
-        AddAction("Save screenshot", () => Complete(CaptureAction.Screenshot));
-        AddAction("Take video", () => Complete(CaptureAction.Video));
-        AddAction("Scrolling photo", () => Complete(CaptureAction.Scrolling));
-        AddAction("Cancel", Close); _canvas.Children.Add(_actions);
+        AddAction(Icons.Screenshot, "Save screenshot", () => Complete(CaptureAction.Screenshot));
+        AddAction(Icons.Video, "Take video", () => Complete(CaptureAction.Video));
+        AddAction(Icons.Scroll, "Scrolling photo", () => Complete(CaptureAction.Scrolling));
+        AddAction(Icons.Cancel, "Cancel", Close); _canvas.Children.Add(_actions);
         BuildSizeBar(); Canvas.SetLeft(_sizeBar, 24); Canvas.SetTop(_sizeBar, 68); _canvas.Children.Add(_sizeBar);
         SourceInitialized += (_, _) => SetWindowPos(new WindowInteropHelper(this).Handle, new IntPtr(-1), bounds.X, bounds.Y, bounds.Width, bounds.Height, 0x0040);
         Loaded += (_, _) => UpdateHover();
@@ -250,9 +250,10 @@ public sealed class RegionWindow : Window
             if (!_closed && !_locked && !_dragging) UpdateHover();
         }
     }
-    private void AddAction(string label, Action action)
+    private void AddAction(string glyph, string label, Action action)
     {
-        var button = new Button { Content = label, Margin = new Thickness(3), Padding = new Thickness(12, 8, 12, 8), Cursor = Cursors.Hand };
+        var button = new Button { Margin = new Thickness(3), Padding = new Thickness(12, 8, 12, 8), Cursor = Cursors.Hand };
+        Icons.Label(button, glyph, label);
         if (ActionButtons.Count == 0) button.Style = (Style)FindResource("PrimaryButton"); // The first action is the default one.
         button.Click += (_, _) => action(); ActionButtons.Add(button);
     }

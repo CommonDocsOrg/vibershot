@@ -40,7 +40,7 @@ After a capture, Vibershot does what you have told it to: save to the library, c
 
 ## Record video
 
-Choose **Take video** and the selected region is recorded as an H.264 MP4 at the frame rate you pick, using your GPU's hardware encoder when one is available. A thin outline marks the recorded area and never appears in the footage, and the control panel shows live frame rate, elapsed time and file size. Pause and resume as often as you like. Recordings are written in a crash-safe format while they run, so an unexpected shutdown still leaves a playable file.
+Choose **Take video** and the selected region is recorded as an H.264 MP4 at the frame rate you pick, using your GPU's hardware encoder when one is available. A thin outline marks the recorded area and never appears in the footage, and the control panel shows live frame rate, elapsed time and file size. Before it starts you can switch on system audio, a microphone and a webcam, with live level meters and a floating camera preview; each is recorded as its own track, so it can be trimmed, moved or muted in the video editor afterwards, or mixed down to a single MP4. Pause and resume as often as you like. Recordings are written in a crash-safe format while they run, so an unexpected shutdown still leaves a playable file.
 
 ![Recording a window with the live status panel](docs/images/video-recording.png)
 

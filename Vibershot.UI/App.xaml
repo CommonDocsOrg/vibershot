@@ -138,6 +138,16 @@
     </ControlTemplate></Setter.Value>
    </Setter>
   </Style>
+  <!-- A glyph and a label inside a button, nav item or chip. Both follow the control's Foreground, which the implicit TextBlock style would otherwise override. -->
+  <Style x:Key="ButtonGlyph" TargetType="TextBlock">
+   <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets"/><Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="Normal"/>
+   <Setter Property="Margin" Value="0,0,8,0"/><Setter Property="VerticalAlignment" Value="Center"/>
+   <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}"/>
+  </Style>
+  <Style x:Key="ButtonText" TargetType="TextBlock">
+   <Setter Property="VerticalAlignment" Value="Center"/>
+   <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}"/>
+  </Style>
   <!-- Primary button: the one accent element in a window. -->
   <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
    <Setter Property="Background" Value="{DynamicResource AccentFill}"/>

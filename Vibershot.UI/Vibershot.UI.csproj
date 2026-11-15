@@ -10,7 +10,7 @@
     <AssemblyName>Vibershot</AssemblyName>
     <RootNamespace>Vibershot.UI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <ApplicationIcon>Assets\vibershot.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>

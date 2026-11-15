@@ -306,7 +306,7 @@ static class RecordingChecks
             else if (step == 2)
             {
                 Snap(window, "2-recording.png");
-                if (auto) { Console.WriteLine("Pause shortcut paused: " + ((string)Field<System.Windows.Controls.Button>("_pause").Content == "Resume")); window.PauseOrResume(); timer.Interval = TimeSpan.FromSeconds(3); }
+                if (auto) { Console.WriteLine("Pause shortcut paused: " + (System.Windows.Automation.AutomationProperties.GetName(Field<System.Windows.Controls.Button>("_pause")) == "Resume")); window.PauseOrResume(); timer.Interval = TimeSpan.FromSeconds(3); }
                 else { Click(Field<System.Windows.Controls.Button>("_finish")); timer.Interval = TimeSpan.FromSeconds(1); }
             }
             else if (step == 3 && auto) { window.StartOrStop(); timer.Interval = TimeSpan.FromSeconds(1); }
