@@ -29,6 +29,15 @@ public sealed record ExportVideoClip(string Path, double SourceIn, double Durati
 
     /// <summary>Seconds over which the picture goes out to transparent at its end.</summary>
     public double FadeOut { get; init; }
+
+    /// <summary>Mirrored left to right inside its box.</summary>
+    public bool FlipH { get; init; }
+
+    /// <summary>
+    /// A grey picture the size of the box: white where the clip shows, black where it is cut away
+    /// (a circle, rounded corners). Null leaves the whole box showing.
+    /// </summary>
+    public string? MaskPath { get; init; }
 }
 
 /// <summary>
@@ -99,12 +108,22 @@ public static class ExportArguments
         {
             if (clip.IsImage) args.AddRange(new[] { "-loop", "1", "-framerate", rate, "-t", N(clip.Duration), "-i", clip.Path });
             else args.AddRange(new[] { "-ss", N(clip.SourceIn), "-t", N(clip.Duration), "-i", clip.Path });
+            int mask = -1;
+            if (clip.MaskPath != null)
+            {
+                // The mask is its own input, right after the clip it cuts.
+                args.AddRange(new[] { "-loop", "1", "-framerate", rate, "-t", N(clip.Duration), "-i", clip.MaskPath });
+                mask = input + 1;
+            }
             // Crop, stretch into the clip's box, fade and turn it, shift it to its place on the
             // timeline, then draw it about the box's centre for exactly its own span.
             graph.Append(CultureInfo.InvariantCulture, $";[{input}:v]fps={rate}");
             if (clip.CropLeft > 0 || clip.CropTop > 0 || clip.CropRight > 0 || clip.CropBottom > 0)
                 graph.Append(CultureInfo.InvariantCulture, $",crop=iw*{F(1 - clip.CropLeft - clip.CropRight)}:ih*{F(1 - clip.CropTop - clip.CropBottom)}:iw*{F(clip.CropLeft)}:ih*{F(clip.CropTop)}");
             graph.Append(CultureInfo.InvariantCulture, $",scale={clip.Width}:{clip.Height}:flags=lanczos,setsar=1");
+            if (clip.FlipH) graph.Append(",hflip");
+            if (mask >= 0)
+                graph.Append(CultureInfo.InvariantCulture, $",format=rgba[c{input}];[{mask}:v]scale={clip.Width}:{clip.Height},format=gray[m{input}];[c{input}][m{input}]alphamerge");
             bool turned = Math.Abs(clip.Rotation % 360) > 0.005;
             bool faded = clip.FadeIn > 0 || clip.FadeOut > 0;
             if (clip.Opacity < 0.999 || turned || faded) graph.Append(",format=rgba");
@@ -123,7 +142,7 @@ public static class ExportArguments
             graph.Append(CultureInfo.InvariantCulture,
                 $";[{last}][v{input}]overlay=x={S(clip.X + clip.Width / 2.0)}-w/2:y={S(clip.Y + clip.Height / 2.0)}-h/2:eof_action=pass:enable='gte(t,{N(clip.Start)})*lt(t,{N(clip.Start + clip.Duration)})'[o{input}]");
             last = "o" + input.ToString(CultureInfo.InvariantCulture);
-            input++;
+            input += mask >= 0 ? 2 : 1;
         }
         foreach (var stream in plan.Overlays)
         {

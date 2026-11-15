@@ -693,7 +693,10 @@ public partial class VideoEditorWindow : Window
                 PlaceX.Show(p.X); PlaceY.Show(p.Y); PlaceW.Show(p.Width); PlaceH.Show(p.Height); PlaceRotation.Show(p.Rotation);
                 OpacitySlider.Value = Math.Round(p.Opacity * 100);
                 OpacityValue.Text = $"{Math.Round(p.Opacity * 100)}%";
+                FrameShapeBox.SelectedIndex = picture.Frame?.Shape switch { FrameShape.Ellipse => 1, FrameShape.Rounded => 2, _ => 0 };
+                MirrorCheck.IsChecked = p.FlipH;
             }
+            FramePanel.Visibility = primary.Clip is VisualClip ? Visibility.Visible : Visibility.Collapsed;
             AudioPanel.Visibility = sound != null ? Visibility.Visible : Visibility.Collapsed;
             if (sound != null)
             {
@@ -1021,6 +1024,20 @@ public partial class VideoEditorWindow : Window
         if (id == null) return;
         double opacity = Math.Round(e.NewValue) / 100;
         Place(p => p with { Opacity = opacity }, "opacity:" + id);
+    }
+
+    private void FrameShape_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingPanel || SelectedPicture is not { } clip || FrameShapeBox.SelectedItem is not ComboBoxItem { Tag: string tag }) return;
+        var shape = Enum.Parse<FrameShape>(tag);
+        _history.Push(TimelineOps.SetFrame(Project, clip.Id, shape == FrameShape.Rectangle ? null : new ClipFrame { Shape = shape }));
+    }
+
+    private void Mirror_Click(object sender, RoutedEventArgs e)
+    {
+        if (_updatingPanel) return;
+        bool mirror = MirrorCheck.IsChecked == true;
+        Place(p => p with { FlipH = mirror });
     }
 
     private void Fit_Click(object sender, RoutedEventArgs e)

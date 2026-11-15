@@ -141,6 +141,24 @@ public sealed class RawFfmpegProcess : IDisposable
 
     public string ErrorText { get { lock (_stderr) return string.Join(Environment.NewLine, _stderr); } }
 
+    /// <summary>Asks ffmpeg to finish its files cleanly ('q' on stdin), then kills it after the grace period.</summary>
+    public async Task StopAsync(TimeSpan grace)
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        try
+        {
+            if (!_process.HasExited)
+            {
+                await _process.StandardInput.WriteAsync("q").ConfigureAwait(false);
+                await _process.StandardInput.FlushAsync().ConfigureAwait(false);
+                using var timeout = new CancellationTokenSource(grace);
+                await _process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+        }
+        catch (Exception) { }
+        Dispose();
+    }
+
     private int _disposed;
 
     /// <summary>

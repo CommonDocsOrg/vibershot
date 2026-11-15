@@ -280,6 +280,13 @@
         <Grid><TextBlock Style="{StaticResource FieldLabel}" Text="Rotation"/><local:ValueBox x:Name="PlaceRotation" Minimum="-360" Maximum="360" Suffix="°" Decimals="1" AutomationProperties.Name="Picture rotation"/></Grid>
         <Grid Margin="0,8,0,0"><TextBlock Style="{StaticResource FieldLabel}" Text="Opacity"/><TextBlock x:Name="OpacityValue" Style="{StaticResource FieldValue}"/></Grid>
         <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10" Margin="0,6,0,10" ValueChanged="Opacity_Changed" AutomationProperties.Name="Opacity"/>
+        <StackPanel x:Name="FramePanel">
+         <Grid Margin="0,0,0,8"><TextBlock Style="{StaticResource FieldLabel}" Text="Frame"/>
+          <ComboBox x:Name="FrameShapeBox" HorizontalAlignment="Right" Width="150" SelectionChanged="FrameShape_Changed" AutomationProperties.Name="Frame shape" ToolTip="Cut the picture to a shape, such as a round webcam bubble">
+           <ComboBoxItem Content="None" Tag="Rectangle"/><ComboBoxItem Content="Circle" Tag="Ellipse"/><ComboBoxItem Content="Rounded" Tag="Rounded"/>
+          </ComboBox></Grid>
+         <CheckBox x:Name="MirrorCheck" Content="Mirror" Click="Mirror_Click" Margin="0,0,0,10" ToolTip="Flip the picture left to right"/>
+        </StackPanel>
         <WrapPanel x:Name="PictureButtons">
          <Button Content="Fit" Click="Fit_Click" Padding="12,6" Margin="0,0,6,6" ToolTip="Show the whole picture inside the canvas"/>
          <Button Content="Fill" Click="Fill_Click" Padding="12,6" Margin="0,0,6,6" ToolTip="Cover the canvas, cropping what overhangs"/>

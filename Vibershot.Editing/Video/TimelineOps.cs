@@ -678,6 +678,29 @@ public static class TimelineOps
     }
 
     /// <summary>
+    /// Cuts a picture to a shape (null removes it). A picture given a circle while its box is
+    /// not square gets a centred square box, cropped evenly so the picture fills it without
+    /// being squashed.
+    /// </summary>
+    public static VideoProject SetFrame(VideoProject project, Guid clipId, ClipFrame? frame)
+    {
+        if (Find(project, clipId)?.Clip is not VisualClip clip) return project;
+        var placement = clip.Placement;
+        var now = PlacementOf(project, clip);
+        if (frame is { Shape: FrameShape.Ellipse } && Math.Abs(now.Width - now.Height) > 1 && project.Source(clip.SourceId) is { Width: > 0, Height: > 0 } source)
+        {
+            double side = Math.Min(now.Width, now.Height), aspect = (double)source.Width / source.Height;
+            double cropX = aspect > 1 ? (1 - 1 / aspect) / 2 : 0, cropY = aspect < 1 ? (1 - aspect) / 2 : 0;
+            placement = now with
+            {
+                X = Math.Round(now.X + (now.Width - side) / 2), Y = Math.Round(now.Y + (now.Height - side) / 2), Width = side, Height = side,
+                CropLeft = cropX, CropRight = cropX, CropTop = cropY, CropBottom = cropY,
+            };
+        }
+        return Update(project, clipId, c => ((VisualClip)c) with { Frame = frame, Placement = placement });
+    }
+
+    /// <summary>
     /// Flattens the project for ffmpeg. <paramref name="resolvePath"/> can swap a source for a
     /// stand-in (a proxy); by default the linked original is used.
     /// </summary>
@@ -712,7 +735,8 @@ public static class TimelineOps
                     video.Add(new ExportVideoClip(source.IsImage ? source.Path : PathOf(source), clip.SourceIn, project.Seconds(clip.Duration), project.Seconds(clip.Start),
                         p.X * sx, p.Y * sy, Math.Max(2, (int)Math.Round(p.Width * sx)), Math.Max(2, (int)Math.Round(p.Height * sy)))
                     {
-                        Rotation = p.Rotation, Opacity = Math.Min(1, p.Opacity), IsImage = source.IsImage,
+                        Rotation = p.Rotation, Opacity = Math.Min(1, p.Opacity), IsImage = source.IsImage, FlipH = p.FlipH,
+                        MaskPath = graphicsFolder == null ? null : FrameMask.Export(visual.Frame, Math.Max(2, (int)Math.Round(p.Width * sx)), Math.Max(2, (int)Math.Round(p.Height * sy)), graphicsFolder),
                         FadeIn = project.Seconds(clip.FadeIn), FadeOut = project.Seconds(clip.FadeOut),
                         CropLeft = p.CropLeft, CropTop = p.CropTop, CropRight = p.CropRight, CropBottom = p.CropBottom,
                     });

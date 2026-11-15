@@ -88,9 +88,17 @@ public sealed class GalleryIndex : IDisposable
             IEnumerable<string> files;
             try { files = Directory.EnumerateFiles(folder, "*", Enumeration); }
             catch { continue; }
+            // A recording made with sound or a camera is a folder of tracks plus a project: show the project, not each track.
+            var sessionFolders = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             foreach (var path in files)
             {
                 if (GalleryItem.KindFor(path) is null) continue;
+                string? parent = Path.GetDirectoryName(path);
+                if (parent != null && !path.EndsWith(".vibevideo", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!sessionFolders.TryGetValue(parent, out bool session)) sessionFolders[parent] = session = File.Exists(Path.Combine(parent, "session.json"));
+                    if (session) continue;
+                }
                 var scanned = Describe(path);
                 if (scanned is not null) result.Add(scanned);
             }

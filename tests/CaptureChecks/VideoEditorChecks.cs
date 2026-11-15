@@ -184,6 +184,15 @@ static class VideoEditorChecks
             else if (action.StartsWith("element:")) { var parts = action[8..].Split('@'); window.AddElement(parts[0], Parse(parts[1]), null, 0); }
             else if (action == "caption") ((System.Windows.Controls.Button)System.Windows.LogicalTreeHelper.FindLogicalNode(window, "AddCaptionButton")).RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             else if (action == "edit" && preview.Selected is Guid editing) typeof(VideoEditorWindow).GetMethod("BeginInlineEdit", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(window, new object[] { editing });
+            else if (action.StartsWith("snap:"))
+            {
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+                bitmap.Render(window);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                using (var stream = System.IO.File.Create(action[5..])) encoder.Save(stream);
+            }
+            else if (action == "close") { timer.Stop(); window.Close(); }
             else if (action == "elements") ((System.Windows.Controls.RadioButton)window.FindName("ElementsTab")).IsChecked = true;
         };
         timer.Start();

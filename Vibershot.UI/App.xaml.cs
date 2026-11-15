@@ -345,8 +345,10 @@ public partial class App : Application
                 kind = overlay.Action == CaptureAction.Scrolling ? CaptureKind.Scrolling : overlay.SelectedTarget ? CaptureKind.Window : CaptureKind.Region;
                 if (image != null && overlay.Action != CaptureAction.Screenshot)
                 {
-                    var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, null, _config.Video, sourceProcess, sourceTitle, _config.Gallery.RecordingsFolder);
+                    var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, null, _config.Video, sourceProcess, sourceTitle, _config.Gallery.RecordingsFolder, () => { try { _config.Save(); } catch (Exception) { } });
                     session.ShowDialog();
+                    _main.RefreshRecordingSummary();
+                    if (session.OpenInEditorPath != null) OpenVideoEditor(session.OpenInEditorPath);
                     if (overlay.Action == CaptureAction.Video) { _main.ShowStatus(session.VideoPath == null ? "No video recorded." : "Video available: " + session.VideoPath); return; }
                     if (!session.Completed) { _main.ShowStatus("Capture cancelled."); return; }
                     image = session.Image;
