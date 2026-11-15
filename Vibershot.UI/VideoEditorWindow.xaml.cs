@@ -133,7 +133,7 @@ public partial class VideoEditorWindow : Window
         _autosave.Start();
         Timeline.Focus();
         if (_runner == null) ShowStatus("FFmpeg was not found, so video cannot be previewed or exported. Run tools\\get-ffmpeg.ps1.", failed: true);
-        RelinkMissing();
+        await RelinkMissingAsync();
         if (_pendingImport is { } path) { _pendingImport = null; await ImportAsync(new[] { path }); _history.MarkSaved(); UpdateTitle(); }
         Timeline.ZoomToFit();
     }
@@ -143,6 +143,15 @@ public partial class VideoEditorWindow : Window
     private void OnProjectChanged()
     {
         var project = Project;
+        // A source that now points at another file (relinked, or a relink undone) gets a fresh bin entry.
+        for (int i = _bin.Count - 1; i >= 0; i--)
+        {
+            var listed = _bin[i].Source;
+            if (project.Source(listed.Id) is not { } now || string.Equals(now.Path, listed.Path, StringComparison.OrdinalIgnoreCase)) continue;
+            _filmstrips.Remove(listed.Id);
+            _waveforms.Remove(listed.Id);
+            _bin.RemoveAt(i);
+        }
         foreach (var source in project.Sources)
         {
             if (_bin.Any(item => item.Source.Id == source.Id)) continue;
@@ -341,7 +350,8 @@ public partial class VideoEditorWindow : Window
     private void BinMenu_Opened(object sender, RoutedEventArgs e)
     {
         var source = (Bin.SelectedItem as BinItem)?.Source;
-        BinAddEnd.IsEnabled = BinAddTop.IsEnabled = source != null;
+        BinAddEnd.IsEnabled = BinAddTop.IsEnabled = BinRelink.IsEnabled = source != null;
+        BinRelink.Header = source != null && !File.Exists(source.Path) ? "Locate missing file…" : "Relink to another file…";
         BinAddTop.Visibility = source is { HasPicture: true } ? Visibility.Visible : Visibility.Collapsed;
         BinAddAudio.Visibility = source is { HasAudio: true, HasVideo: true } ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -403,25 +413,60 @@ public partial class VideoEditorWindow : Window
         Timeline.Select(TimelineOps.WithLinked(Project, new[] { clipId }));
     }
 
-    /// <summary>Asks for the new place of each linked file that has gone missing.</summary>
-    private void RelinkMissing()
+    /// <summary>
+    /// Finds linked files that have gone missing: first by looking in the project's folder and
+    /// the library for files that simply moved, then by asking the user to locate the rest.
+    /// </summary>
+    private async Task RelinkMissingAsync()
     {
-        var project = Project;
-        var missing = VideoProjectFile.Missing(project);
-        if (missing.Count == 0) return;
-        foreach (var source in missing)
+        var start = Project;
+        int before = VideoProjectFile.Missing(start).Count;
+        if (before == 0) return;
+        var folders = new List<string>();
+        if (_path != null && Path.GetDirectoryName(Path.GetFullPath(_path)) is { Length: > 0 } beside) folders.Add(beside);
+        folders.Add(_config.Gallery.LibraryRoot);
+        folders.AddRange(Vibershot.Gallery.GalleryIndex.DefaultFolders(_config));
+        ShowStatus($"Looking for {before} missing media file{(before == 1 ? "" : "s")}…");
+        var project = await Task.Run(() => VideoProjectFile.FindMissing(start, folders));
+        if (!ReferenceEquals(Project, start)) return;
+        if (VideoProjectFile.Missing(project).Count > 0) project = MissingMediaDialog.Show(this, project);
+        ApplyRelink(project, before);
+    }
+
+    /// <summary>Takes a relinked project as an undoable, unsaved change and reports what is still missing.</summary>
+    private void ApplyRelink(VideoProject project, int before)
+    {
+        bool changed = !ReferenceEquals(project, Project);
+        if (changed)
         {
-            var dialog = new OpenFileDialog { Title = $"Locate {source.Name}", Filter = MediaFilter, FileName = source.Name };
-            if (dialog.ShowDialog(this) != true) continue;
-            project = VideoProjectFile.Relink(project, source.Id, dialog.FileName);
+            _history.Push(project);
+            Preview.Reset();
+            Preview.Show(Project, _playhead, _playing);
         }
-        if (!ReferenceEquals(project, Project))
-        {
-            _bin.Clear();
-            _history.Reset(project);
-        }
-        int still = VideoProjectFile.Missing(Project).Count;
-        if (still > 0) ShowStatus($"{still} media file{(still == 1 ? " is" : "s are")} missing. Those clips show nothing until the files are back.", failed: true);
+        int still = VideoProjectFile.Missing(Project).Count, found = before - still;
+        if (still > 0) ShowStatus($"{still} media file{(still == 1 ? " is" : "s are")} still missing; those clips show nothing. Use File → Locate missing media to find {(still == 1 ? "it" : "them")}.", failed: true);
+        else if (changed) ShowStatus($"Found {(found == 1 ? "the missing media file" : $"all {found} missing media files")}. Save the project to keep the new location{(found == 1 ? "" : "s")}.", ok: true);
+    }
+
+    private async void LocateMissing_Click(object sender, RoutedEventArgs e)
+    {
+        if (VideoProjectFile.Missing(Project).Count == 0) { ShowStatus("All of this project's media files are in place.", ok: true); return; }
+        Pause();
+        await RelinkMissingAsync();
+    }
+
+    /// <summary>Points one media bin entry at a file chosen by hand, missing or not.</summary>
+    private void BinRelink_Click(object sender, RoutedEventArgs e)
+    {
+        if (Bin.SelectedItem is not BinItem item || Project.Source(item.Source.Id) is not { } source) return;
+        Pause();
+        if (MissingMediaDialog.PickFile(this, source) is not { } picked) return;
+        if (string.Equals(picked, source.Path, StringComparison.OrdinalIgnoreCase)) return;
+        int before = VideoProjectFile.Missing(Project).Count;
+        var project = VideoProjectFile.Relink(Project, source.Id, picked);
+        project = VideoProjectFile.RelinkAlongside(project, source.Path, picked);
+        ApplyRelink(project, before);
+        if (VideoProjectFile.Missing(Project).Count == 0 && before == 0) ShowStatus($"{source.Name} now uses {picked}. Save the project to keep it.", ok: true);
     }
 
     // ---- Playback ----
@@ -1183,7 +1228,7 @@ public partial class VideoEditorWindow : Window
         Pause();
         if (Project.Duration == 0) { ShowStatus("There is nothing to export yet."); return; }
         if (_runner == null) { ShowStatus("FFmpeg was not found, so the video cannot be exported.", failed: true); return; }
-        if (VideoProjectFile.Missing(Project).Count > 0) { ShowStatus("Some media files are missing. Reopen the project to locate them before exporting.", failed: true); return; }
+        if (VideoProjectFile.Missing(Project).Count > 0) { ShowStatus("Some media files are missing. Use File → Locate missing media before exporting.", failed: true); return; }
         var dialog = new ExportVideoWindow(_config, _runner, Project, DocumentName) { Owner = this };
         dialog.ShowDialog();
         if (dialog.ExportedPath != null) ShowStatus("Exported " + dialog.ExportedPath, ok: true);

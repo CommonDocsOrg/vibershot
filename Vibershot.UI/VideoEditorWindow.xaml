@@ -57,6 +57,7 @@
        <MenuItem Header="New project" InputGestureText="Ctrl+N" Click="New_Click"/>
        <MenuItem Header="Open project…" InputGestureText="Ctrl+O" Click="Open_Click"/>
        <MenuItem Header="Import media…" InputGestureText="Ctrl+I" Click="Import_Click"/>
+       <MenuItem Header="Locate missing media…" Click="LocateMissing_Click"/>
        <MenuItem Header="Import captions (SRT)…" Click="ImportCaptions_Click"/>
        <MenuItem Header="Export captions (SRT)…" Click="ExportCaptions_Click"/>
        <Separator/>
@@ -154,6 +155,8 @@
         <MenuItem x:Name="BinAddEnd" Header="Add after the last clip" Click="BinAddEnd_Click"/>
         <MenuItem x:Name="BinAddTop" Header="Place on top at the playhead" Click="BinAddTop_Click"/>
         <MenuItem x:Name="BinAddAudio" Header="Add only its sound at the playhead" Click="BinAddAudio_Click"/>
+        <Separator/>
+        <MenuItem x:Name="BinRelink" Header="Relink to another file…" Click="BinRelink_Click"/>
        </ContextMenu>
       </ListBox.ContextMenu>
       <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>

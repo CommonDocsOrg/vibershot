@@ -158,7 +158,7 @@
      <Border Style="{StaticResource Group}">
       <StackPanel>
        <CheckBox x:Name="CleanupSwitch" AutomationProperties.Name="Clean up old items" Checked="Cleanup_Changed" Unchecked="Cleanup_Changed">
-        <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Clean up old items"/><TextBlock Style="{StaticResource CardHint}" Text="Moves old library files to the Recycle Bin. Never touches watched folders, custom save folders or projects."/></StackPanel>
+        <StackPanel><TextBlock Style="{StaticResource CardTitle}" Text="Clean up old items"/><TextBlock Style="{StaticResource CardHint}" Text="Moves old library files to the Recycle Bin. Never touches watched folders, custom save folders, projects or files a video project uses."/></StackPanel>
        </CheckBox>
        <StackPanel x:Name="CleanupOptions" Margin="0,14,0,0">
         <StackPanel Orientation="Horizontal" Margin="0,0,0,8"><CheckBox x:Name="CleanShotsCheckbox" Style="{StaticResource TickCheckBox}" Content="Screenshots older than" AutomationProperties.Name="Clean up screenshots"/><TextBox x:Name="CleanShotsDays" Style="{StaticResource DaysBox}" AutomationProperties.Name="Screenshot days"/><TextBlock Text="days" VerticalAlignment="Center"/></StackPanel>

@@ -233,6 +233,21 @@ class Program {
   if(File.Exists(CaptureSidecar.PathFor(Path.Combine(lib.ScreenshotsFolder,"old.png")))||!File.Exists(CaptureSidecar.PathFor(Path.Combine(lib.ScreenshotsFolder,"new.png"))))throw new Exception("Cleanup sidecars");
   if(!report.Summary.Contains("1 screenshot, 1 recording, 1 recovery file"))throw new Exception("Cleanup summary: "+report.Summary);
   var failing=LibraryCleanup.Run(lib,recov,now.AddDays(100),p=>throw new IOException("locked"));if(failing.Failed!=3||failing.Count!=0||!failing.Summary.Contains("3 could not be moved"))throw new Exception("Cleanup failures counted: "+failing);
+  // Media a video project links to is never tidied away, and project files never are, however old.
+  var usedAbs=Path.Combine(lib.RecordingsFolder,"used-abs.mp4");var usedRel=Path.Combine(lib.RecordingsFolder,"used-rel.mp4");var unused=Path.Combine(lib.RecordingsFolder,"unused.mp4");var usedShot=Path.Combine(lib.ScreenshotsFolder,"used.png");
+  foreach(var f in new[]{usedAbs,usedRel,unused,usedShot})Shot(f,now.AddDays(-300));
+  var oldProject=Path.Combine(lib.RecordingsFolder,"old.vibevideo");var sessionProject=Path.Combine(lib.RecordingsFolder,"session","recording.vibevideo");Directory.CreateDirectory(Path.GetDirectoryName(sessionProject)!);
+  File.WriteAllText(oldProject,System.Text.Json.JsonSerializer.Serialize(new{Version=1,Sources=new object[]{new{Path=usedAbs},new{Path=@"Q:\gone\used-rel.mp4",RelativePath="used-rel.mp4"}}}));File.SetCreationTime(oldProject,now.AddDays(-300));
+  File.WriteAllText(sessionProject,System.Text.Json.JsonSerializer.Serialize(new{Sources=new object[]{new{Path=usedShot,RelativePath=@"..\..\Screenshots\used.png"}}}));
+  File.WriteAllText(Path.Combine(lib.ProjectsFolder,"broken.vibevideo"),"not json");
+  var links=ProjectLinks.Scan(new[]{lib.LibraryRoot});
+  if(links.Count!=4||links.Unreadable!=1||!links.IsUsed(usedAbs)||!links.IsUsed(usedRel.ToUpperInvariant())||!links.IsUsed(usedShot)||links.IsUsed(unused)||links.UsedBy(usedShot).Single()!=sessionProject)throw new Exception("Project links: "+links.Count+"/"+links.Unreadable);
+  if(ProjectLinks.DisplayName(@"C:\x\Demo.autosave.vibevideo")!="Demo (unsaved edits)"||ProjectLinks.DisplayName(oldProject)!="old")throw new Exception("Project display names");
+  var gone=new List<string>();var guarded=LibraryCleanup.Run(lib,recov,now,p=>{gone.Add(Path.GetFileName(p));File.Delete(p);});
+  if(!gone.SequenceEqual(new[]{"unused.mp4"})||guarded.Kept!=3||guarded.Recordings!=1||!guarded.Summary.EndsWith("kept 3 that projects use"))throw new Exception("Cleanup keeps project media: "+string.Join(",",gone)+" "+guarded.Summary);
+  if(!File.Exists(oldProject)||!File.Exists(sessionProject)||!File.Exists(usedAbs)||!File.Exists(usedRel)||!File.Exists(usedShot)||!File.Exists(CaptureSidecar.PathFor(usedAbs)))throw new Exception("Cleanup must leave projects and their media");
+  File.Delete(oldProject);var freed=LibraryCleanup.Run(lib,recov,now,p=>{gone.Add(Path.GetFileName(p));File.Delete(p);});
+  if(freed.Recordings!=2||freed.Kept!=1||File.Exists(usedAbs)||!File.Exists(usedShot))throw new Exception("Cleanup takes media once no project links to it: "+freed);
   var cfg=new AppConfig{Gallery=lib};cfg.Gallery.Cleanup.LastRun=now.AddHours(-2);if(LibraryCleanup.RunIfDue(cfg,now) is not null)throw new Exception("Cleanup should wait a day between passes");
   cfg.Gallery.Cleanup.Enabled=false;cfg.Gallery.Cleanup.LastRun=null;if(LibraryCleanup.RunIfDue(cfg,now) is not null)throw new Exception("Cleanup off runs nothing");
   if(new CleanupReport(0,0,0,0).Summary!="Library cleanup: nothing to remove"||CleanupSettings.ClampDays(0)!=1||CleanupSettings.ClampDays(99999)!=3650)throw new Exception("Cleanup helpers");
