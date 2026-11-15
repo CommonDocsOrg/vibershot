@@ -101,6 +101,27 @@ static class VideoEditorChecks
         Check(VideoProjectFile.Missing(broken).Count == 1 && VideoProjectFile.Relink(broken, broken.Sources[0].Id, @"C:\new.mp4").Sources[0].Path == @"C:\new.mp4", "missing media reported and relinkable");
         Directory.Delete(movedDir, true);
 
+        // Relinking: a search only takes a file with the right name and size; files that moved together are found together.
+        string relinkDir = Path.Combine(AppContext.BaseDirectory, "videochecks", "relink");
+        if (Directory.Exists(relinkDir)) Directory.Delete(relinkDir, true);
+        string wasDir = Path.Combine(relinkDir, "was"), nowDir = Path.Combine(relinkDir, "now", "deep"), decoyDir = Path.Combine(relinkDir, "now", "decoy");
+        foreach (string made in new[] { Path.Combine(nowDir, "audio"), decoyDir }) Directory.CreateDirectory(made);
+        File.WriteAllText(Path.Combine(nowDir, "screen.mp4"), "12345"); File.WriteAllText(Path.Combine(decoyDir, "screen.mp4"), "123"); File.WriteAllText(Path.Combine(nowDir, "audio", "mic.wav"), "12");
+        var lostScreen = Source(Path.Combine(wasDir, "screen.mp4"), 3) with { FileSize = 5 };
+        var lostMic = Source(Path.Combine(wasDir, "audio", "mic.wav"), 3) with { FileSize = 2 };
+        var lostOther = Source(Path.Combine(wasDir, "other.mp4"), 3) with { FileSize = 9 };
+        var lost = new VideoProject { Sources = System.Collections.Immutable.ImmutableList.Create(lostScreen, lostMic, lostOther) };
+        Check(VideoProjectFile.Missing(lost).Count == 3, "relink fixture starts with everything missing");
+        var searched = VideoProjectFile.FindMissing(lost, new[] { Path.Combine(relinkDir, "missing-folder"), Path.Combine(relinkDir, "now") });
+        Check(searched.Source(lostScreen.Id)!.Path == Path.Combine(nowDir, "screen.mp4") && searched.Source(lostMic.Id)!.Path == Path.Combine(nowDir, "audio", "mic.wav") && VideoProjectFile.Missing(searched).Single().Id == lostOther.Id, "folder search relinks by name and size, skipping the same-named decoy");
+        Check(ReferenceEquals(VideoProjectFile.FindMissing(lost, new[] { decoyDir }), lost), "a same-named file of another size is not taken by a search");
+        Check(VideoProjectFile.LooksLike(lostScreen, Path.Combine(nowDir, "screen.mp4")) && !VideoProjectFile.LooksLike(lostScreen, Path.Combine(decoyDir, "screen.mp4")) && !VideoProjectFile.LooksLike(lostScreen with { FileSize = 0 }, Path.Combine(nowDir, "screen.mp4")) && VideoProjectFile.LooksLike(lostScreen with { FileSize = 0 }, Path.Combine(nowDir, "screen.mp4"), requireSize: false), "a match needs the size unless the caller waives it");
+        var byHand = VideoProjectFile.Relink(lost, lostScreen.Id, Path.Combine(nowDir, "screen.mp4"));
+        var together = VideoProjectFile.RelinkAlongside(byHand, lostScreen.Path, Path.Combine(nowDir, "screen.mp4"));
+        Check(together.Source(lostMic.Id)!.Path == Path.Combine(nowDir, "audio", "mic.wav") && VideoProjectFile.Missing(together).Single().Id == lostOther.Id, "locating one file finds the ones that moved with it");
+        Check(VideoProjectFile.Relink(lost, lostScreen.Id, Path.Combine(decoyDir, "screen.mp4")).Source(lostScreen.Id)!.FileSize == 3, "a file chosen by hand records its own size");
+        Directory.Delete(relinkDir, true);
+
         // Exact ffmpeg arguments.
         Same(new[] { "-hide_banner", "-loglevel", "error", "-nostdin", "-ss", "7.5", "-i", @"C:\v.mp4", "-an", "-sn", "-vf", "fps=30000/1001,scale=960:540:flags=fast_bilinear", "-pix_fmt", "bgra", "-f", "rawvideo", "-" },
             FrameReader.Arguments(new FrameReaderOptions { Path = @"C:\v.mp4", Start = 7.5, Width = 960, Height = 540, FrameRate = FrameRate.Ntsc30 }), "frame reader arguments");

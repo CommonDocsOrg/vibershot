@@ -522,6 +522,15 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
     {
         var items = Selected.ToList();
         if (items.Count == 0) return;
+        // Media that a video project in the gallery (or an autosaved one) links to is only deleted after a warning.
+        var linked = LinkedToProjects(items);
+        if (linked.Count > 0)
+        {
+            var choice = LinkedDeleteDialog.Show(this, linked, items.Count - linked.Count);
+            if (choice == LinkedDeleteDialog.Choice.Cancel) return;
+            if (choice == LinkedDeleteDialog.Choice.DeleteUnlinked) items = items.Where(item => !linked.Any(link => string.Equals(link.File, item.Path, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (items.Count == 0) return;
+        }
         int anchor = _view.FindIndex(items.Contains);
         int done = 0;
         _suspendRefresh++;
@@ -540,6 +549,31 @@ public partial class GalleryWindow : Window, INotifyPropertyChanged
             ShowStatus(done == 1 ? "Moved to Recycle Bin: " + items[0].Name : $"Moved {done} files to the Recycle Bin");
             if (_view.Count > 0) { var next = _view[Math.Clamp(anchor, 0, _view.Count - 1)]; Tiles.SelectedItem = next; Tiles.ScrollIntoView(next); }
         }
+    }
+
+    /// <summary>
+    /// The selected media files that known video projects link to, with those projects. A project
+    /// that is itself being deleted does not count.
+    /// </summary>
+    private List<(string File, IReadOnlyList<string> Projects)> LinkedToProjects(IReadOnlyList<GalleryItem> items)
+    {
+        var result = new List<(string, IReadOnlyList<string>)>();
+        if (items.All(item => item.Kind == GalleryItemKind.Project)) return result;
+        try
+        {
+            var going = items.Select(item => item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var known = _index.Items.Where(item => item.Kind == GalleryItemKind.Project).Select(item => item.Path).ToList();
+            try { if (Directory.Exists(ProjectLinks.AutosaveFolder)) known.AddRange(Directory.EnumerateFiles(ProjectLinks.AutosaveFolder, "*" + ProjectLinks.ProjectExtension)); } catch { }
+            var links = ProjectLinks.From(known.Where(project => !going.Contains(project)));
+            foreach (var item in items)
+            {
+                if (item.Kind == GalleryItemKind.Project) continue;
+                var users = links.UsedBy(item.Path);
+                if (users.Count > 0) result.Add((item.Path, users));
+            }
+        }
+        catch (Exception ex) { ShowStatus("Could not check which projects use these files: " + ex.Message); }
+        return result;
     }
 
     private void BeginRename()
