@@ -57,6 +57,12 @@ public sealed class VideoSettings
     /// <summary>Height of the camera bubble in screen pixels.</summary>
     public int CameraSize { get; set; } = 220;
 
+    /// <summary>
+    /// Skip the choices shown before a recording and start at once with the remembered ones. The
+    /// choices are still shown, so they can be changed for next time while recording.
+    /// </summary>
+    public bool StartImmediately { get; set; }
+
     /// <summary>What a recording will capture besides the screen, in a few words for the main window.</summary>
     public string Summary()
     {

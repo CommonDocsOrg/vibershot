@@ -72,6 +72,18 @@ static class RecordingChecks
         string clocked = string.Join(" ", with);
         Check(clocked.Contains("-filter_complex " + RecordingArguments.FrameClockGraph + " -map [rec] -c:v libopenh264") && clocked.EndsWith(@"-y screen.mp4 -map [clock] -r 30 -f rawvideo -flush_packets 1 -y \\.\pipe\clock"), "the frame clock is a second output fed by a split");
 
+        // Settings: what a fresh install records, the summary line, and the two new shortcuts.
+        var fresh = new Vibershot.Core.VideoSettings();
+        Check(fresh.RecordSystemAudio && !fresh.RecordMicrophone && !fresh.RecordCamera && !fresh.StartImmediately && fresh.MicrophoneVolume == 100 && fresh.CameraShape == "Circle" && fresh.CameraMirror, "a fresh install records system audio only and shows the choices first");
+        Check(fresh.Summary() == "Screen + system audio" && new Vibershot.Core.VideoSettings { RecordSystemAudio = false, RecordMicrophone = true, RecordCamera = true }.Summary() == "Screen + microphone + camera" && new Vibershot.Core.VideoSettings { Format = Vibershot.Core.VideoFormat.Avi }.Summary() == "Screen only (AVI)", "the summary names what will be recorded");
+        var keys = new Vibershot.Core.HotkeySettings();
+        Check(keys.PauseRecording == "" && keys.MuteMicrophone == "" && Vibershot.Core.HotkeySettings.Actions.Contains(Vibershot.Core.HotkeyAction.PauseRecording) && Vibershot.Core.HotkeySettings.Actions.Contains(Vibershot.Core.HotkeyAction.MuteMicrophone), "pause and mute shortcuts exist and start unset");
+        keys[Vibershot.Core.HotkeyAction.PauseRecording] = "Ctrl+Alt+P"; keys[Vibershot.Core.HotkeyAction.MuteMicrophone] = "Ctrl+Alt+M";
+        Check(keys.PauseRecording == "Ctrl+Alt+P" && keys.Gesture(Vibershot.Core.HotkeyAction.MuteMicrophone).IsValid && keys.ConflictFor(Vibershot.Core.HotkeyAction.RecordVideo, Vibershot.Core.HotkeyGesture.Parse("Ctrl+Alt+P")) == Vibershot.Core.HotkeyAction.PauseRecording, "the new shortcuts are stored and take part in conflict checks");
+        var saved = Vibershot.Core.AppConfig.FromJson(new Vibershot.Core.AppConfig { Video = new Vibershot.Core.VideoSettings { RecordCamera = true, CameraName = "Cam", StartImmediately = true, MicrophoneVolume = 150 } }.ToJson())!;
+        Check(saved.Video is { RecordCamera: true, CameraName: "Cam", StartImmediately: true, MicrophoneVolume: 150 }, "the recording choices survive the config file");
+        Check(Vibershot.Core.AppConfig.FromJson("{\"Video\":{\"Quality\":60}}")!.Video is { RecordSystemAudio: true, RecordMicrophone: false, StartImmediately: false, Quality: 60 }, "an older config gets the defaults");
+
         string aac = string.Join(" ", AudioTrackRecorder.ToAacArguments("in.wav", "out.m4a"));
         Check(aac.Contains("-i in.wav -vn -af aresample=48000 -ac 2 -c:a aac -b:a 192k") && aac.EndsWith("-y out.m4a"), "a captured WAV becomes 48 kHz stereo AAC");
         Check(string.Join(" ", AudioTrackRecorder.ToAacArguments("in.wav", "out.m4a", 48000, 48010)).Contains("asetrate=48010,aresample=48000"), "a sound card running fast is stretched back onto the clock");
@@ -248,14 +260,14 @@ static class RecordingChecks
     /// switched on, saves pictures of it before, during and after a short recording into
     /// <paramref name="folder"/>, and leaves the recording there.
     /// </summary>
-    public static void RecordUi(string folder)
+    public static void RecordUi(string folder, bool auto = false)
     {
         Directory.CreateDirectory(folder);
         Vibershot.UI.App.Hosted = true;
         var app = new Vibershot.UI.App();
         app.InitializeComponent();
         System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext());
-        var settings = new Vibershot.Core.VideoSettings { RecordSystemAudio = true, RecordMicrophone = true, RecordCamera = true };
+        var settings = new Vibershot.Core.VideoSettings { RecordSystemAudio = true, RecordMicrophone = true, RecordCamera = true, StartImmediately = auto };
         var region = new Int32Rect(200, 160, 960, 540);
         var first = Vibershot.Core.CaptureService.Region(region.X, region.Y, region.Width, region.Height);
         var window = new Vibershot.UI.CaptureSessionWindow(region, first, true, null, settings, "test", "test", folder) { ShowActivated = false };
@@ -280,10 +292,24 @@ static class RecordingChecks
                 Snap(window, "1-setup.png");
                 var bubble = typeof(Vibershot.UI.CaptureSessionWindow).GetField("_bubble", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(window) as Window;
                 if (bubble != null) Snap(bubble, "1-bubble.png");
-                Click(Field<System.Windows.Controls.Button>("_start"));
+                // With "start straight away" the recording must already be running by itself; the hotkey paths are tried on it.
+                if (auto)
+                {
+                    Console.WriteLine("Started by itself: " + (Field<System.Windows.Controls.Button>("_finish").Visibility == Visibility.Visible && Field<System.Windows.Controls.Button>("_start").Visibility != Visibility.Visible));
+                    window.ToggleMute();
+                    Console.WriteLine("Mute shortcut ticks the box: " + (Field<System.Windows.Controls.CheckBox>("_mute").IsChecked == true));
+                    window.PauseOrResume();
+                }
+                else Click(Field<System.Windows.Controls.Button>("_start"));
                 timer.Interval = TimeSpan.FromSeconds(5);
             }
-            else if (step == 2) { Snap(window, "2-recording.png"); Click(Field<System.Windows.Controls.Button>("_finish")); timer.Interval = TimeSpan.FromSeconds(1); }
+            else if (step == 2)
+            {
+                Snap(window, "2-recording.png");
+                if (auto) { Console.WriteLine("Pause shortcut paused: " + ((string)Field<System.Windows.Controls.Button>("_pause").Content == "Resume")); window.PauseOrResume(); timer.Interval = TimeSpan.FromSeconds(3); }
+                else { Click(Field<System.Windows.Controls.Button>("_finish")); timer.Interval = TimeSpan.FromSeconds(1); }
+            }
+            else if (step == 3 && auto) { window.StartOrStop(); timer.Interval = TimeSpan.FromSeconds(1); }
             else if (typeof(Vibershot.UI.CaptureSessionWindow).GetField("_projectPath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(window) != null || step > 30)
             {
                 timer.Stop();
@@ -296,5 +322,32 @@ static class RecordingChecks
         window.Closed += (_, _) => app.Shutdown();
         app.Run(window);
         foreach (string file in Directory.GetFiles(folder, "*", SearchOption.AllDirectories)) Console.WriteLine($"  {file.Substring(folder.Length)} {new FileInfo(file).Length / 1024} KB");
+    }
+
+    /// <summary>At the desk: opens Settings on a copy of the config, shows the Video page and saves a picture of it.</summary>
+    public static void SettingsPicture(string path)
+    {
+        Vibershot.UI.App.Hosted = true;
+        var app = new Vibershot.UI.App();
+        app.InitializeComponent();
+        System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext());
+        var config = Vibershot.Core.AppConfig.FromJson(app.Config.ToJson())!;
+        var window = new Vibershot.UI.SettingsWindow(config) { ShowActivated = false, Height = 1500 };
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2.5) };
+        int step = 0;
+        timer.Tick += (_, _) =>
+        {
+            if (step++ == 0) { ((System.Windows.Controls.RadioButton)window.FindName("NavVideo")).IsChecked = true; timer.Interval = TimeSpan.FromSeconds(1.5); return; }
+            timer.Stop();
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(window);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            using (var stream = File.Create(path)) encoder.Save(stream);
+            window.Close();
+        };
+        window.Loaded += (_, _) => timer.Start();
+        window.Closed += (_, _) => app.Shutdown();
+        app.Run(window);
     }
 }

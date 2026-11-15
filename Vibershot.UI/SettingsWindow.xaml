@@ -227,7 +227,7 @@
     <!-- Video -->
     <StackPanel x:Name="PageVideo" Visibility="Collapsed">
      <TextBlock Style="{StaticResource PageTitle}" Text="Video"/>
-     <TextBlock Style="{StaticResource PageSubtitle}" Text="How screen recordings are encoded."/>
+     <TextBlock Style="{StaticResource PageSubtitle}" Text="How screen recordings are encoded, and what is recorded with the screen."/>
      <Border Style="{StaticResource Group}">
       <StackPanel>
        <TextBlock Text="Format" FontWeight="Bold" Margin="0,0,0,8"/>
@@ -243,6 +243,31 @@
         <Border Style="{StaticResource Divider}"/>
         <CheckBox x:Name="CursorCheckbox" AutomationProperties.Name="Show the mouse cursor"><StackPanel><TextBlock Text="Show the mouse cursor" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Draw the pointer into the recording"/></StackPanel></CheckBox>
        </StackPanel>
+      </StackPanel>
+     </Border>
+     <!-- What is recorded beside the screen. The same choices appear in the recording window before each recording. -->
+     <Border x:Name="RecordExtrasGroup" Style="{StaticResource Group}">
+      <StackPanel>
+       <TextBlock Text="Sound and camera" FontWeight="Bold"/>
+       <TextBlock Style="{StaticResource Hint}" Text="Each is recorded as its own track, so it can be edited, moved or muted afterwards. These are the starting choices; they can be changed before every recording." Margin="0,6,0,14" TextWrapping="Wrap"/>
+       <CheckBox x:Name="RecordSystemAudioCheckbox" AutomationProperties.Name="Record system audio"><StackPanel><TextBlock Text="System audio" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="What the computer plays through the default output"/></StackPanel></CheckBox>
+       <Border Style="{StaticResource Divider}"/>
+       <CheckBox x:Name="RecordMicrophoneCheckbox" AutomationProperties.Name="Record microphone"><StackPanel><TextBlock Text="Microphone" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Your voice, on a track of its own"/></StackPanel></CheckBox>
+       <ComboBox x:Name="MicrophoneComboBox" AutomationProperties.Name="Microphone" Margin="0,12,0,0"/>
+       <Grid Margin="0,14,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="Microphone volume" FontWeight="Bold"/><TextBlock x:Name="MicrophoneVolumeLabel" Grid.Column="1" Foreground="{StaticResource Ink2}" FontFamily="{StaticResource MonoFont}" FontSize="12"/></Grid>
+       <Slider x:Name="MicrophoneVolumeSlider" AutomationProperties.Name="Microphone volume" Minimum="0" Maximum="200" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="20" Margin="0,8,0,0" ValueChanged="MicrophoneVolumeSlider_ValueChanged"/>
+       <TextBlock Style="{StaticResource Hint}" Text="100% records the microphone as it is; above that makes it louder" Margin="0,6,0,0"/>
+       <Border Style="{StaticResource Divider}"/>
+       <CheckBox x:Name="RecordCameraCheckbox" AutomationProperties.Name="Record camera"><StackPanel><TextBlock Text="Camera" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="A webcam as its own video layer, previewed in a floating bubble while recording"/></StackPanel></CheckBox>
+       <ComboBox x:Name="CameraComboBox" AutomationProperties.Name="Camera" Margin="0,12,0,0"/>
+       <Grid Margin="0,12,0,0"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
+        <ComboBox x:Name="CameraShapeComboBox" AutomationProperties.Name="Camera shape"><ComboBoxItem Content="Circle" Tag="Circle"/><ComboBoxItem Content="Rounded square" Tag="Rounded"/><ComboBoxItem Content="Rectangle" Tag="Rectangle"/></ComboBox>
+        <ComboBox x:Name="CameraSizeComboBox" Grid.Column="2" AutomationProperties.Name="Camera size"><ComboBoxItem Content="Small" Tag="160"/><ComboBoxItem Content="Medium" Tag="220"/><ComboBoxItem Content="Large" Tag="320"/></ComboBox>
+       </Grid>
+       <CheckBox x:Name="CameraMirrorCheckbox" Style="{StaticResource TickCheckBox}" Content="Mirror the camera" AutomationProperties.Name="Mirror the camera" Margin="0,12,0,0"/>
+       <Border Style="{StaticResource Divider}"/>
+       <CheckBox x:Name="StartImmediatelyCheckbox" AutomationProperties.Name="Start recording straight away"><StackPanel><TextBlock Text="Start recording straight away" FontWeight="Bold"/><TextBlock Style="{StaticResource Hint}" Text="Skip the choices shown before a recording and use the ones above" TextWrapping="Wrap"/></StackPanel></CheckBox>
+       <TextBlock Style="{StaticResource Hint}" Text="Shortcuts for record, pause and mute are under Hotkeys." Margin="0,14,0,0"/>
       </StackPanel>
      </Border>
     </StackPanel>

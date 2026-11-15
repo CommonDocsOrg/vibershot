@@ -34,6 +34,7 @@ public sealed partial class CaptureSessionWindow
     private readonly StackPanel _micDetails = new() { Margin = new Thickness(0, 0, 0, 0) };
     private readonly StackPanel _cameraDetails = new();
     private readonly CheckBox _mute = new() { Content = "Mute microphone", Margin = new Thickness(0, 0, 0, 10), Visibility = Visibility.Collapsed };
+    private readonly CheckBox _skipNextTime = new() { Content = "Start straight away next time", Margin = new Thickness(0, 12, 0, 0), ToolTip = "Skip these choices and record at once with what is switched on now. Change it back in Settings → Video." };
     private readonly Button _start = new() { Content = "Start recording", Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
     private readonly Button _cancelSetup = new() { Content = "Cancel", IsCancel = true };
     private Rectangle _systemMeter = null!, _micMeter = null!;
@@ -64,6 +65,7 @@ public sealed partial class CaptureSessionWindow
         var ink2 = (Brush)FindResource("Ink2"); var ink3 = (Brush)FindResource("Ink3");
         _systemNote.Foreground = ink3; _cameraNote.Foreground = ink3; _micVolumeLabel.Foreground = ink2;
         _mute.Style = (Style)FindResource("TickCheckBox");
+        _skipNextTime.Style = (Style)FindResource("TickCheckBox");
         _start.Style = (Style)FindResource("PrimaryButton");
 
         _setup.Children.Add(Row(_systemToggle, _systemMeter = Meter()));
@@ -80,6 +82,7 @@ public sealed partial class CaptureSessionWindow
         _setup.Children.Add(Row(_cameraToggle, null));
         _cameraDetails.Children.Add(_cameraPicker); _cameraDetails.Children.Add(_cameraNote);
         _setup.Children.Add(_cameraDetails);
+        _setup.Children.Add(_skipNextTime);
         _panel.Children.Insert(_panel.Children.IndexOf(_status), _setup);
         _panel.Children.Insert(_panel.Children.IndexOf(_buttons), _mute);
 
@@ -93,6 +96,7 @@ public sealed partial class CaptureSessionWindow
         _micToggle.IsChecked = _videoSettings.RecordMicrophone;
         _cameraToggle.IsChecked = _videoSettings.RecordCamera;
         _micVolume.Value = Math.Clamp(_videoSettings.MicrophoneVolume, 0, 200);
+        _skipNextTime.IsChecked = _videoSettings.StartImmediately;
         FillMicrophones();
         _filling = false;
 
@@ -104,16 +108,56 @@ public sealed partial class CaptureSessionWindow
         _cameraToggle.Click += async (_, _) => { _videoSettings.RecordCamera = _cameraToggle.IsChecked == true; Remember(); await ApplyCameraAsync(); };
         _cameraPicker.SelectionChanged += async (_, _) => { if (_filling) return; _videoSettings.CameraName = (_cameraPicker.SelectedItem as ComboBoxItem)?.Content as string; Remember(); await ApplyCameraAsync(); };
         _mute.Click += (_, _) => { if (_rig?.Microphone is { } microphone) microphone.Muted = _mute.IsChecked == true; };
+        _skipNextTime.Click += (_, _) => { _videoSettings.StartImmediately = _skipNextTime.IsChecked == true; Remember(); };
         _start.Click += async (_, _) => await StartRecordingAsync();
         _cancelSetup.Click += (_, _) => Close();
         _levels.Tick += (_, _) => UpdateLevels();
 
         ApplySystemAudio();
         ApplyMicrophone();
-        _ = LoadCamerasAsync();
         _levels.Start();
-        _status.Text = "Choose what to record with the screen, then start. Each choice is recorded as its own track.";
+        _status.Text = _videoSettings.StartImmediately
+            ? "Starting with the choices from last time…"
+            : "Choose what to record with the screen, then start. Each choice is recorded as its own track.";
+        _ = OpenCameraThenMaybeStartAsync();
         UpdateSubtitle();
+    }
+
+    /// <summary>With "start straight away" on, recording begins as soon as the camera (when one is on) shows its first frame.</summary>
+    private async Task OpenCameraThenMaybeStartAsync()
+    {
+        try
+        {
+            await LoadCamerasAsync();
+            if (_videoSettings.StartImmediately && _settingUp) await StartRecordingAsync();
+        }
+        catch (Exception ex) { _status.Text = ex.Message; }
+    }
+
+    /// <summary>The Record video shortcut pressed while this window is open: start if still choosing, stop if recording.</summary>
+    public async void StartOrStop()
+    {
+        try
+        {
+            if (_settingUp) await StartRecordingAsync();
+            else if (_recorder != null && _projectPath == null && !_busy && !_finished) await Finish();
+        }
+        catch (Exception ex) { _status.Text = ex.Message; }
+    }
+
+    /// <summary>The pause shortcut: pauses or resumes a recording in progress.</summary>
+    public async void PauseOrResume()
+    {
+        try { if (!_settingUp && _projectPath == null && _pause.IsEnabled && _pause.Visibility == Visibility.Visible) await TogglePause(); }
+        catch (Exception ex) { _status.Text = ex.Message; }
+    }
+
+    /// <summary>The mute shortcut: mutes or unmutes the microphone track while recording.</summary>
+    public void ToggleMute()
+    {
+        if (_rig?.Microphone is not { } microphone || _settingUp) return;
+        microphone.Muted = !microphone.Muted;
+        _mute.IsChecked = microphone.Muted;
     }
 
     private Grid Row(CheckBox toggle, FrameworkElement? meter)
@@ -276,6 +320,7 @@ public sealed partial class CaptureSessionWindow
         _settingUp = false;
         _extras = _rig is { } rig && (rig.SystemAudio != null || rig.Microphone != null || rig.Camera is { Error: null });
         foreach (var control in new Control[] { _systemToggle, _micToggle, _cameraToggle, _micPicker, _cameraPicker }) control.IsEnabled = false;
+        _skipNextTime.Visibility = _videoSettings.StartImmediately ? Visibility.Visible : Visibility.Collapsed;
         _start.Visibility = _cancelSetup.Visibility = Visibility.Collapsed;
         _start.IsDefault = false; _cancelSetup.IsCancel = false;
         _pause.Visibility = _finish.Visibility = Visibility.Visible;

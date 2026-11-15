@@ -17,6 +17,8 @@ public partial class App : Application
     private Forms.NotifyIcon? _tray;
     private SingleInstance? _instance;
     private bool _capturing, _setupShown, _updateDialogOpen;
+    /// <summary>The recording window while one is open, so the pause, mute and record shortcuts can reach it.</summary>
+    private CaptureSessionWindow? _session;
     private string? _printScreenWarning, _printScreenWarningShown;
     public AppConfig Config => _config;
     /// <summary>
@@ -230,7 +232,10 @@ public partial class App : Application
         {
             case HotkeyAction.CaptureRegion: CaptureNow(); break;
             case HotkeyAction.FullDesktop: CaptureNow(false); break;
-            case HotkeyAction.RecordVideo: CaptureNow(true, CaptureAction.Video); break;
+            // While a recording window is open the same shortcut starts it, then stops it.
+            case HotkeyAction.RecordVideo: if (_session is { } recording) recording.StartOrStop(); else CaptureNow(true, CaptureAction.Video); break;
+            case HotkeyAction.PauseRecording: _session?.PauseOrResume(); break;
+            case HotkeyAction.MuteMicrophone: _session?.ToggleMute(); break;
             case HotkeyAction.OpenGallery: ShowGallery(); break;
             case HotkeyAction.OpenEditor: OpenEditorFromClipboard(); break;
         }
@@ -346,7 +351,8 @@ public partial class App : Application
                 if (image != null && overlay.Action != CaptureAction.Screenshot)
                 {
                     var session = new CaptureSessionWindow(overlay.SelectedBounds, image, overlay.Action == CaptureAction.Video, null, _config.Video, sourceProcess, sourceTitle, _config.Gallery.RecordingsFolder, () => { try { _config.Save(); } catch (Exception) { } });
-                    session.ShowDialog();
+                    if (overlay.Action == CaptureAction.Video) _session = session;
+                    try { session.ShowDialog(); } finally { _session = null; }
                     _main.RefreshRecordingSummary();
                     if (session.OpenInEditorPath != null) OpenVideoEditor(session.OpenInEditorPath);
                     if (overlay.Action == CaptureAction.Video) { _main.ShowStatus(session.VideoPath == null ? "No video recorded." : "Video available: " + session.VideoPath); return; }
