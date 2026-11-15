@@ -10,4 +10,9 @@
 
   <!-- No WPF windows here: FFmpeg process plumbing only, so the console test project can drive it. -->
 
+  <ItemGroup>
+    <!-- WASAPI capture: system sound (loopback) and microphones, which ffmpeg cannot record. -->
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+  </ItemGroup>
+
 </Project>

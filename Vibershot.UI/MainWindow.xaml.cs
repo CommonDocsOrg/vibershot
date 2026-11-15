@@ -40,6 +40,16 @@ public partial class MainWindow : Window
         string fullText = _config.PrintScreen == PrintScreenAction.FullDesktop ? "PrtScn" : full.IsValid ? full.ToString() : "";
         FullDesktopChipText.Text = fullText;
         FullDesktopChip.Visibility = fullText.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var record = _config.Hotkeys.Gesture(HotkeyAction.RecordVideo);
+        RecordChipText.Text = record.IsValid ? record.ToString() : "";
+        RecordChip.Visibility = record.IsValid ? Visibility.Visible : Visibility.Collapsed;
+        RefreshRecordingSummary();
+    }
+    /// <summary>Says on the Record video row what a recording will capture: screen, system audio, microphone, camera.</summary>
+    public void RefreshRecordingSummary()
+    {
+        RecordSummary.Text = _config.Video.Summary() + " · choose devices before it starts";
+        RecordButton.ToolTip = "Pick an area, then choose system audio, microphone and camera before recording starts";
     }
     /// <summary>
     /// Closing the launcher hides it to the tray; the app keeps running so hotkeys still work.
@@ -69,6 +79,7 @@ public partial class MainWindow : Window
     private void Minimize_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
     private void CaptureButton_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow();
+    private void Record_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow(true, CaptureAction.Video);
     private void Fullscreen_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).CaptureNow(false);
     // Opens whatever image is on the clipboard; a blank canvas otherwise.
     private void Editor_Click(object sender, RoutedEventArgs e) => ((App)Application.Current).OpenEditorFromClipboard();

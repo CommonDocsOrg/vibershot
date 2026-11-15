@@ -8,15 +8,17 @@ using Vibershot.Media;
 
 namespace Vibershot.UI;
 
-public sealed class CaptureSessionWindow : Window
+public sealed partial class CaptureSessionWindow : Window
 {
     private readonly Int32Rect _region;
     private readonly bool _video;
     private readonly VideoSettings _videoSettings;
     private readonly TextBlock _subtitle;
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 12) };
-    private readonly Button _add = new() { Content = "Add shot (2 second delay)", Margin = new Thickness(0, 0, 8, 0) };
-    private readonly Button _finish = new() { Content = "Finish", Margin = new Thickness(0, 0, 8, 0) };
+    private readonly TextBlock _title = new() { FontSize = 16, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
+    private readonly TextBlock _titleGlyph = Icons.Glyph(Icons.Record, 14);
+    private readonly Button _add = new() { Margin = new Thickness(0, 0, 8, 0) };
+    private readonly Button _finish = new() { Margin = new Thickness(0, 0, 8, 0) };
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private VideoWriter? _writer;
     private RecorderSession? _recorder;
@@ -25,7 +27,7 @@ public sealed class CaptureSessionWindow : Window
     private string? _downgradeNote;
     private BitmapSource _previous;
     private bool _busy, _finished, _paused;
-    private readonly Button _pause = new() { Content = "Pause", Margin = new Thickness(0, 0, 8, 0) };
+    private readonly Button _pause = new() { Margin = new Thickness(0, 0, 8, 0) };
     private int _frames, _shots = 1;
     private string? _temporaryVideo;
     public BitmapSource? Image { get; private set; }
@@ -33,34 +35,43 @@ public sealed class CaptureSessionWindow : Window
     public bool Completed { get; private set; }
     private readonly string? _sourceProcess, _sourceTitle;
     private readonly string? _recordingsFolder;
+    private readonly StackPanel _panel = new() { Margin = new Thickness(20) };
+    private readonly StackPanel _buttons = new() { Orientation = Orientation.Horizontal };
+    private Button? _openFolder;
     /// <param name="recordingsFolder">Where the Save As for a finished recording starts (the library's Recordings folder).</param>
-    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath, VideoSettings? videoSettings = null, string? sourceProcess = null, string? sourceTitle = null, string? recordingsFolder = null)
+    public CaptureSessionWindow(Int32Rect region, BitmapSource first, bool video, string? videoPath, VideoSettings? videoSettings = null, string? sourceProcess = null, string? sourceTitle = null, string? recordingsFolder = null, Action? saveSettings = null)
     {
+        _saveSettings = saveSettings;
         _region = region; _video = video; _previous = first; Image = first; VideoPath = videoPath; _videoSettings = videoSettings ?? new VideoSettings(); _sourceProcess = sourceProcess; _sourceTitle = sourceTitle; _recordingsFolder = recordingsFolder;
         Title = video ? "Vibershot • Region video" : "Vibershot • Scrolling photo";
-        Width = 440; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
+        Width = video ? 500 : 440; SizeToContent = SizeToContent.Height; ResizeMode = ResizeMode.NoResize;
         Topmost = true; WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None; AllowsTransparency = true; Background = Brushes.Transparent;
-        var panel = new StackPanel { Margin = new Thickness(20) };
+        var panel = _panel;
         // Same paper panel as the capture window: solid surface, 1px edge, soft shadow.
         Content = new Border { Margin = new Thickness(12), CornerRadius = new CornerRadius(16), BorderThickness = new Thickness(1), BorderBrush = (Brush)FindResource("PaperEdge"), Background = (Brush)FindResource("Paper"), Child = panel,
             Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0x14, 0x18, 0x1C), BlurRadius = 32, ShadowDepth = 8, Opacity = 0.2 } };
-        var header = new TextBlock { Text = video ? "Recording" : "Scrolling photo", FontSize = 16, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) };
+        // The whole header strip drags the window, not just the letters of the title.
+        _titleGlyph.Margin = new Thickness(0, 1, 9, 0);
+        var header = new Border { Background = Brushes.Transparent, Margin = new Thickness(0, 0, 0, 4), ToolTip = "Drag to move", Child = new StackPanel { Orientation = Orientation.Horizontal, Children = { _titleGlyph, _title } } };
+        if (video) SetHeader(Icons.Record, "Danger", "Recording"); else SetHeader(Icons.Scroll, "Accent", "Scrolling photo");
+        Icons.Label(_add, Icons.Add, "Add shot (2 second delay)"); Icons.Label(_finish, Icons.Check, "Finish"); Icons.Label(_pause, Icons.Pause, "Pause");
         header.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed) DragMove(); };
         panel.Children.Add(header);
-        _subtitle = new TextBlock { Text = video ? (UseMp4 ? $"Region video • MP4 {FrameRateSetting} fps • No audio" : "Region video • 10 fps • No audio") : "Scroll the page, then add a shot", FontSize = 12, Foreground = (Brush)FindResource("Ink2") };
+        _subtitle = new TextBlock { Text = video ? (UseMp4 ? $"Region video • MP4 {FrameRateSetting} fps • No audio" : "Region video • 10 fps • No audio") : "Scroll the page, then add a shot", FontSize = 12, Foreground = (Brush)FindResource("Ink2"), TextWrapping = TextWrapping.Wrap };
         panel.Children.Add(_subtitle);
         _status.Foreground = (Brush)FindResource("Ink2"); _status.FontSize = 11.5;
         panel.Children.Add(_status);
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal }; panel.Children.Add(buttons);
+        var buttons = _buttons; panel.Children.Add(buttons);
         if (!video) buttons.Children.Add(_add);
         else {
-            _finish.Content = "Stop & save…"; _finish.Style = (Style)FindResource("PrimaryButton");
+            Icons.Label(_finish, Icons.Stop, "Stop & save…"); _finish.Style = (Style)FindResource("PrimaryButton");
             buttons.Children.Add(_pause);
             _pause.Click += async (_, _) => await TogglePause();
         }
         buttons.Children.Add(_finish);
-        var cancel = new Button { Content = video ? "Open folder" : "Cancel" }; buttons.Children.Add(cancel);
+        var cancel = new Button { Content = "Cancel" }; buttons.Children.Add(cancel);
+        if (video) { _openFolder = cancel; Icons.Label(cancel, Icons.Folder, "Open folder"); cancel.ToolTip = "Open the folder that holds the recovery copy"; }
         cancel.Click += (_, _) => {
             if (!video) { Close(); return; }
             try { Directory.CreateDirectory(RecoveryFolder); System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", RecoveryFolder) { UseShellExecute = true }); }
@@ -79,6 +90,8 @@ public sealed class CaptureSessionWindow : Window
             PlaceControls();
             if (!video) { _status.Text = "Select only page content. Scroll down by less than a page; keep overlapping content visible. Shots are added manually."; return; }
             ShowFrame();
+            // With ffmpeg there is a choice to make first: what to record beside the screen.
+            if (UseMp4 && FfmpegLocator.IsAvailable) { BeginSetup(); return; }
             if (UseMp4 && await StartMp4()) return;
             StartAvi();
         };
@@ -95,6 +108,7 @@ public sealed class CaptureSessionWindow : Window
         Closed += (_, _) =>
         {
             _timer.Stop(); CloseFrame();
+            CleanupSession();
             if (_recorder is not null) { _recorder.Dispose(); _finished = true; return; }
             bool finalized = true;
             try { _writer?.Dispose(); }
@@ -114,6 +128,14 @@ public sealed class CaptureSessionWindow : Window
     }
     private void CloseFrame() { var frame = _frame; _frame = null; frame?.Close(); }
     private void SetFramePaused(bool paused) { if (_frame is not null) _frame.Paused = paused; }
+    /// <summary>The glyph and title at the top: what this window is doing right now.</summary>
+    private void SetHeader(string glyph, string brush, string title) { _titleGlyph.Text = glyph; _titleGlyph.Foreground = (Brush)FindResource(brush); _title.Text = title; }
+    private void ShowPaused(bool paused)
+    {
+        Icons.Label(_pause, paused ? Icons.Play : Icons.Pause, paused ? "Resume" : "Pause");
+        if (paused) SetHeader(Icons.Pause, "Ink2", "Paused"); else SetHeader(Icons.Record, "Danger", "Recording");
+        SetFramePaused(paused);
+    }
     private bool UseMp4 => _videoSettings.Format == VideoFormat.Mp4;
     private FrameRate FrameRateSetting => FrameRate.TryParse(_videoSettings.FrameRate, out var rate) ? rate : FrameRate.Fps30;
     private static string RecoveryFolder => RecorderSettings.DefaultRecordingsFolder;
@@ -122,19 +144,14 @@ public sealed class CaptureSessionWindow : Window
     private async Task<bool> StartMp4()
     {
         if (!FfmpegLocator.IsAvailable) { _downgradeNote = "ffmpeg not found (run tools\\get-ffmpeg.ps1)"; return false; }
-        var settings = new RecorderSettings
-        {
-            Region = new PixelRect(_region.X, _region.Y, _region.Width, _region.Height),
-            FrameRate = FrameRateSetting,
-            Quality = VideoSettings.ClampQuality(_videoSettings.Quality),
-            PreferHardwareEncoder = _videoSettings.PreferHardwareEncoder,
-            ShowCursor = _videoSettings.ShowCursor,
-        };
+        var settings = RecorderSettingsForSession();
         var recorder = new RecorderSession(settings);
         recorder.StatusChanged += (_, status) => Dispatcher.BeginInvoke(() => { _recorderStatus = status; UpdateStatus(); });
         _busy = true; _pause.IsEnabled = false; _finish.IsEnabled = false;
         try
         {
+            // Sound starts first, so the screen's first frames are never silent.
+            if (_extras) _rig?.BeginRecording();
             await recorder.StartAsync();
             _recorder = recorder; _temporaryVideo = recorder.Status.CurrentFile; VideoPath = _temporaryVideo;
             return true;
@@ -157,15 +174,15 @@ public sealed class CaptureSessionWindow : Window
     {
         if (_recorder is null)
         {
-            _paused = !_paused; _pause.Content = _paused ? "Resume" : "Pause"; if (_paused) _timer.Stop(); else _timer.Start(); SetFramePaused(_paused); UpdateStatus();
+            _paused = !_paused; if (_paused) _timer.Stop(); else _timer.Start(); ShowPaused(_paused); UpdateStatus();
             return;
         }
         if (_busy) return;
         _busy = true; _pause.IsEnabled = false; _finish.IsEnabled = false;
         try
         {
-            if (_recorder.State == RecorderState.Recording) { await _recorder.PauseAsync(); _pause.Content = "Resume"; SetFramePaused(true); }
-            else if (_recorder.State == RecorderState.Paused) { await _recorder.ResumeAsync(); _pause.Content = "Pause"; SetFramePaused(false); }
+            if (_recorder.State == RecorderState.Recording) { await _recorder.PauseAsync(); ShowPaused(true); }
+            else if (_recorder.State == RecorderState.Paused) { await _recorder.ResumeAsync(); ShowPaused(false); }
         }
         catch (Exception ex) { _status.Text = "Resume failed: " + ex.Message; }
         finally { _busy = false; _pause.IsEnabled = true; _finish.IsEnabled = true; }
@@ -179,6 +196,7 @@ public sealed class CaptureSessionWindow : Window
         try { final = await _recorder.StopAsync(); }
         catch (Exception ex) { System.Windows.MessageBox.Show(this, "Could not finalize recording: " + ex.Message + "\nSegments retained in: " + RecoveryFolder, "Recording"); }
         finally { _busy = false; CloseFrame(); }
+        if (_extras && final is not null) { _temporaryVideo = final; await FinishSessionAsync(final); return; }
         Completed = final is not null;
         if (final is not null) { _temporaryVideo = final; VideoPath = final; WriteSidecar(final); SaveRecording(final, "MP4 video|*.mp4", ".mp4"); }
         else VideoPath = null;

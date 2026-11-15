@@ -388,8 +388,10 @@ public sealed class VideoPreview : FrameworkElement
                 dc.Pop();
             }
             dc.PushOpacity(Math.Clamp(p.Opacity, 0, 1) * fade);
-            dc.PushClip(new RectangleGeometry(box));
+            dc.PushClip(FrameMask.Outline(clip.Frame, box));
+            if (p.FlipH) dc.PushTransform(new ScaleTransform(-1, 1, box.X + box.Width / 2, box.Y + box.Height / 2));
             dc.DrawImage(picture, full);
+            if (p.FlipH) dc.Pop();
             dc.Pop(); dc.Pop(); dc.Pop();
         }
         dc.Pop();

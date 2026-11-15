@@ -78,6 +78,9 @@ public sealed record Placement
     public double CropRight { get; init; }
     public double CropBottom { get; init; }
 
+    /// <summary>Mirrored left to right inside its box (a webcam shown the way a mirror would).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public bool FlipH { get; init; }
+
     [JsonIgnore] public Rect Bounds => new(X, Y, Math.Max(0, Width), Math.Max(0, Height));
     [JsonIgnore] public Point Center => new(X + Width / 2, Y + Height / 2);
     [JsonIgnore] public bool IsCropped => CropLeft > 0 || CropTop > 0 || CropRight > 0 || CropBottom > 0;
@@ -128,10 +131,28 @@ public abstract record Clip
     [JsonIgnore] public long End => Start + Duration;
 }
 
+public enum FrameShape { Rectangle, Ellipse, Rounded }
+
+/// <summary>
+/// The outline a picture is cut to inside its box: an ellipse (a circle when the box is square)
+/// or a rectangle with rounded corners. Used for a webcam bubble, and for any other picture.
+/// </summary>
+public sealed record ClipFrame
+{
+    [JsonConverter(typeof(JsonStringEnumConverter<FrameShape>))]
+    public FrameShape Shape { get; init; } = FrameShape.Ellipse;
+
+    /// <summary>Corner radius of a rounded frame, as a fraction of the box's shorter side (0.5 is fully round ends).</summary>
+    public double Radius { get; init; } = 0.12;
+}
+
 /// <summary>A clip that draws on the canvas. Without a <see cref="Placement"/> it is fitted inside the canvas and centred.</summary>
 public abstract record VisualClip : Clip
 {
     public Placement? Placement { get; init; }
+
+    /// <summary>The shape the picture is cut to; null (left out of the file) keeps the plain rectangle.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public ClipFrame? Frame { get; init; }
 }
 
 public sealed record VideoClip : VisualClip;

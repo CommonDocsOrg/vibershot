@@ -128,6 +128,12 @@ public enum HotkeyAction
     RecordVideo,
     OpenGallery,
     OpenEditor,
+
+    /// <summary>Pause or resume the recording in progress.</summary>
+    PauseRecording,
+
+    /// <summary>Mute or unmute the microphone of the recording in progress.</summary>
+    MuteMicrophone,
 }
 
 /// <summary>
@@ -141,6 +147,8 @@ public sealed class HotkeySettings
     public string RecordVideo { get; set; } = "";
     public string OpenGallery { get; set; } = "";
     public string OpenEditor { get; set; } = "";
+    public string PauseRecording { get; set; } = "";
+    public string MuteMicrophone { get; set; } = "";
 
     public string this[HotkeyAction action]
     {
@@ -151,6 +159,8 @@ public sealed class HotkeySettings
             HotkeyAction.RecordVideo => RecordVideo,
             HotkeyAction.OpenGallery => OpenGallery,
             HotkeyAction.OpenEditor => OpenEditor,
+            HotkeyAction.PauseRecording => PauseRecording,
+            HotkeyAction.MuteMicrophone => MuteMicrophone,
             _ => "",
         };
         set
@@ -162,6 +172,8 @@ public sealed class HotkeySettings
                 case HotkeyAction.RecordVideo: RecordVideo = value; break;
                 case HotkeyAction.OpenGallery: OpenGallery = value; break;
                 case HotkeyAction.OpenEditor: OpenEditor = value; break;
+                case HotkeyAction.PauseRecording: PauseRecording = value; break;
+                case HotkeyAction.MuteMicrophone: MuteMicrophone = value; break;
             }
         }
     }
@@ -172,9 +184,11 @@ public sealed class HotkeySettings
     {
         HotkeyAction.CaptureRegion => "Capture region or window",
         HotkeyAction.FullDesktop => "Full desktop",
-        HotkeyAction.RecordVideo => "Record video",
+        HotkeyAction.RecordVideo => "Record video (start, then stop)",
         HotkeyAction.OpenGallery => "Open gallery",
         HotkeyAction.OpenEditor => "Open editor",
+        HotkeyAction.PauseRecording => "Pause or resume recording",
+        HotkeyAction.MuteMicrophone => "Mute microphone while recording",
         _ => action.ToString(),
     };
 

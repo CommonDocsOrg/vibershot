@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO.Pipes;
+using Vibershot.Media.Audio;
 
 namespace Vibershot.Media;
 
@@ -31,9 +33,26 @@ public sealed record RecorderSettings
     /// <summary>How long to wait for the first frame before giving up on a grabber.</summary>
     public TimeSpan StartTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
+    /// <summary>
+    /// Time each stretch's first frame against <see cref="MediaClock"/> (see <see cref="RecorderSession.Stretches"/>),
+    /// for recordings that have sound or a camera to line up with.
+    /// </summary>
+    public bool FrameClock { get; init; }
+
+    /// <summary>Name of the finished file inside the recordings folder; null names it after the time.</summary>
+    public string? FinalFileName { get; init; }
+
     public static string DefaultRecordingsFolder =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Vibershot", "Recordings");
 }
+
+/// <summary>
+/// One unbroken run of recording (pauses split a recording into several).
+/// </summary>
+/// <param name="FileStart">Seconds into the finished file where this stretch begins.</param>
+/// <param name="WallStart">The <see cref="MediaClock"/> time its first frame was taken.</param>
+/// <param name="Duration">Its length in seconds.</param>
+public sealed record ScreenStretch(double FileStart, double WallStart, double Duration);
 
 /// <summary>Thrown when no grabber could start; the UI falls back to the GDI AVI recorder.</summary>
 public sealed class RecorderStartException(string message) : Exception(message);
@@ -57,6 +76,16 @@ public sealed class RecorderSession : IDisposable
     private TimeSpan _completedElapsed;
     private long _completedFrames;
     private bool _disposed;
+    private readonly List<ScreenStretch> _stretches = new();
+    private FrameClockReader? _clock;
+    private bool _clockBroken;
+    private double _fallbackWallStart;
+
+    /// <summary>How long a frame takes from the screen to the frame-clock pipe at best; taken off the estimated start.</summary>
+    public const double PipelineDelay = 0.03;
+
+    /// <summary>The recorded stretches in order, complete once the session is paused or stopped.</summary>
+    public IReadOnlyList<ScreenStretch> Stretches => _stretches;
 
     public RecorderSession(RecorderSettings settings, FfmpegRunner? runner = null)
     {
@@ -158,7 +187,7 @@ public sealed class RecorderSession : IDisposable
             return null;
         }
         Publish(RecorderState.Finalizing, message: "Finalizing MP4…");
-        string final = Path.Combine(_settings.RecordingsFolder, $"recording_{_stamp}.mp4");
+        string final = Path.Combine(_settings.RecordingsFolder, _settings.FinalFileName ?? $"recording_{_stamp}.mp4");
         FfmpegResult result;
         string? listPath = null;
         try
@@ -193,8 +222,22 @@ public sealed class RecorderSession : IDisposable
 
     private async Task<string?> TryStartSegmentAsync(Grabber grabber, CancellationToken cancellationToken)
     {
+        bool withClock = _settings.FrameClock && !_clockBroken;
+        string? error = await TryStartSegmentAsync(grabber, withClock, cancellationToken).ConfigureAwait(false);
+        // ffmpeg could not write to the clock pipe: record without it rather than not at all.
+        if (error != null && withClock && error.Contains(FrameClockReader.Prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            _clockBroken = true;
+            error = await TryStartSegmentAsync(grabber, false, cancellationToken).ConfigureAwait(false);
+        }
+        return error;
+    }
+
+    private async Task<string?> TryStartSegmentAsync(Grabber grabber, bool withClock, CancellationToken cancellationToken)
+    {
         string path = Path.Combine(_settings.RecordingsFolder, $"recording_{_stamp}_part{_segments.Count + 1:D2}.mp4");
-        var options = _options! with { OutputPath = path };
+        var clock = withClock ? new FrameClockReader(_options!.FrameRate) : null;
+        var options = _options! with { OutputPath = path, FrameClockPath = clock?.Path };
         FfmpegProcess process;
         try
         {
@@ -202,6 +245,7 @@ public sealed class RecorderSession : IDisposable
         }
         catch (FfmpegNotFoundException ex)
         {
+            clock?.Dispose();
             return ex.Message;
         }
         process.ProgressChanged += OnProgress;
@@ -222,16 +266,34 @@ public sealed class RecorderSession : IDisposable
             }
             process.ProgressChanged -= OnProgress;
             process.Dispose();
+            clock?.Dispose();
             try { File.Delete(path); } catch { }
             return reason.Trim();
         }
+        // Without a frame clock the first progress report is the only witness; it trails the first frame by about this much.
+        _fallbackWallStart = MediaClock.Now - first.Result.Frame / options.FrameRate.Value - 0.42;
         _process = process;
+        _clock = clock;
         _grabber = grabber;
         _segments.Add(path);
         _wall.Restart();
         _ = WatchExitAsync(process);
         Publish(RecorderState.Recording, currentFile: path);
         return null;
+    }
+
+    /// <summary>Notes the stretch that just ended: where it sits in the file and when it was really taken.</summary>
+    private void CloseStretch(FfmpegProcess process)
+    {
+        var clock = _clock;
+        _clock = null;
+        double rate = _options!.FrameRate.Value;
+        long frames = clock is { Frames: > 0 } ? clock.Frames : process.LastProgress?.Frame ?? 0;
+        double wallStart = clock is { Frames: > 0 } ? clock.FrameZero - PipelineDelay : _fallbackWallStart;
+        clock?.Dispose();
+        if (frames <= 0) return;
+        double fileStart = _stretches.Count == 0 ? 0 : _stretches[^1].FileStart + _stretches[^1].Duration;
+        _stretches.Add(new ScreenStretch(fileStart, wallStart, frames / rate));
     }
 
     private async Task WatchExitAsync(FfmpegProcess process)
@@ -242,6 +304,7 @@ public sealed class RecorderSession : IDisposable
         _process = null;
         _completedElapsed += process.LastProgress?.OutTime ?? _wall.Elapsed;
         _completedFrames += process.LastProgress?.Frame ?? 0;
+        CloseStretch(process);
         Publish(RecorderState.Paused, message: $"Recording stopped: ffmpeg exited with code {result.ExitCode}. {result.ErrorText(2)} Stop & save keeps what was captured.");
     }
 
@@ -253,6 +316,7 @@ public sealed class RecorderSession : IDisposable
         await process.StopAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
         _completedElapsed += process.LastProgress?.OutTime ?? _wall.Elapsed;
         _completedFrames += process.LastProgress?.Frame ?? 0;
+        CloseStretch(process);
         process.ProgressChanged -= OnProgress;
         process.Dispose();
     }
@@ -285,5 +349,67 @@ public sealed class RecorderSession : IDisposable
         _disposed = true;
         _process?.Dispose();
         _process = null;
+        _clock?.Dispose();
+        _clock = null;
+    }
+}
+
+/// <summary>
+/// The app's end of the frame clock: a named pipe ffmpeg writes one tiny frame to per video frame.
+/// Frames can only arrive late, never early, so the earliest one (after taking off its place in
+/// the sequence) says when frame 0 was.
+/// </summary>
+internal sealed class FrameClockReader : IDisposable
+{
+    public const string Prefix = "vibershot-clock-";
+
+    private readonly NamedPipeServerStream _pipe;
+    private readonly CancellationTokenSource _cancel = new();
+    private readonly double _rate;
+    private long _frames;
+    private double _zero = double.MaxValue;
+
+    public FrameClockReader(FrameRate rate)
+    {
+        _rate = rate.Value;
+        string name = Prefix + Guid.NewGuid().ToString("N");
+        Path = @"\\.\pipe\" + name;
+        _pipe = new NamedPipeServerStream(name, PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 4096, 0);
+        _ = Task.Run(ReadAsync);
+    }
+
+    public string Path { get; }
+    public long Frames => Interlocked.Read(ref _frames);
+    public double FrameZero => Volatile.Read(ref _zero);
+
+    private async Task ReadAsync()
+    {
+        try
+        {
+            await _pipe.WaitForConnectionAsync(_cancel.Token).ConfigureAwait(false);
+            byte[] buffer = new byte[RecordingArguments.FrameClockBytes * 64];
+            long bytes = 0;
+            while (true)
+            {
+                int n = await _pipe.ReadAsync(buffer, _cancel.Token).ConfigureAwait(false);
+                if (n == 0) break;
+                double arrived = MediaClock.Now;
+                long before = bytes / RecordingArguments.FrameClockBytes;
+                bytes += n;
+                long after = bytes / RecordingArguments.FrameClockBytes;
+                if (after == before) continue;
+                // Several frames in one read arrived together; the last of them is the least late.
+                double zero = arrived - (after - 1) / _rate;
+                if (zero < _zero) Volatile.Write(ref _zero, zero);
+                Interlocked.Exchange(ref _frames, after);
+            }
+        }
+        catch (Exception) { }
+    }
+
+    public void Dispose()
+    {
+        try { _cancel.Cancel(); } catch (Exception) { }
+        try { _pipe.Dispose(); } catch (Exception) { }
     }
 }

@@ -717,7 +717,55 @@ public partial class SettingsWindow : Window
         VideoQualityLabel.Text = $"{(int)VideoQualitySlider.Value}%";
         HardwareEncoderCheckbox.IsChecked = _config.Video.PreferHardwareEncoder;
         CursorCheckbox.IsChecked = _config.Video.ShowCursor;
+        LoadRecordExtras();
         UpdateMp4OptionsVisibility();
+    }
+
+    /// <summary>Fills the sound and camera choices. Cameras are listed in the background: asking ffmpeg takes a moment.</summary>
+    private void LoadRecordExtras()
+    {
+        var video = _config.Video;
+        RecordSystemAudioCheckbox.IsChecked = video.RecordSystemAudio;
+        RecordMicrophoneCheckbox.IsChecked = video.RecordMicrophone;
+        RecordCameraCheckbox.IsChecked = video.RecordCamera;
+        StartImmediatelyCheckbox.IsChecked = video.StartImmediately;
+        CameraMirrorCheckbox.IsChecked = video.CameraMirror;
+        MicrophoneVolumeSlider.Value = Math.Clamp(video.MicrophoneVolume, 0, 200);
+        MicrophoneVolumeLabel.Text = $"{(int)MicrophoneVolumeSlider.Value}%";
+        SelectText(CameraShapeComboBox, video.CameraShape);
+        if (CameraShapeComboBox.SelectedItem is null) CameraShapeComboBox.SelectedIndex = 0;
+        // The bubble can be any size (it is resized with the mouse wheel); pick the nearest of the three names.
+        CameraSizeComboBox.SelectedIndex = video.CameraSize < 190 ? 0 : video.CameraSize < 270 ? 1 : 2;
+
+        MicrophoneComboBox.Items.Add(new ComboBoxItem { Content = "Default microphone", Tag = "" });
+        foreach (var microphone in Vibershot.Media.Audio.AudioDevices.Microphones())
+            MicrophoneComboBox.Items.Add(new ComboBoxItem { Content = microphone.Name, Tag = microphone.Id });
+        SelectText(MicrophoneComboBox, video.MicrophoneId ?? "");
+        if (MicrophoneComboBox.SelectedItem is null) MicrophoneComboBox.SelectedIndex = 0;
+
+        CameraComboBox.Items.Add(new ComboBoxItem { Content = "First camera found", Tag = "" });
+        // Keep the remembered camera selectable even before (or without) the listing.
+        if (!string.IsNullOrEmpty(video.CameraName)) CameraComboBox.Items.Add(new ComboBoxItem { Content = video.CameraName, Tag = video.CameraName });
+        CameraComboBox.SelectedIndex = CameraComboBox.Items.Count - 1;
+        _ = ListCamerasAsync();
+    }
+
+    private async System.Threading.Tasks.Task ListCamerasAsync()
+    {
+        try
+        {
+            if (!Vibershot.Media.FfmpegLocator.IsAvailable) return;
+            var cameras = await Vibershot.Media.Camera.CameraDevices.ListAsync(new Vibershot.Media.FfmpegRunner());
+            foreach (var camera in cameras)
+                if (!CameraComboBox.Items.OfType<ComboBoxItem>().Any(item => (string)item.Tag == camera.Name))
+                    CameraComboBox.Items.Add(new ComboBoxItem { Content = camera.Name, Tag = camera.Name });
+        }
+        catch (Exception) { /* The list is a convenience; the recording window lists cameras again. */ }
+    }
+
+    private void MicrophoneVolumeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (MicrophoneVolumeLabel is not null) MicrophoneVolumeLabel.Text = $"{(int)e.NewValue}%";
     }
 
     private VideoFormat SelectedVideoFormat =>
@@ -731,6 +779,8 @@ public partial class SettingsWindow : Window
     private void UpdateMp4OptionsVisibility()
     {
         if (Mp4OptionsPanel is not null) Mp4OptionsPanel.Visibility = SelectedVideoFormat == VideoFormat.Mp4 ? Visibility.Visible : Visibility.Collapsed;
+        // The legacy AVI recorder has no sound or camera.
+        if (RecordExtrasGroup is not null) RecordExtrasGroup.Visibility = SelectedVideoFormat == VideoFormat.Mp4 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void VideoQualitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -774,6 +824,13 @@ public partial class SettingsWindow : Window
     // ---------------------------------------------------------------- Save / cancel
 
     /// <summary>Selects the combo item whose Tag equals <paramref name="value"/>.</summary>
+    /// <summary>Selects the item whose Tag is this text; leaves the selection alone when none matches.</summary>
+    private static void SelectText(ComboBox combo, string value)
+    {
+        foreach (ComboBoxItem item in combo.Items)
+            if (item.Tag is string tag && tag == value) { combo.SelectedItem = item; return; }
+    }
+
     private static void SelectTag<T>(ComboBox combo, T value) where T : struct
     {
         foreach (ComboBoxItem item in combo.Items)
@@ -856,6 +913,18 @@ public partial class SettingsWindow : Window
         _config.Video.Quality = VideoSettings.ClampQuality((int)VideoQualitySlider.Value);
         _config.Video.PreferHardwareEncoder = HardwareEncoderCheckbox.IsChecked != false;
         _config.Video.ShowCursor = CursorCheckbox.IsChecked != false;
+        _config.Video.RecordSystemAudio = RecordSystemAudioCheckbox.IsChecked == true;
+        _config.Video.RecordMicrophone = RecordMicrophoneCheckbox.IsChecked == true;
+        _config.Video.RecordCamera = RecordCameraCheckbox.IsChecked == true;
+        _config.Video.StartImmediately = StartImmediatelyCheckbox.IsChecked == true;
+        _config.Video.CameraMirror = CameraMirrorCheckbox.IsChecked == true;
+        _config.Video.MicrophoneVolume = (int)MicrophoneVolumeSlider.Value;
+        _config.Video.MicrophoneId = (MicrophoneComboBox.SelectedItem as ComboBoxItem)?.Tag is string { Length: > 0 } microphoneId ? microphoneId : null;
+        _config.Video.CameraName = (CameraComboBox.SelectedItem as ComboBoxItem)?.Tag is string { Length: > 0 } cameraName ? cameraName : null;
+        if ((CameraShapeComboBox.SelectedItem as ComboBoxItem)?.Tag is string shape) _config.Video.CameraShape = shape;
+        // Only a changed size name overrides a size set with the mouse wheel on the bubble.
+        int sizeIndex = _config.Video.CameraSize < 190 ? 0 : _config.Video.CameraSize < 270 ? 1 : 2;
+        if (CameraSizeComboBox.SelectedIndex >= 0 && CameraSizeComboBox.SelectedIndex != sizeIndex) _config.Video.CameraSize = new[] { 160, 220, 320 }[CameraSizeComboBox.SelectedIndex];
         _config.Updates.CheckAutomatically = UpdateSwitch.IsChecked == true;
 
         if (rootChanged && Directory.Exists(oldRoot))

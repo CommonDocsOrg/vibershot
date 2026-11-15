@@ -32,6 +32,13 @@ public sealed record RecordingOptions
     public required EncoderInfo Encoder { get; init; }
 
     public required string OutputPath { get; init; }
+
+    /// <summary>
+    /// When set, ffmpeg also writes one tiny grey frame per video frame here (a named pipe). The
+    /// app times their arrival to learn when the recording's first frame was taken, which is what
+    /// lines the screen up with sound and camera recorded beside it.
+    /// </summary>
+    public string? FrameClockPath { get; init; }
 }
 
 /// <summary>
@@ -91,13 +98,32 @@ public static class RecordingArguments
     /// </summary>
     private static IEnumerable<string> Output(RecordingOptions options)
     {
+        if (options.FrameClockPath != null)
+        {
+            yield return "-filter_complex"; yield return FrameClockGraph;
+            yield return "-map"; yield return "[rec]";
+        }
         foreach (var arg in EncoderArguments(options)) yield return arg;
         yield return "-r"; yield return options.FrameRate.ToFfmpegString();
         yield return "-pix_fmt"; yield return "yuv420p";
         yield return "-movflags"; yield return "frag_keyframe+empty_moov";
         yield return "-f"; yield return "mp4";
         yield return "-y"; yield return options.OutputPath;
+        if (options.FrameClockPath != null)
+        {
+            yield return "-map"; yield return "[clock]";
+            yield return "-r"; yield return options.FrameRate.ToFfmpegString();
+            yield return "-f"; yield return "rawvideo";
+            yield return "-flush_packets"; yield return "1";
+            yield return "-y"; yield return options.FrameClockPath;
+        }
     }
+
+    /// <summary>Bytes in one frame-clock frame: 2 × 2 grey pixels.</summary>
+    public const int FrameClockBytes = 4;
+
+    /// <summary>Splits the grabbed picture: one copy to the encoder, one shrunk to four grey pixels for the frame clock.</summary>
+    public const string FrameClockGraph = "[0:v]split[rec][clk];[clk]scale=2:2:flags=neighbor,format=gray[clock]";
 
     /// <summary>Quality 1-100 to an H.264 CRF/CQ/QP: 100 → 19, 75 → 23, 1 → 35.</summary>
     public static int QualityToCrf(int quality)

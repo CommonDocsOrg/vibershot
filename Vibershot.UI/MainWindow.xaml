@@ -142,7 +142,20 @@
    </Button>
 
    <!-- Secondary actions as four equal tiles. -->
-   <Grid Grid.Row="2" Margin="20,14,20,0">
+   <StackPanel Grid.Row="2" Margin="20,14,20,0">
+   <!-- Record video: says what a recording will capture besides the screen, before one is started. -->
+   <Button x:Name="RecordButton" Style="{StaticResource Tile}" Click="Record_Click" AutomationProperties.Name="Record video" Padding="12,10" Margin="0,0,0,8">
+    <Grid>
+     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Border Style="{StaticResource TileIcon}" VerticalAlignment="Center"><TextBlock Style="{StaticResource TileGlyph}" Text="&#xE7C8;" Foreground="{StaticResource Danger}"/></Border>
+     <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+      <TextBlock Text="Record video" FontSize="13" FontWeight="Bold" Foreground="{StaticResource Ink}"/>
+      <TextBlock x:Name="RecordSummary" FontSize="11" Foreground="{StaticResource Ink2}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis"/>
+     </StackPanel>
+     <Border x:Name="RecordChip" Grid.Column="2" Style="{StaticResource Chip}" Visibility="Collapsed" Margin="10,0,0,0"><TextBlock x:Name="RecordChipText" Style="{StaticResource ChipText}"/></Border>
+    </Grid>
+   </Button>
+   <Grid>
     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/></Grid.ColumnDefinitions>
     <Button Style="{StaticResource Tile}" Click="Fullscreen_Click" AutomationProperties.Name="Full desktop" ToolTip="Capture every monitor at once">
      <StackPanel>
@@ -176,6 +189,7 @@
      </StackPanel>
     </Button>
    </Grid>
+   </StackPanel>
 
    <!-- Footer: status on the left, output folder on the right. No rule above it. -->
    <Grid Grid.Row="3" Margin="22,16,22,18">
